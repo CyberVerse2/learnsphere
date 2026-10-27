@@ -41,8 +41,9 @@ public interface SharingService {
      * <p>The package and the code are checked before this returns; copying the PDFs, storing passages and
      * indexing them then run as a {@link edu.learnsphere.core.model.JobKind#IMPORT_PACKAGE} job with
      * progress and cancellation (follow {@link edu.learnsphere.core.events.JobProgress}). When the job is
-     * done, {@link #importResult} returns what it did. The code is kept in memory only, so an import
-     * interrupted by quitting LearnSphere ends as failed and is started again by the learner.
+     * done, {@link #importResult} returns what it did. The code is kept in memory only, so a protected import
+     * interrupted by quitting LearnSphere before the course was stored ends as failed and is started again by
+     * the learner.
      *
      * @param code the code for a protected package, or null (the service wipes the array after use)
      * @return the queued job
@@ -52,6 +53,20 @@ public interface SharingService {
      *                               course's own items
      */
     JobUpdate importCourse(Path packageFile, char[] code);
+
+    /**
+     * {@link #importCourse(Path, char[])}, optionally allowing a package whose version is older than the
+     * copy in the library ({@link PackageInfo#isOlderThanInstalled()}): without that, such a package is
+     * refused with a {@link ConflictException} so a learner never goes back a version by accident.
+     *
+     * <p>The default ignores {@code allowOlderVersion}: an implementation that cannot go back to an older
+     * version refuses one exactly as {@link #importCourse(Path, char[])} does.
+     *
+     * @param allowOlderVersion true when the learner confirmed going back to the package's version
+     */
+    default JobUpdate importCourse(Path packageFile, char[] code, boolean allowOlderVersion) {
+        return importCourse(packageFile, code);
+    }
 
     /**
      * What a finished {@link #importCourse} job did; empty while it runs, or when it failed or was
