@@ -37,9 +37,10 @@ class MigrationsTest {
 
             List<SchemaVersion> applied = migrations.migrate();
 
-            assertThat(applied).extracting(SchemaVersion::version).containsExactly(1);
+            assertThat(applied).extracting(SchemaVersion::version)
+                    .containsExactlyElementsOf(migrations.scripts().stream().map(Migrations.Script::version).toList());
             assertThat(applied.getFirst().name()).isEqualTo("V1__initial.sql");
-            assertThat(migrations.currentVersion()).isEqualTo(1);
+            assertThat(migrations.currentVersion()).isEqualTo(applied.getLast().version());
             List<String> tables = db.withHandle(h -> h.createQuery(
                     "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").mapTo(String.class).list());
             assertThat(tables).containsExactlyInAnyOrderElementsOf(TABLES);
@@ -48,14 +49,15 @@ class MigrationsTest {
 
     @Test
     void isIdempotent() {
+        int scripts;
         try (Database db = Database.openWithoutMigrations(dir.resolve("again.db"))) {
             Migrations migrations = new Migrations(db, MutableClock.fixed());
-            migrations.migrate();
+            scripts = migrations.migrate().size();
             assertThat(migrations.migrate()).isEmpty();
-            assertThat(migrations.applied()).hasSize(1);
+            assertThat(migrations.applied()).hasSize(scripts);
         }
         try (Database reopened = Database.open(dir.resolve("again.db"), MutableClock.fixed())) {
-            assertThat(new Migrations(reopened, MutableClock.fixed()).applied()).hasSize(1);
+            assertThat(new Migrations(reopened, MutableClock.fixed()).applied()).hasSize(scripts);
         }
     }
 
@@ -121,7 +123,7 @@ class MigrationsTest {
 
             List<SchemaVersion> applied = new Migrations(t.db, t.clock, getClass().getClassLoader(), "db/test-rebuild").migrate();
 
-            assertThat(applied).extracting(SchemaVersion::version).containsExactly(2);
+            assertThat(applied).extracting(SchemaVersion::version).containsExactly(900);
             assertThat(t.repos.documents().find(document.id())).isPresent();
             assertThat(t.repos.documents().listPages(document.id())).hasSize(1);
             assertThat(t.repos.chunks().countByDocument(document.id())).isEqualTo(1);
@@ -140,11 +142,12 @@ class MigrationsTest {
         try (TestDb t = TestDb.open(dir)) {
             t.course("Biology");
             Migrations migrations = new Migrations(t.db, t.clock, getClass().getClassLoader(), "db/test-dangling");
+            int before = migrations.currentVersion();
 
             assertThatThrownBy(migrations::migrate).isInstanceOf(LearnSphereException.class)
-                    .hasMessageContaining("V2__orphan_chunk.sql");
+                    .hasMessageContaining("V900__orphan_chunk.sql");
 
-            assertThat(migrations.currentVersion()).isEqualTo(1);
+            assertThat(migrations.currentVersion()).isEqualTo(before);
             assertThat(count(t.db, "SELECT COUNT(*) FROM chunks")).isZero();
             assertThat(count(t.db, "SELECT COUNT(*) FROM sqlite_master WHERE name = 'should_not_exist'")).isZero();
             assertThat(count(t.db, "PRAGMA foreign_keys")).isEqualTo(1);
