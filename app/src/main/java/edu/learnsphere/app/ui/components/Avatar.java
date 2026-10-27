@@ -8,7 +8,10 @@ import javafx.scene.layout.StackPane;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
 
-/** A round avatar with initials, coloured from the profile's hue (readable in light and dark). */
+/**
+ * A round avatar with initials, coloured from the profile's hue (readable in light and dark, and in a part
+ * of the window that shows the other palette).
+ */
 public final class Avatar extends StackPane {
 
     private final Circle circle;
@@ -30,11 +33,14 @@ public final class Avatar extends StackPane {
         setPrefSize(size, size);
         setMaxSize(size, size);
         Theme.darkProperty().addListener(new WeakChangeListener<>(themeListener));
+        sceneProperty().addListener((obs, old, scene) -> paint());
+        parentProperty().addListener((obs, old, parent) -> paint());
+        setAccessibleText(initials);
         paint();
     }
 
     private void paint() {
-        boolean dark = Theme.isDark();
+        boolean dark = Theme.isDark(this);
         circle.setFill(dark ? Color.hsb(hue, 0.42, 0.36) : Color.hsb(hue, 0.24, 0.94));
         initials.setTextFill(dark ? Color.hsb(hue, 0.18, 0.97) : Color.hsb(hue, 0.78, 0.36));
     }
