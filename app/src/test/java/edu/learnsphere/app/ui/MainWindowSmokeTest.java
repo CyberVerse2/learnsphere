@@ -8,6 +8,7 @@ import edu.learnsphere.app.dev.DemoWorkspace;
 import edu.learnsphere.app.theme.Theme;
 import edu.learnsphere.app.theme.Typography;
 import edu.learnsphere.core.AppPaths;
+import edu.learnsphere.core.service.SessionRequest;
 import edu.learnsphere.core.service.ThemePreference;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -57,10 +58,10 @@ class MainWindowSmokeTest {
         settle();
 
         assertThat(window.navigator().current()).isEqualTo(Destination.HOME);
-        assertThat(texts(robot, ".text-display")).contains("Welcome to LearnSphere");
+        assertThat(texts(robot, ".text-display")).anyMatch(text -> text.startsWith("Good ") && text.endsWith("Amara"));
         assertThat(texts(robot, ".profile-chip-name")).containsExactly(DemoData.PROFILE_NAME);
-        assertThat(texts(robot, ".sidebar-course"))
-                .containsExactly("Cell Biology", "Organic Chemistry I", "Statistics for Research");
+        assertThat(texts(robot, ".sidebar-course-title"))
+                .containsExactly("Operating Systems Principles", "Research Methods in Computing");
     }
 
     @Test
@@ -70,16 +71,42 @@ class MainWindowSmokeTest {
         robot.clickOn("Library");
         assertThat(window.navigator().current()).isEqualTo(Destination.LIBRARY);
 
-        robot.clickOn("Cell Biology");
-        assertThat(window.navigator().current()).isInstanceOf(Destination.Course.class);
+        robot.interact(() -> window.navigator().navigate(new Destination.Course(DemoData.OPERATING_SYSTEMS)));
+        settle();
+        assertThat(window.topBar().crumbTexts()).containsExactly("Library", "Operating Systems Principles");
 
         robot.clickOn(".profile-chip");
         assertThat(window.navigator().currentRoute()).isEqualTo(Route.PROFILES);
-        assertThat(window.getLeft()).as("sidebar hidden on full-screen routes").isNull();
+        assertThat(window.isSidebarShown()).as("sidebar hidden on full-screen routes").isFalse();
+        assertThat(window.topBar().isVisible()).isFalse();
 
         robot.interact(() -> window.navigator().back());
-        assertThat(window.getLeft()).isNotNull();
+        assertThat(window.isSidebarShown()).isTrue();
         assertThat(window.navigator().current()).isInstanceOf(Destination.Course.class);
+    }
+
+    @Test
+    void studyIsAFocusModeWithoutTheSidebar(FxRobot robot) {
+        settle();
+
+        robot.interact(() -> window.navigator().navigate(new Destination.Study(SessionRequest.studyNext())));
+        settle();
+
+        assertThat(window.isSidebarShown()).isFalse();
+        assertThat(window.topBar().isVisible()).isFalse();
+        assertThat(robot.lookup(".study-prompt").tryQuery()).isPresent();
+
+        robot.interact(() -> window.navigator().navigate(Destination.HOME));
+        assertThat(window.isSidebarShown()).isTrue();
+    }
+
+    @Test
+    void offersTheComponentGalleryInDemoMode(FxRobot robot) {
+        settle();
+
+        robot.interact(() -> window.navigator().navigate(Destination.GALLERY));
+
+        assertThat(window.navigator().currentView()).isInstanceOf(edu.learnsphere.app.dev.ComponentGallery.class);
     }
 
     private static void settle() {

@@ -66,14 +66,16 @@ public final class SegmentedControl<T> extends HBox {
             }
         });
         addEventFilter(javafx.scene.input.KeyEvent.KEY_PRESSED, event -> {
+            // Arrows move the choice and stop at the ends (the toggle buttons alone would wrap around).
             int index = this.values.indexOf(value.get());
-            if (event.getCode() == KeyCode.RIGHT && index < this.values.size() - 1) {
-                value.set(this.values.get(index + 1));
-                buttons.get(index + 1).requestFocus();
-                event.consume();
-            } else if (event.getCode() == KeyCode.LEFT && index > 0) {
-                value.set(this.values.get(index - 1));
-                buttons.get(index - 1).requestFocus();
+            int next = switch (event.getCode()) {
+                case RIGHT -> Math.min(index + 1, this.values.size() - 1);
+                case LEFT -> Math.max(index - 1, 0);
+                default -> -1;
+            };
+            if (next >= 0) {
+                value.set(this.values.get(next));
+                buttons.get(next).requestFocus();
                 event.consume();
             }
         });

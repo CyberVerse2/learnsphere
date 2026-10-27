@@ -2210,6 +2210,7 @@
 
 .breadcrumbs {
     -fx-spacing: 2px;
+    -fx-padding: 0;
 }
 
 .crumb {

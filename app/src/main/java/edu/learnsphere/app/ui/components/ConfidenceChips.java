@@ -37,7 +37,7 @@ public final class ConfidenceChips extends HBox {
             getChildren().add(chip);
         }
         group.selectedToggleProperty().addListener((obs, old, selected) -> {
-            if (selected == null && old != null) {
+            if (selected == null && old != null && confidence.get() != null) {
                 // Clicking the chosen chip keeps it chosen.
                 old.setSelected(true);
                 return;
@@ -48,7 +48,8 @@ public final class ConfidenceChips extends HBox {
             Toggle wanted = value == null ? null : chips.get(value);
             if (group.getSelectedToggle() != wanted) {
                 if (wanted == null) {
-                    group.getSelectedToggle().setSelected(false);
+                    // The property is already null, so the group lets the chip go.
+                    group.selectToggle(null);
                 } else {
                     wanted.setSelected(true);
                 }
