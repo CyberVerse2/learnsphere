@@ -85,7 +85,8 @@ import org.sqlite.SQLiteException;
  *   <li><b>Extract</b> ({@code extracting}): the text layer of every page into {@code document_pages}
  *       ({@code text_layer}).</li>
  *   <li><b>Read</b> ({@code reading}): pages with under 25 characters of text and an image are rendered at
- *       {@value #READ_DPI} DPI and transcribed by the {@link PageReader} ({@code ai_read}, not reviewed). While
+ *       {@value #READ_DPI} DPI (at most {@value #READ_MAX_PIXELS} pixels) and transcribed by the
+ *       {@link PageReader} ({@code ai_read}, not reviewed). While
  *       any such page is unreviewed the document waits in {@code needs_review} and the job ends: unreviewed
  *       pages are never chunked, embedded or indexed. Approving the last page enqueues this job again, which
  *       continues.</li>
@@ -121,6 +122,13 @@ public final class IngestionService implements JobHandler {
      * two thirds of the image tokens.
      */
     public static final int READ_DPI = 120;
+
+    /**
+     * Largest page image shown to the study assistant, in pixels: an A4 or Letter page at {@link #READ_DPI}.
+     * Larger pages, such as scans saved at poster or tabloid size, are rendered at a lower resolution, so every
+     * page costs the assistant about the same.
+     */
+    public static final long READ_MAX_PIXELS = 1_400_000L;
 
     /** Share of a page images must cover for its figures to be described. */
     public static final double FIGURE_MIN_COVERAGE = 0.10;
@@ -535,7 +543,7 @@ public final class IngestionService implements JobHandler {
 
         private byte[] render(Path file, int pageNumber) {
             try {
-                return renderer.renderPngAtDpi(file, pageNumber, READ_DPI);
+                return renderer.renderPngAtDpi(file, pageNumber, READ_DPI, READ_MAX_PIXELS);
             } catch (NoSuchFileException e) {
                 throw new StageFailure(DocumentError.MISSING_FILE, "File disappeared: " + file, e);
             } catch (IOException e) {
@@ -581,7 +589,7 @@ public final class IngestionService implements JobHandler {
                 int number = page.pageNumber();
                 List<String> notes;
                 try {
-                    byte[] png = renderer.renderPngAtDpi(file, number, READ_DPI);
+                    byte[] png = renderer.renderPngAtDpi(file, number, READ_DPI, READ_MAX_PIXELS);
                     notes = ai.call(() -> figureDescriber.describe(png, number, token), token);
                 } catch (UnavailableException e) {
                     LOG.warn("Figures of document {} were not described: the study assistant is not available", documentId, e);

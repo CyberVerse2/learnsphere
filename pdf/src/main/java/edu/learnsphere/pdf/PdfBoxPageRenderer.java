@@ -75,6 +75,23 @@ public final class PdfBoxPageRenderer implements PageRenderer {
      */
     @Override
     public byte[] renderPng(Path pdf, int pageNumber, float scale) throws IOException {
+        return render(pdf, pageNumber, scale, maxPixels);
+    }
+
+    /**
+     * {@inheritDoc} The limit applies on top of this renderer's own.
+     *
+     * @throws IllegalArgumentException when {@code dpi} or {@code maxPixels} is not positive
+     */
+    @Override
+    public byte[] renderPngAtDpi(Path pdf, int pageNumber, int dpi, long maxPixels) throws IOException {
+        if (maxPixels < 1) {
+            throw new IllegalArgumentException("maxPixels must be positive: " + maxPixels);
+        }
+        return render(pdf, pageNumber, dpi / POINTS_PER_INCH, Math.min(maxPixels, this.maxPixels));
+    }
+
+    private byte[] render(Path pdf, int pageNumber, float scale, long pixelLimit) throws IOException {
         if (!(scale > 0) || Float.isInfinite(scale)) {
             throw new IllegalArgumentException("Scale must be a positive number: " + scale);
         }
@@ -91,7 +108,7 @@ public final class PdfBoxPageRenderer implements PageRenderer {
         peakRenders.accumulateAndGet(active, Math::max);
         try (PDDocument document = PdfDocuments.open(pdf)) {
             PageGeometry geometry = PageGeometry.of(PdfDocuments.page(document, pageNumber, pdf));
-            float effectiveScale = fitScale(geometry.displayWidth(), geometry.displayHeight(), scale);
+            float effectiveScale = fitScale(geometry.displayWidth(), geometry.displayHeight(), scale, pixelLimit);
             PDFRenderer renderer = new PDFRenderer(document);
             renderer.setSubsamplingAllowed(true);
             BufferedImage image;
@@ -117,8 +134,8 @@ public final class PdfBoxPageRenderer implements PageRenderer {
         return peakRenders.get();
     }
 
-    /** {@code scale}, reduced when needed so the image stays within the pixel and side limits. */
-    float fitScale(float widthPt, float heightPt, float scale) {
+    /** {@code scale}, reduced when needed so the image stays within {@code maxPixels} and the side limit. */
+    private static float fitScale(float widthPt, float heightPt, float scale, long maxPixels) {
         double width = Math.max(1, widthPt) * (double) scale;
         double height = Math.max(1, heightPt) * (double) scale;
         double factor = 1;

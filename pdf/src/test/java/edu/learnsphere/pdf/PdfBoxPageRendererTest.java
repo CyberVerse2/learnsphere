@@ -71,6 +71,19 @@ class PdfBoxPageRendererTest {
     }
 
     @Test
+    void rendersLargePagesWithinARequestedPixelLimit() throws Exception {
+        Path tabloid = TestPdf.builder().pageSize(792, 1224).paragraph(TestPdf.sentences(5, 5)).write(dir.resolve("tabloid.pdf"));
+        BufferedImage capped = decode(renderer.renderPngAtDpi(tabloid, 1, 120, 1_400_000));
+        assertTrue((long) capped.getWidth() * capped.getHeight() <= 1_400_000 * 1.01, capped.getWidth() + "x" + capped.getHeight());
+        assertTrue(capped.getWidth() > 900, "uses most of the budget: " + capped.getWidth());
+        assertEquals(792.0 / 1224.0, (double) capped.getWidth() / capped.getHeight(), 0.01);
+
+        BufferedImage letter = decode(renderer.renderPngAtDpi(lecture, 1, 120, 1_400_000));
+        assertEquals(1020, letter.getWidth());
+        assertEquals(1320, letter.getHeight());
+    }
+
+    @Test
     void producesTheSameImageFromManyThreads() throws Exception {
         byte[] expected = renderer.renderPng(lecture, 3, 0.75f);
         ExecutorService pool = Executors.newFixedThreadPool(6);
@@ -126,6 +139,7 @@ class PdfBoxPageRendererTest {
         Path locked = TestPdf.encrypt(lecture, dir.resolve("locked.pdf"), "open-sesame");
         assertEquals(PdfReadException.Reason.ENCRYPTED,
                 assertThrows(PdfReadException.class, () -> renderer.renderPng(locked, 1, 1f)).reason());
+        assertThrows(IllegalArgumentException.class, () -> renderer.renderPngAtDpi(lecture, 1, 120, 0));
         assertThrows(IllegalArgumentException.class, () -> new PdfBoxPageRenderer(0, 1_000_000));
         assertThrows(IllegalArgumentException.class, () -> new PdfBoxPageRenderer(1, 10));
     }

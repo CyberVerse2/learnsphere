@@ -16,8 +16,16 @@ public interface PageRenderer {
      */
     byte[] renderPng(Path pdf, int pageNumber, float scale) throws IOException;
 
-    /** Renders at a resolution in dots per inch (150 for reading scanned pages). */
+    /** Renders at a resolution in dots per inch. */
     default byte[] renderPngAtDpi(Path pdf, int pageNumber, int dpi) throws IOException {
         return renderPng(pdf, pageNumber, dpi / POINTS_PER_INCH);
+    }
+
+    /**
+     * Renders at {@code dpi}, or at a lower resolution when the image would have more than {@code maxPixels}
+     * pixels, keeping the page's proportions. Implementations that cannot tell a page's size ignore the limit.
+     */
+    default byte[] renderPngAtDpi(Path pdf, int pageNumber, int dpi, long maxPixels) throws IOException {
+        return renderPngAtDpi(pdf, pageNumber, dpi);
     }
 }
