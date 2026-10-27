@@ -1,0 +1,499 @@
+/*
+ * LearnSphere theme. The single source of colours, type sizes, spacing and shapes for every screen.
+ *
+ * Tokens follow docs/DESIGN.md. Light values live on .root; .root.dark overrides them. Components use
+ * only the -ls-* names (never literal colours). The AtlantaFX base theme's -color-* variables are mapped
+ * onto the tokens so stock controls match.
+ *
+ * Font families, weights and styles are not set here. Typography adds a generated stylesheet that gives
+ * each text role and face class (.medium, .semibold, .bold, .serif, .serif-medium, .serif-italic) an exact
+ * font face. This file sets sizes, line spacing and colours.
+ */
+
+/* ---------------------------------------------------------------------------------------------------
+ * Tokens
+ * ------------------------------------------------------------------------------------------------ */
+
+.root {
+    -ls-bg: #F6F3EE;
+    -ls-surface: #FFFFFF;
+    -ls-surface-sunken: #EFEBE4;
+    -ls-border: #E4DED4;
+    -ls-text: #1E1C19;
+    -ls-text-muted: #6E685E;
+    -ls-text-faint: #9C958A;
+    -ls-accent: #2F55D4;
+    -ls-accent-soft: #E6EBFB;
+    -ls-success: #2E7D5B;
+    -ls-warning: #B26B12;
+    -ls-danger: #B3413A;
+    -ls-highlight: #FFE9A8;
+
+    /* Derived tokens (pairs checked for WCAG AA against their backgrounds). */
+    -ls-on-accent: #FFFFFF;
+    -ls-accent-hover: #2647B8;
+    -ls-accent-pressed: #203D9E;
+    -ls-success-soft: #E2F1E9;
+    -ls-warning-soft: #F8ECDA;
+    -ls-danger-soft: #F7E4E2;
+    -ls-hover: rgba(30, 28, 25, 0.05);
+    -ls-pressed: rgba(30, 28, 25, 0.09);
+    -ls-shadow: rgba(30, 28, 25, 0.06);
+    -ls-shadow-hover: rgba(30, 28, 25, 0.11);
+    -ls-focus: rgba(47, 85, 212, 0.45);
+
+    /* AtlantaFX base theme mapped onto the tokens. */
+    -color-bg-default: -ls-surface;
+    -color-bg-overlay: -ls-surface;
+    -color-bg-subtle: -ls-surface-sunken;
+    -color-bg-inset: -ls-surface-sunken;
+    -color-fg-default: -ls-text;
+    -color-fg-muted: -ls-text-muted;
+    -color-fg-subtle: -ls-text-faint;
+    -color-fg-emphasis: -ls-on-accent;
+    -color-border-default: -ls-border;
+    -color-border-muted: -ls-border;
+    -color-border-subtle: -ls-border;
+    -color-shadow-default: -ls-shadow;
+    -color-accent-fg: -ls-accent;
+    -color-accent-emphasis: -ls-accent;
+    -color-accent-muted: -ls-focus;
+    -color-accent-subtle: -ls-accent-soft;
+    -color-success-fg: -ls-success;
+    -color-success-emphasis: -ls-success;
+    -color-success-muted: -ls-success-soft;
+    -color-success-subtle: -ls-success-soft;
+    -color-warning-fg: -ls-warning;
+    -color-warning-emphasis: -ls-warning;
+    -color-warning-muted: -ls-warning-soft;
+    -color-warning-subtle: -ls-warning-soft;
+    -color-danger-fg: -ls-danger;
+    -color-danger-emphasis: -ls-danger;
+    -color-danger-muted: -ls-danger-soft;
+    -color-danger-subtle: -ls-danger-soft;
+
+    -fx-background-color: -ls-bg;
+    -fx-font-size: 14px;
+    -fx-text-fill: -ls-text;
+}
+
+.root.dark {
+    -ls-bg: #141311;
+    -ls-surface: #1D1B19;
+    -ls-surface-sunken: #100F0E;
+    -ls-border: #2E2B27;
+    -ls-text: #EEEAE3;
+    -ls-text-muted: #A59F95;
+    -ls-text-faint: #6F6A62;
+    -ls-accent: #7E97FF;
+    -ls-accent-soft: #1F2645;
+    -ls-success: #5DBB8E;
+    -ls-warning: #E0A458;
+    -ls-danger: #E5796F;
+    -ls-highlight: #5A4A1C;
+
+    -ls-on-accent: #10142A;
+    -ls-accent-hover: #93A8FF;
+    -ls-accent-pressed: #A8B9FF;
+    -ls-success-soft: #16291F;
+    -ls-warning-soft: #2E2315;
+    -ls-danger-soft: #33201D;
+    -ls-hover: rgba(238, 234, 227, 0.05);
+    -ls-pressed: rgba(238, 234, 227, 0.09);
+    -ls-shadow: rgba(0, 0, 0, 0.32);
+    -ls-shadow-hover: rgba(0, 0, 0, 0.46);
+    -ls-focus: rgba(126, 151, 255, 0.5);
+}
+
+/* ---------------------------------------------------------------------------------------------------
+ * Type roles (sizes and weights; families come from Typography)
+ * ------------------------------------------------------------------------------------------------ */
+
+.text-display {
+    -fx-font-size: 34px;
+    -fx-text-fill: -ls-text;
+}
+
+.text-title {
+    -fx-font-size: 24px;
+    -fx-text-fill: -ls-text;
+}
+
+.text-heading {
+    -fx-font-size: 15px;
+    -fx-text-fill: -ls-text;
+}
+
+.text-overline {
+    -fx-font-size: 12px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.text-body {
+    -fx-font-size: 14px;
+    -fx-line-spacing: 4px;
+    -fx-text-fill: -ls-text;
+}
+
+.text-reading {
+    -fx-font-size: 17px;
+    -fx-line-spacing: 6px;
+    -fx-text-fill: -ls-text;
+}
+
+.text-caption {
+    -fx-font-size: 12px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.text-numeral {
+    -fx-font-size: 40px;
+    -fx-text-fill: -ls-text;
+}
+
+.text-muted {
+    -fx-text-fill: -ls-text-muted;
+}
+
+.text-faint {
+    -fx-text-fill: -ls-text-faint;
+}
+
+.text-accent {
+    -fx-text-fill: -ls-accent;
+}
+
+/* ---------------------------------------------------------------------------------------------------
+ * Controls
+ * ------------------------------------------------------------------------------------------------ */
+
+/* Secondary (the default): surface with a hairline border. */
+.button {
+    -fx-background-color: -ls-border, -ls-surface;
+    -fx-background-insets: 0, 1px;
+    -fx-background-radius: 10px, 9px;
+    -fx-text-fill: -ls-text;
+    -fx-font-size: 14px;
+    -fx-padding: 0 16px 0 16px;
+    -fx-min-height: 40px;
+    -fx-pref-height: 40px;
+    -fx-graphic-text-gap: 8px;
+    -fx-cursor: hand;
+}
+
+.button:hover {
+    -fx-background-color: -ls-border, derive(-ls-surface, -3%);
+}
+
+.button:armed {
+    -fx-background-color: -ls-border, derive(-ls-surface, -6%);
+}
+
+.button:focused {
+    -fx-background-color: -ls-focus, -ls-surface;
+    -fx-background-insets: -2px, 1px;
+    -fx-background-radius: 12px, 9px;
+}
+
+.button .ikonli-font-icon {
+    -fx-icon-color: -ls-text-muted;
+    -fx-icon-size: 16px;
+}
+
+/* Primary: the one main action of a view. */
+.button.primary,
+.button:default {
+    -fx-background-color: -ls-accent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 10px;
+    -fx-text-fill: -ls-on-accent;
+}
+
+.button.primary:hover,
+.button:default:hover {
+    -fx-background-color: -ls-accent-hover;
+}
+
+.button.primary:armed,
+.button:default:armed {
+    -fx-background-color: -ls-accent-pressed;
+}
+
+.button.primary:focused,
+.button:default:focused {
+    -fx-background-color: -ls-focus, -ls-accent;
+    -fx-background-insets: -3px, 0;
+    -fx-background-radius: 13px, 10px;
+}
+
+.button.primary .ikonli-font-icon,
+.button:default .ikonli-font-icon {
+    -fx-icon-color: -ls-on-accent;
+}
+
+/* Quiet: text only. */
+.button.quiet {
+    -fx-background-color: transparent;
+    -fx-text-fill: -ls-accent;
+    -fx-padding: 0 8px 0 8px;
+}
+
+.button.quiet:hover {
+    -fx-background-color: -ls-hover;
+}
+
+.button.quiet:focused {
+    -fx-background-color: -ls-focus, -ls-bg;
+    -fx-background-insets: -2px, 0;
+    -fx-background-radius: 12px, 10px;
+}
+
+.button.quiet .ikonli-font-icon {
+    -fx-icon-color: -ls-accent;
+}
+
+.ikonli-font-icon {
+    -fx-icon-color: -ls-text-muted;
+}
+
+.separator .line {
+    -fx-border-color: -ls-border;
+    -fx-border-width: 1px 0 0 0;
+}
+
+/* ---------------------------------------------------------------------------------------------------
+ * Surfaces
+ * ------------------------------------------------------------------------------------------------ */
+
+.card {
+    -fx-background-color: -ls-border, -ls-surface;
+    -fx-background-insets: 0, 1px;
+    -fx-background-radius: 14px, 13px;
+    -fx-padding: 24px;
+    -fx-effect: dropshadow(gaussian, -ls-shadow, 24, 0, 0, 8);
+}
+
+.card:hover {
+    -fx-effect: dropshadow(gaussian, -ls-shadow-hover, 28, 0, 0, 12);
+}
+
+.card.flat:hover {
+    -fx-effect: dropshadow(gaussian, -ls-shadow, 24, 0, 0, 8);
+}
+
+.chip {
+    -fx-background-color: -ls-surface-sunken;
+    -fx-background-radius: 999px;
+    -fx-padding: 4px 10px 4px 10px;
+    -fx-font-size: 12px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.chip.accent {
+    -fx-background-color: -ls-accent-soft;
+    -fx-text-fill: -ls-accent;
+}
+
+.icon-badge {
+    -fx-background-color: -ls-accent-soft;
+    -fx-background-radius: 12px;
+    -fx-min-width: 40px;
+    -fx-min-height: 40px;
+    -fx-max-width: 40px;
+    -fx-max-height: 40px;
+    -fx-alignment: center;
+}
+
+.icon-badge .ikonli-font-icon {
+    -fx-icon-color: -ls-accent;
+    -fx-icon-size: 20px;
+}
+
+.avatar-initials {
+    -fx-font-size: 12px;
+}
+
+/* Scrolling page: a centred column on the window background. */
+.page,
+.page > .viewport,
+.page > .corner {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-border-width: 0;
+    -fx-padding: 0;
+}
+
+.page-column {
+    -fx-padding: 40px 40px 48px 40px;
+    -fx-spacing: 24px;
+}
+
+.page .scroll-bar:vertical {
+    -fx-background-color: transparent;
+    -fx-pref-width: 12px;
+    -fx-padding: 2px;
+}
+
+.page .scroll-bar .thumb {
+    -fx-background-color: -ls-border;
+    -fx-background-radius: 999px;
+}
+
+.page .scroll-bar .increment-button,
+.page .scroll-bar .decrement-button {
+    -fx-padding: 0;
+    -fx-pref-height: 0;
+}
+
+.page .scroll-bar .increment-arrow,
+.page .scroll-bar .decrement-arrow {
+    -fx-shape: null;
+    -fx-padding: 0;
+}
+
+/* ---------------------------------------------------------------------------------------------------
+ * App shell
+ * ------------------------------------------------------------------------------------------------ */
+
+.app-shell {
+    -fx-background-color: -ls-bg;
+}
+
+.content {
+    -fx-background-color: -ls-bg;
+}
+
+.sidebar {
+    -fx-background-color: -ls-border, -ls-surface-sunken;
+    -fx-background-insets: 0, 0 1px 0 0;
+    -fx-padding: 20px 12px 16px 12px;
+    -fx-min-width: 232px;
+    -fx-pref-width: 232px;
+    -fx-max-width: 232px;
+    -fx-spacing: 2px;
+}
+
+.sidebar-brand {
+    -fx-padding: 2px 8px 22px 8px;
+    -fx-spacing: 10px;
+    -fx-alignment: center-left;
+}
+
+.sidebar-brand-name {
+    -fx-font-size: 21px;
+    -fx-text-fill: -ls-text;
+}
+
+.nav-item {
+    -fx-background-color: transparent;
+    -fx-background-radius: 10px;
+    -fx-padding: 0 12px 0 12px;
+    -fx-min-height: 38px;
+    -fx-pref-height: 38px;
+    -fx-max-width: infinity;
+    -fx-alignment: center-left;
+    -fx-graphic-text-gap: 12px;
+    -fx-text-fill: -ls-text-muted;
+    -fx-font-size: 14px;
+    -fx-cursor: hand;
+}
+
+.nav-item .ikonli-font-icon {
+    -fx-icon-color: -ls-text-muted;
+    -fx-icon-size: 18px;
+}
+
+.nav-item:hover {
+    -fx-background-color: -ls-hover;
+    -fx-text-fill: -ls-text;
+}
+
+.nav-item:armed {
+    -fx-background-color: -ls-pressed;
+}
+
+.nav-item:focused {
+    -fx-background-color: -ls-focus, -ls-surface-sunken;
+    -fx-background-insets: 0, 2px;
+    -fx-background-radius: 10px, 8px;
+}
+
+.nav-item:selected,
+.nav-item:selected:hover,
+.nav-item:selected:focused {
+    -fx-background-color: -ls-accent-soft;
+    -fx-background-insets: 0;
+    -fx-background-radius: 10px;
+    -fx-text-fill: -ls-text;
+}
+
+.nav-item:selected .ikonli-font-icon {
+    -fx-icon-color: -ls-accent;
+}
+
+.sidebar-section {
+    -fx-padding: 26px 12px 8px 12px;
+}
+
+.sidebar-hint {
+    -fx-padding: 0 12px 0 12px;
+    -fx-font-size: 13px;
+    -fx-text-fill: -ls-text-faint;
+}
+
+.sidebar-divider {
+    -fx-background-color: -ls-border;
+    -fx-min-height: 1px;
+    -fx-max-height: 1px;
+}
+
+.profile-chip {
+    -fx-background-color: transparent;
+    -fx-background-radius: 12px;
+    -fx-padding: 8px;
+    -fx-spacing: 10px;
+    -fx-alignment: center-left;
+    -fx-cursor: hand;
+}
+
+.profile-chip:hover {
+    -fx-background-color: -ls-hover;
+}
+
+.profile-chip-name {
+    -fx-font-size: 14px;
+    -fx-text-fill: -ls-text;
+}
+
+.profile-chip-detail {
+    -fx-font-size: 12px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+/* ---------------------------------------------------------------------------------------------------
+ * Welcome page
+ * ------------------------------------------------------------------------------------------------ */
+
+.welcome-intro {
+    -fx-font-size: 16px;
+    -fx-line-spacing: 5px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.hero-card {
+    -fx-padding: 0;
+}
+
+.hero-copy {
+    -fx-padding: 36px 8px 36px 36px;
+    -fx-spacing: 14px;
+}
+
+.hero-art {
+    -fx-padding: 12px;
+}
+
+.feature-card {
+    -fx-spacing: 14px;
+    -fx-padding: 22px 22px 24px 22px;
+}

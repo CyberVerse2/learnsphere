@@ -7,7 +7,7 @@ LearnSphere is an offline desktop study app for macOS (Apple Silicon) and Window
 | Concern | Choice |
 |---|---|
 | Language / build | Java 25 (Gradle toolchain, auto-provisioned), Gradle 9.8 with Kotlin DSL and a version catalog (`gradle/libs.versions.toml`) |
-| UI | JavaFX 25.0.5, AtlantaFX 3.0.0 as the base theme with LearnSphere's own stylesheet on top, Ikonli 12.4 (Feather icons), bundled Inter and Newsreader fonts |
+| UI | JavaFX 27 (the release AtlantaFX 3.0.0 is built against), AtlantaFX 3.0.0 as the base theme with LearnSphere's own stylesheet on top, Ikonli 12.4 (Feather icons), bundled Inter and Newsreader fonts |
 | Storage | SQLite (`org.xerial:sqlite-jdbc` 3.53.x) per profile, JDBI 3 for data access, numbered SQL migrations run by our own `Migrations` class |
 | Search | Apache Lucene 10.5: BM25 keyword search plus HNSW vector search, merged with reciprocal rank fusion |
 | PDF | Apache PDFBox 3.0.8 for text, layout, image detection and page rendering |
