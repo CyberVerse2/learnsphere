@@ -16,6 +16,8 @@ import edu.learnsphere.core.service.DocumentSummary;
 import edu.learnsphere.core.service.JobQueue;
 import edu.learnsphere.core.service.JobSpec;
 import edu.learnsphere.core.service.RenderedPage;
+import edu.learnsphere.core.service.SourcePassage;
+import edu.learnsphere.core.service.SourceRef;
 import edu.learnsphere.core.spi.NormalizedRect;
 import java.awt.Color;
 import java.awt.Font;
@@ -308,6 +310,22 @@ final class DemoDocuments implements DocumentService {
                 y += (lines.size() + 1) * LINE_HEIGHT;
             }
             return List.of();
+        }
+    }
+
+    @Override
+    public List<SourcePassage> passages(Collection<String> chunkIds) {
+        synchronized (store) {
+            List<SourcePassage> found = new ArrayList<>();
+            for (String id : chunkIds) {
+                DemoStore.Passage passage = id == null ? null : store.passages.get(id);
+                if (passage != null) {
+                    Document document = store.documents.get(passage.documentId());
+                    found.add(new SourcePassage(new SourceRef(passage.documentId(), document == null ? "" : document.title(),
+                            passage.page(), passage.page(), passage.id()), passage.section(), passage.text()));
+                }
+            }
+            return List.copyOf(found);
         }
     }
 
