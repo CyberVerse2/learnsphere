@@ -144,6 +144,11 @@ public final class LearnSphereApp extends Application {
         long started = System.nanoTime();
         try {
             saveWindow(stage);
+            if (stage != null) {
+                // Saved once; the window stops following the profile it no longer shows.
+                stage.setOnHiding(null);
+                stage.titleProperty().unbind();
+            }
             preferencesListener.close();
             if (menus != null) {
                 menus.dispose();
