@@ -51,10 +51,11 @@ import org.slf4j.LoggerFactory;
 /**
  * {@link ItemService} over the profile database.
  *
- * <p>Status changes: drafts are approved or rejected; approved items are retired; anything can go back to
- * the review queue. Content is checked against its {@link edu.learnsphere.core.model.ItemType} conventions
- * when written and again before approving, so learners never study a broken item. Editing the prompt,
- * answer, type or options of an item clears its support check, which was made for the old text.
+ * <p>Status changes: drafts are approved or rejected; approved items are retired; rejected and retired items
+ * go back to the review queue ({@link #returnToDraft}) before they can be approved again. Content is checked
+ * against its {@link edu.learnsphere.core.model.ItemType} conventions when written and again before
+ * approving, so learners never study a broken item. Editing the prompt, answer, type or options of an item
+ * clears its support check, which was made for the old text.
  *
  * <p>Items of courses imported from a package can be flagged (that is how learners report problems) but
  * not changed. Thread-safe.
@@ -66,6 +67,7 @@ public final class ItemServiceImpl implements ItemService {
     static final int MAX_FLAG_NOTE = 1_000;
 
     static final UserMessage CONCEPT_NOT_IN_COURSE = UserMessage.of("Choose concepts from this course.");
+    static final UserMessage ONLY_DRAFTS_APPROVED = UserMessage.of("Only questions waiting for review can be approved.");
     static final UserMessage ONLY_DRAFTS_REJECTED = UserMessage.of("Only questions waiting for review can be rejected.");
     static final UserMessage ONLY_APPROVED_RETIRED = UserMessage.of("Only approved questions can be retired.");
     static final UserMessage NOTE_TOO_LONG = UserMessage.of("This note is too long. Shorten it and try again.");
@@ -212,18 +214,31 @@ public final class ItemServiceImpl implements ItemService {
         events.publish(new ItemsChanged(item.courseId(), null, Set.of(itemId), ChangeType.UPDATED));
     }
 
+    /**
+     * Approves a draft. Approving an approved item does nothing.
+     *
+     * @throws ConflictException for a rejected or retired item, which goes back to the review queue first
+     */
     @Override
     public void approve(String itemId) {
         LearningItem item = editable(itemId);
-        if (item.status() == ItemStatus.APPROVED) {
-            return;
+        switch (item.status()) {
+            case APPROVED -> {
+                return;
+            }
+            case DRAFT -> {
+                ItemValidator.validate(item);
+                repos.items().setStatus(itemId, ItemStatus.APPROVED);
+                changed(item);
+            }
+            default -> throw new ConflictException(ONLY_DRAFTS_APPROVED, "Item " + itemId + " is " + item.status());
         }
-        ItemValidator.validate(item);
-        repos.items().setStatus(itemId, ItemStatus.APPROVED);
-        changed(item);
     }
 
-    /** Approves the listed items whose content is valid; items that need fixing stay in the review queue. */
+    /**
+     * Approves the listed drafts whose content is valid; drafts that need fixing stay in the review queue, and
+     * items that are not drafts are left as they are.
+     */
     @Override
     public int approveAll(Collection<String> itemIds) {
         Objects.requireNonNull(itemIds, "itemIds");
@@ -234,7 +249,7 @@ public final class ItemServiceImpl implements ItemService {
             if (checkedCourses.add(item.courseId())) {
                 ServiceSupport.requireEditableCourse(repos, item.courseId());
             }
-            if (item.status() == ItemStatus.APPROVED) {
+            if (item.status() != ItemStatus.DRAFT) {
                 continue;
             }
             if (!ItemValidator.isValid(item)) {

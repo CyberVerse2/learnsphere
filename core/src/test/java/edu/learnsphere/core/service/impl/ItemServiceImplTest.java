@@ -155,12 +155,18 @@ class ItemServiceImplTest {
         items.retire(draft.id());
         items.retire(draft.id());
         assertThat(status(draft)).isEqualTo(ItemStatus.RETIRED);
+        assertMessage(() -> items.approve(draft.id()), ItemServiceImpl.ONLY_DRAFTS_APPROVED);
+        assertThat(items.approveAll(List.of(draft.id()))).isZero();
+        assertThat(status(draft)).isEqualTo(ItemStatus.RETIRED);
         items.returnToDraft(draft.id());
         assertThat(status(draft)).isEqualTo(ItemStatus.DRAFT);
 
         assertMessage(() -> items.retire(other.id()), ItemServiceImpl.ONLY_APPROVED_RETIRED);
         items.reject(other.id());
         items.reject(other.id());
+        assertThat(status(other)).isEqualTo(ItemStatus.REJECTED);
+        assertMessage(() -> items.approve(other.id()), ItemServiceImpl.ONLY_DRAFTS_APPROVED);
+        assertThat(items.approveAll(List.of(other.id()))).isZero();
         assertThat(status(other)).isEqualTo(ItemStatus.REJECTED);
         assertMessage(() -> items.reject(Ids.newId()), UserMessage.ITEM_NOT_FOUND);
 
