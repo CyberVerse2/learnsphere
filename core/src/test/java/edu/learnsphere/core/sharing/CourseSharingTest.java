@@ -55,6 +55,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -556,6 +557,7 @@ class CourseSharingTest {
         assertThat(files.setWritable(false)).isTrue();
         JobUpdate done;
         try {
+            Assumptions.assumeFalse(Files.isWritable(files.toPath()), "the folder stays writable for this user");
             done = learner.importAndWait(file, null, false);
         } finally {
             assertThat(files.setWritable(true)).isTrue();
