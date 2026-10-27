@@ -207,6 +207,8 @@ final class DemoDocuments implements DocumentService {
                     new DocumentPage(documentId, pageNumber, text, page.source(), page.reviewed(), page.figureNotes(),
                             page.hasImages(), page.createdAt(), store.now()));
         }
+        // Editing a page is checking it: mark it reviewed and continue the import when none are left.
+        approvePages(documentId, List.of(pageNumber));
     }
 
     @Override

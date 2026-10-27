@@ -1,0 +1,865 @@
+/*
+ * The Studio: the list of courses being written, each course's workbench (details, modules, PDFs, scanned
+ * pages, publish and share) and the Studio's dialogs. Layered over the theme stylesheet; uses only its -ls-*
+ * tokens and type sizes. Dense where creators work through lists (rows, ledgers), roomy around forms.
+ */
+
+/* ---- Shared pieces ------------------------------------------------------------------------------- */
+
+.studio-panel {
+    -fx-background-color: -ls-border, -ls-surface;
+    -fx-background-insets: 0, 1px;
+    -fx-background-radius: 14px, 13px;
+    -fx-padding: 24px 28px 24px 28px;
+    -fx-spacing: 16px;
+}
+
+.studio-panel.tight {
+    -fx-padding: 8px 20px 8px 20px;
+    -fx-spacing: 0;
+}
+
+.studio-panel-title {
+    -fx-font-size: 15px;
+    -fx-text-fill: -ls-text;
+}
+
+.studio-panel-subtitle {
+    -fx-font-size: 13px;
+    -fx-line-spacing: 2px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.studio-note {
+    -fx-background-color: -ls-surface-sunken;
+    -fx-background-radius: 10px;
+    -fx-padding: 12px 16px 12px 16px;
+    -fx-spacing: 12px;
+}
+
+.studio-note .label {
+    -fx-font-size: 13px;
+    -fx-line-spacing: 2px;
+    -fx-text-fill: -ls-text;
+}
+
+.studio-note .ikonli-font-icon {
+    -fx-icon-color: -ls-text-muted;
+}
+
+.studio-note.warning {
+    -fx-background-color: -ls-warning-soft;
+}
+
+.studio-note.warning .ikonli-font-icon {
+    -fx-icon-color: -ls-warning-text;
+}
+
+.studio-note.success {
+    -fx-background-color: -ls-success-soft;
+}
+
+.studio-note.success .ikonli-font-icon {
+    -fx-icon-color: -ls-success-text;
+}
+
+.studio-note.danger {
+    -fx-background-color: -ls-danger-soft;
+}
+
+.studio-note.danger .label {
+    -fx-text-fill: -ls-danger-text;
+}
+
+.studio-note.danger .ikonli-font-icon {
+    -fx-icon-color: -ls-danger-text;
+}
+
+.field-hint {
+    -fx-font-size: 12px;
+    -fx-line-spacing: 2px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.field-error {
+    -fx-font-size: 12px;
+    -fx-text-fill: -ls-danger-text;
+    -fx-graphic-text-gap: 6px;
+}
+
+.field-error .ikonli-font-icon {
+    -fx-icon-color: -ls-danger-text;
+}
+
+.field-counter {
+    -fx-font-size: 12px;
+    -fx-text-fill: -ls-text-faint;
+}
+
+.text-input.invalid,
+.text-input.invalid:hover {
+    -fx-background-color: -ls-danger, -ls-surface-sunken;
+}
+
+.text-input.invalid:focused {
+    -fx-background-color: -ls-danger-soft, -ls-danger, -ls-surface;
+}
+
+.studio-row-divider {
+    -fx-background-color: -ls-border;
+    -fx-min-height: 1px;
+    -fx-pref-height: 1px;
+    -fx-max-height: 1px;
+}
+
+/* ---- Courses being written ------------------------------------------------------------------------ */
+
+.studio-list {
+    -fx-padding: 4px 8px 4px 8px;
+}
+
+.studio-course-row {
+    -fx-padding: 16px 16px 16px 12px;
+    -fx-background-radius: 10px;
+    -fx-cursor: hand;
+    -fx-border-color: -ls-border transparent transparent transparent;
+    -fx-border-width: 1px 0 0 0;
+    -fx-border-insets: -1px 12px 0 12px;
+}
+
+.studio-course-row.first {
+    -fx-border-width: 0;
+}
+
+.studio-course-row:hover {
+    -fx-background-color: -ls-hover;
+}
+
+.studio-course-row:focus-visible {
+    -fx-background-color: -ls-focus, -ls-surface;
+    -fx-background-insets: 0, 2px;
+    -fx-background-radius: 10px, 8px;
+}
+
+.studio-course-row.skeleton-row {
+    -fx-cursor: default;
+}
+
+.studio-course-row.skeleton-row:hover {
+    -fx-background-color: transparent;
+}
+
+.studio-row-overline {
+    -fx-font-size: 11px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.studio-row-title {
+    -fx-text-fill: -ls-text;
+}
+
+.studio-row-subtitle {
+    -fx-font-size: 13px;
+}
+
+.studio-row-chevron {
+    -fx-icon-color: -ls-text-faint;
+}
+
+.studio-course-row:hover .studio-row-chevron {
+    -fx-icon-color: -ls-text-muted;
+}
+
+.studio-list.archived .studio-row-title {
+    -fx-text-fill: -ls-text-muted;
+}
+
+/* ---- Workbench shell ------------------------------------------------------------------------------ */
+
+.studio-header {
+    -fx-spacing: 20px;
+}
+
+.studio-header-title {
+    -fx-font-size: 30px;
+    -fx-text-fill: -ls-text;
+}
+
+.studio-header-meta {
+    -fx-font-size: 12px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.studio-tabs {
+    -fx-spacing: 4px;
+}
+
+.studio-tabs .tab-button .tab-count.danger {
+    -fx-background-color: -ls-danger-soft;
+    -fx-text-fill: -ls-danger-text;
+}
+
+.studio-body {
+    -fx-padding: 8px 0 0 0;
+}
+
+/* ---- Details -------------------------------------------------------------------------------------- */
+
+.details-form {
+    -fx-spacing: 20px;
+}
+
+.details-aside {
+    -fx-spacing: 24px;
+}
+
+.preview-frame {
+    -fx-background-color: -ls-surface-sunken;
+    -fx-background-radius: 14px;
+    -fx-padding: 16px 20px 20px 20px;
+    -fx-spacing: 12px;
+}
+
+.preview-frame .course-card {
+    -fx-opacity: 1;
+}
+
+.hue-swatches {
+    -fx-hgap: 8px;
+    -fx-vgap: 8px;
+}
+
+.hue-swatch {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 9px;
+    -fx-padding: 3px;
+    -fx-cursor: hand;
+}
+
+.hue-swatch:hover {
+    -fx-background-color: -ls-border-strong;
+}
+
+.hue-swatch:selected {
+    -fx-background-color: -ls-accent, -ls-surface;
+    -fx-background-insets: 0, 2px;
+    -fx-background-radius: 9px, 7px;
+}
+
+.hue-swatch:focus-visible {
+    -fx-background-color: -ls-focus, -ls-surface;
+    -fx-background-insets: 0, 2px;
+    -fx-background-radius: 9px, 7px;
+}
+
+.hue-swatch:selected:focus-visible {
+    -fx-background-color: -ls-focus, -ls-accent, -ls-surface;
+    -fx-background-insets: -2px, 0, 2px;
+    -fx-background-radius: 11px, 9px, 7px;
+}
+
+.save-bar {
+    -fx-spacing: 12px;
+    -fx-padding: 4px 0 0 0;
+}
+
+.save-state {
+    -fx-font-size: 13px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.save-state.unsaved {
+    -fx-text-fill: -ls-warning-text;
+}
+
+.danger-row {
+    -fx-spacing: 16px;
+    -fx-padding: 14px 0 14px 0;
+}
+
+.danger-row-title {
+    -fx-font-size: 14px;
+    -fx-text-fill: -ls-text;
+}
+
+/* ---- Visibility picker ---------------------------------------------------------------------------- */
+
+.visibility-picker {
+    -fx-spacing: 8px;
+}
+
+.visibility-option {
+    -fx-background-color: -ls-border, -ls-surface;
+    -fx-background-insets: 0, 1px;
+    -fx-background-radius: 10px, 9px;
+    -fx-padding: 12px 16px 12px 14px;
+    -fx-alignment: center-left;
+    -fx-cursor: hand;
+}
+
+.visibility-option:hover {
+    -fx-background-color: -ls-border-strong, -ls-surface;
+}
+
+.visibility-option:selected {
+    -fx-background-color: -ls-accent, -ls-accent-soft;
+    -fx-background-insets: 0, 1.5px;
+}
+
+.visibility-option:focus-visible {
+    -fx-background-color: -ls-focus, -ls-border-strong, -ls-surface;
+    -fx-background-insets: -3px, 0, 1px;
+    -fx-background-radius: 13px, 10px, 9px;
+}
+
+.visibility-option:selected:focus-visible {
+    -fx-background-color: -ls-focus, -ls-accent, -ls-accent-soft;
+    -fx-background-insets: -3px, 0, 1.5px;
+    -fx-background-radius: 13px, 10px, 8.5px;
+}
+
+.visibility-name {
+    -fx-font-size: 14px;
+    -fx-text-fill: -ls-text;
+}
+
+.visibility-icon {
+    -fx-icon-color: -ls-text-faint;
+}
+
+.visibility-option:selected .visibility-icon {
+    -fx-icon-color: -ls-accent;
+}
+
+.radio-mark {
+    -fx-background-color: -ls-control-border, -ls-surface;
+    -fx-background-insets: 0, 1.5px;
+    -fx-background-radius: 999px;
+    -fx-min-width: 18px;
+    -fx-min-height: 18px;
+    -fx-pref-width: 18px;
+    -fx-pref-height: 18px;
+    -fx-max-width: 18px;
+    -fx-max-height: 18px;
+}
+
+.radio-dot {
+    -fx-background-color: transparent;
+    -fx-background-radius: 999px;
+    -fx-min-width: 8px;
+    -fx-min-height: 8px;
+    -fx-max-width: 8px;
+    -fx-max-height: 8px;
+}
+
+.visibility-option:selected .radio-mark {
+    -fx-background-color: -ls-accent, -ls-surface;
+}
+
+.visibility-option:selected .radio-dot {
+    -fx-background-color: -ls-accent;
+}
+
+/* ---- Modules -------------------------------------------------------------------------------------- */
+
+.module-row {
+    -fx-padding: 12px 8px 12px 4px;
+    -fx-min-height: 64px;
+    -fx-spacing: 14px;
+    -fx-border-color: -ls-border transparent transparent transparent;
+    -fx-border-width: 1px 0 0 0;
+    -fx-background-radius: 8px;
+}
+
+.module-row.first {
+    -fx-border-width: 0;
+}
+
+.module-row:hover {
+    -fx-background-color: -ls-hover;
+}
+
+.module-row:focus-visible {
+    -fx-background-color: -ls-focus, -ls-surface;
+    -fx-background-insets: 0, 2px;
+    -fx-background-radius: 8px, 6px;
+}
+
+.module-row.dragging {
+    -fx-opacity: 0.45;
+}
+
+.module-row.drop-above {
+    -fx-border-color: -ls-accent transparent transparent transparent;
+    -fx-border-width: 2px 0 0 0;
+}
+
+.module-row.drop-below {
+    -fx-border-color: transparent transparent -ls-accent transparent;
+    -fx-border-width: 0 0 2px 0;
+}
+
+.module-row.editing,
+.module-row.editing:hover {
+    -fx-background-color: -ls-surface-sunken;
+}
+
+.module-row .drag-handle {
+    -fx-padding: 6px 4px 6px 4px;
+    -fx-background-radius: 6px;
+}
+
+.module-row .drag-handle:hover {
+    -fx-background-color: -ls-hover;
+}
+
+.module-row .drag-handle:hover .ikonli-font-icon {
+    -fx-icon-color: -ls-text-muted;
+}
+
+.module-row-title {
+    -fx-font-size: 15px;
+    -fx-text-fill: -ls-text;
+}
+
+.module-row-summary {
+    -fx-font-size: 13px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.module-row-summary.empty {
+    -fx-text-fill: -ls-text-faint;
+}
+
+.module-row-counts {
+    -fx-font-size: 12px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.module-add {
+    -fx-spacing: 12px;
+    -fx-padding: 16px 0 4px 0;
+}
+
+.module-add-number {
+    -fx-background-color: transparent;
+    -fx-border-color: -ls-border-strong;
+    -fx-border-style: segments(3, 3);
+    -fx-border-radius: 999px;
+    -fx-min-width: 28px;
+    -fx-min-height: 28px;
+    -fx-max-width: 28px;
+    -fx-max-height: 28px;
+    -fx-alignment: center;
+}
+
+.module-add-number .ikonli-font-icon {
+    -fx-icon-color: -ls-text-faint;
+}
+
+.module-keys {
+    -fx-font-size: 12px;
+    -fx-text-fill: -ls-text-faint;
+}
+
+/* ---- PDFs ----------------------------------------------------------------------------------------- */
+
+.documents-toolbar {
+    -fx-spacing: 12px;
+}
+
+.documents-toolbar .combo-box-base {
+    -fx-pref-width: 240px;
+}
+
+.drop-zone {
+    -fx-background-color: -ls-surface-sunken;
+    -fx-background-radius: 14px;
+    -fx-border-color: -ls-border-strong;
+    -fx-border-style: segments(6, 5);
+    -fx-border-width: 1.5px;
+    -fx-border-radius: 14px;
+    -fx-padding: 20px 24px 20px 24px;
+    -fx-spacing: 16px;
+}
+
+.drop-zone.drag-over {
+    -fx-background-color: -ls-accent-soft;
+    -fx-border-color: -ls-accent;
+}
+
+.drop-zone .drop-zone-icon {
+    -fx-icon-color: -ls-text-muted;
+}
+
+.drop-zone.drag-over .drop-zone-icon {
+    -fx-icon-color: -ls-accent;
+}
+
+.drop-zone-title {
+    -fx-font-size: 14px;
+    -fx-text-fill: -ls-text;
+}
+
+.document-row {
+    -fx-padding: 14px 4px 14px 4px;
+    -fx-min-height: 72px;
+    -fx-spacing: 14px;
+    -fx-border-color: -ls-border transparent transparent transparent;
+    -fx-border-width: 1px 0 0 0;
+}
+
+.document-row.first {
+    -fx-border-width: 0;
+}
+
+.document-icon {
+    -fx-background-color: -ls-surface-sunken;
+    -fx-background-radius: 8px;
+    -fx-min-width: 40px;
+    -fx-min-height: 48px;
+    -fx-max-width: 40px;
+    -fx-max-height: 48px;
+}
+
+.document-icon .ikonli-font-icon {
+    -fx-icon-color: -ls-text-muted;
+}
+
+.document-row.failed .document-icon {
+    -fx-background-color: -ls-danger-soft;
+}
+
+.document-row.failed .document-icon .ikonli-font-icon {
+    -fx-icon-color: -ls-danger-text;
+}
+
+.document-row.attention .document-icon {
+    -fx-background-color: -ls-warning-soft;
+}
+
+.document-row.attention .document-icon .ikonli-font-icon {
+    -fx-icon-color: -ls-warning-text;
+}
+
+.document-title {
+    -fx-font-size: 15px;
+    -fx-text-fill: -ls-text;
+}
+
+.document-meta {
+    -fx-font-size: 12px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.document-reason {
+    -fx-font-size: 13px;
+    -fx-text-fill: -ls-danger-text;
+}
+
+.document-progress {
+    -fx-font-size: 12px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+/* ---- Scanned pages -------------------------------------------------------------------------------- */
+
+.pages-picker {
+    -fx-spacing: 12px;
+}
+
+.page-ribbon {
+    -fx-spacing: 6px;
+}
+
+.page-chip {
+    -fx-background-color: -ls-border, -ls-surface;
+    -fx-background-insets: 0, 1px;
+    -fx-background-radius: 999px;
+    -fx-padding: 4px 12px 4px 12px;
+    -fx-font-size: 12px;
+    -fx-text-fill: -ls-text;
+    -fx-graphic-text-gap: 6px;
+    -fx-cursor: hand;
+}
+
+.page-chip:hover {
+    -fx-background-color: -ls-border-strong, -ls-surface;
+}
+
+.page-chip:selected {
+    -fx-background-color: -ls-accent, -ls-accent-soft;
+    -fx-text-fill: -ls-accent;
+}
+
+.page-chip:focus-visible {
+    -fx-background-color: -ls-focus, -ls-border-strong, -ls-surface;
+    -fx-background-insets: -3px, 0, 1px;
+}
+
+.page-chip.done {
+    -fx-text-fill: -ls-success-text;
+}
+
+.page-chip .ikonli-font-icon {
+    -fx-icon-color: -ls-success;
+    -fx-icon-size: 12px;
+}
+
+.scanned-layout {
+    -fx-spacing: 28px;
+}
+
+.scanned-image {
+    -fx-background-color: -ls-surface-sunken;
+    -fx-background-radius: 14px;
+    -fx-padding: 20px;
+}
+
+.scanned-image > .image-view {
+    -fx-effect: dropshadow(gaussian, -ls-shadow-hover, 12, 0, 0, 3);
+}
+
+.scanned-editor {
+    -fx-spacing: 12px;
+}
+
+.scanned-page-title {
+    -fx-font-size: 24px;
+    -fx-text-fill: -ls-text;
+}
+
+.text-area.page-text {
+    -fx-font-size: 15px;
+}
+
+.text-area.page-text .content {
+    -fx-padding: 16px 18px 16px 18px;
+}
+
+/* ---- Publish and share ---------------------------------------------------------------------------- */
+
+.ledger {
+    -fx-hgap: 0;
+    -fx-vgap: 0;
+}
+
+.ledger-cell {
+    -fx-padding: 4px 20px 4px 0;
+    -fx-spacing: 2px;
+}
+
+.ledger-cell.divided {
+    -fx-border-color: transparent transparent transparent -ls-border;
+    -fx-border-width: 0 0 0 1px;
+    -fx-padding: 4px 20px 4px 20px;
+}
+
+.ledger-number {
+    -fx-font-size: 32px;
+    -fx-text-fill: -ls-text;
+}
+
+.ledger-cell.waiting .ledger-number {
+    -fx-text-fill: -ls-warning-text;
+}
+
+.ledger-cell.flagged .ledger-number {
+    -fx-text-fill: -ls-danger-text;
+}
+
+.ledger-label {
+    -fx-font-size: 12px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.learners-get {
+    -fx-spacing: 8px;
+}
+
+.learners-get .label {
+    -fx-font-size: 13px;
+    -fx-text-fill: -ls-text;
+    -fx-graphic-text-gap: 10px;
+}
+
+.learners-get .ikonli-font-icon {
+    -fx-icon-color: -ls-success;
+}
+
+.learners-get .left-out .ikonli-font-icon {
+    -fx-icon-color: -ls-text-faint;
+}
+
+.learners-get .left-out {
+    -fx-text-fill: -ls-text-muted;
+}
+
+.version-entry {
+    -fx-spacing: 16px;
+    -fx-padding: 14px 0 14px 0;
+    -fx-border-color: -ls-border transparent transparent transparent;
+    -fx-border-width: 1px 0 0 0;
+}
+
+.version-entry.first {
+    -fx-border-width: 0;
+}
+
+.version-badge {
+    -fx-background-color: -ls-surface-sunken;
+    -fx-background-radius: 8px;
+    -fx-min-width: 40px;
+    -fx-min-height: 40px;
+    -fx-max-width: 40px;
+    -fx-max-height: 40px;
+    -fx-alignment: center;
+    -fx-font-size: 15px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.version-entry.latest .version-badge {
+    -fx-background-color: -ls-accent-soft;
+    -fx-text-fill: -ls-accent;
+}
+
+.version-notes {
+    -fx-font-size: 14px;
+    -fx-line-spacing: 3px;
+    -fx-text-fill: -ls-text;
+}
+
+.version-notes.empty {
+    -fx-text-fill: -ls-text-faint;
+}
+
+.share-state {
+    -fx-spacing: 14px;
+}
+
+.share-state-icon {
+    -fx-background-color: -ls-surface-sunken;
+    -fx-background-radius: 10px;
+    -fx-min-width: 40px;
+    -fx-min-height: 40px;
+    -fx-max-width: 40px;
+    -fx-max-height: 40px;
+}
+
+.share-state-icon .ikonli-font-icon {
+    -fx-icon-color: -ls-text-muted;
+}
+
+.export-done {
+    -fx-background-color: -ls-success-soft;
+    -fx-background-radius: 10px;
+    -fx-padding: 14px 16px 14px 16px;
+    -fx-spacing: 14px;
+}
+
+.export-done .ikonli-font-icon {
+    -fx-icon-color: -ls-success-text;
+}
+
+.export-done-title {
+    -fx-font-size: 14px;
+    -fx-text-fill: -ls-text;
+}
+
+.export-done-path {
+    -fx-font-size: 12px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.insight-row,
+.flag-row {
+    -fx-spacing: 14px;
+    -fx-padding: 12px 0 12px 0;
+    -fx-border-color: -ls-border transparent transparent transparent;
+    -fx-border-width: 1px 0 0 0;
+}
+
+.insight-row.first,
+.flag-row.first {
+    -fx-border-width: 0;
+}
+
+.insight-name,
+.flag-prompt {
+    -fx-font-size: 14px;
+    -fx-text-fill: -ls-text;
+}
+
+.insight-accuracy {
+    -fx-font-size: 15px;
+    -fx-text-fill: -ls-text;
+}
+
+.flag-note {
+    -fx-font-size: 13px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.flag-link {
+    -fx-cursor: hand;
+}
+
+.flag-link:hover .flag-prompt {
+    -fx-underline: true;
+}
+
+/* ---- Dialogs -------------------------------------------------------------------------------------- */
+
+.studio-dialog {
+    -fx-pref-width: 480px;
+    -fx-max-width: 480px;
+}
+
+.studio-dialog.wide {
+    -fx-pref-width: 720px;
+    -fx-max-width: 720px;
+}
+
+.studio-dialog-content {
+    -fx-padding: 10px 0 0 0;
+    -fx-spacing: 12px;
+}
+
+.studio-dialog-error {
+    -fx-font-size: 13px;
+    -fx-text-fill: -ls-danger-text;
+    -fx-graphic-text-gap: 8px;
+    -fx-padding: 4px 0 0 0;
+}
+
+.studio-dialog-error .ikonli-font-icon {
+    -fx-icon-color: -ls-danger-text;
+}
+
+.confirm-word {
+    -fx-font-size: 13px;
+    -fx-text-fill: -ls-text;
+}
+
+.page-preview {
+    -fx-background-color: -ls-surface-sunken;
+    -fx-background-radius: 10px;
+    -fx-padding: 16px;
+}
+
+.page-preview > .image-view {
+    -fx-effect: dropshadow(gaussian, -ls-shadow-hover, 12, 0, 0, 3);
+}
+
+.preview-item-prompt {
+    -fx-font-size: 19px;
+    -fx-line-spacing: 3px;
+    -fx-text-fill: -ls-text;
+}
+
+.preview-item-answer {
+    -fx-font-size: 14px;
+    -fx-line-spacing: 3px;
+    -fx-text-fill: -ls-text;
+}
