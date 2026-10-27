@@ -5,8 +5,6 @@ import edu.learnsphere.app.ui.Destination;
 import edu.learnsphere.app.ui.Navigator;
 import edu.learnsphere.app.ui.PageView;
 import edu.learnsphere.app.ui.StudioTab;
-import edu.learnsphere.app.ui.components.Card;
-import edu.learnsphere.app.ui.components.Chip;
 import edu.learnsphere.app.ui.components.ConfirmDialog;
 import edu.learnsphere.app.ui.components.CourseCard;
 import edu.learnsphere.app.ui.components.CourseCover;
@@ -14,27 +12,19 @@ import edu.learnsphere.app.ui.components.EmptyIllustration;
 import edu.learnsphere.app.ui.components.EmptyState;
 import edu.learnsphere.app.ui.components.Formats;
 import edu.learnsphere.app.ui.components.Icons;
-import edu.learnsphere.app.ui.components.PageHeader;
 import edu.learnsphere.app.ui.components.Skeleton;
 import edu.learnsphere.app.ui.components.Toasts;
-import edu.learnsphere.app.ui.components.Tone;
 import edu.learnsphere.core.error.UserMessage;
 import edu.learnsphere.core.events.ChangeType;
 import edu.learnsphere.core.events.CourseChanged;
 import edu.learnsphere.core.events.DocumentChanged;
 import edu.learnsphere.core.events.ItemsChanged;
 import edu.learnsphere.core.model.DocumentStatus;
-import edu.learnsphere.core.model.ItemOrigin;
 import edu.learnsphere.core.model.ItemType;
-import edu.learnsphere.core.model.LearningItem;
-import edu.learnsphere.core.model.SupportStatus;
 import edu.learnsphere.core.service.CourseSummary;
 import edu.learnsphere.core.service.DocumentSummary;
-import edu.learnsphere.core.service.ItemCounts;
-import edu.learnsphere.core.service.ItemDetail;
 import java.util.EnumMap;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import javafx.geometry.Pos;
@@ -66,11 +56,6 @@ import org.kordamp.ikonli.feather.Feather;
  */
 public final class StudioPage extends PageView {
 
-    /** Drafts shown in the review queue at once. */
-    static final int QUEUE_PAGE = 6;
-    /** Starting width of each review card column; both grow to share the card. */
-    private static final double REVIEW_COLUMN = 420;
-
     private final Destination.Studio destination;
     private final StudioFiles files;
     private final VBox headerBox = new VBox();
@@ -82,10 +67,6 @@ public final class StudioPage extends PageView {
     private StudioTab tab;
     private StudioSection section;
     private boolean built;
-
-    /** What the review queue shows: a page of drafts and the course's counts. */
-    private record Workbench(List<ItemDetail> queue, ItemCounts counts) {
-    }
 
     /** What the header and the tab counts show. */
     private record Header(CourseSummary course, int scannedPages) {
@@ -215,7 +196,7 @@ public final class StudioPage extends PageView {
             case DETAILS -> new DetailsSection(host);
             case MODULES -> new ModulesSection(host);
             case DOCUMENTS -> new DocumentsSection(host);
-            case REVIEW -> new ReviewTab(host);
+            case REVIEW -> new ReviewQueueSection(host);
             case PAGES -> new ScannedPagesSection(host, documentId);
             case PUBLISH -> new PublishSection(host);
         };
@@ -398,152 +379,6 @@ public final class StudioPage extends PageView {
         return row;
     }
 
-    // -------------------------------------------------------------------------------------------------
-    // Review queue
-    // -------------------------------------------------------------------------------------------------
-
-    /** The review queue tab: the page draws it from a page of drafts and the course's counts. */
-    private final class ReviewTab extends StudioSection {
-
-        private final VBox root = new VBox(16, Skeleton.block(-1, 20), Skeleton.block(-1, 220), Skeleton.block(-1, 220));
-
-        ReviewTab(StudioHost host) {
-            super(host);
-        }
-
-        @Override
-        Region root() {
-            return root;
-        }
-
-        @Override
-        void onShown() {
-            String id = courseId();
-            Refresher<Workbench> loads = new Refresher<>(disposer,
-                    () -> new Workbench(workspace().items().reviewQueue(id, null, QUEUE_PAGE, 0),
-                            workspace().items().counts(id)),
-                    w -> root.getChildren().setAll(content(StudioTab.REVIEW, w)),
-                    message -> root.getChildren().setAll(new EmptyState(EmptyIllustration.Kind.SEARCH,
-                            "The review queue couldn't load", message.text())));
-            loads.request();
-            on(ItemsChanged.class, event -> {
-                if (id.equals(event.courseId())) {
-                    loads.request();
-                }
-            });
-        }
-    }
-
-    /** The content of a tab the page draws itself. */
-    private Node content(StudioTab drawn, Workbench w) {
-        return switch (drawn) {
-            case REVIEW -> review(w.queue(), w.counts());
-            default -> throw new IllegalArgumentException("Drawn by its own section: " + drawn);
-        };
-    }
-
-    private Node review(List<ItemDetail> queue, ItemCounts counts) {
-        if (queue.isEmpty()) {
-            return new EmptyState(EmptyIllustration.Kind.CAUGHT_UP, "Nothing waiting for review",
-                    "Generate questions from a module and the drafts appear here, each beside the passage it came from.");
-        }
-        Label summary = new Label(Formats.count(counts.draft(), "draft", "drafts") + " to review · "
-                + Formats.count(counts.approved(), "question", "questions") + " approved"
-                + (counts.unsupported() > 0 ? " · " + counts.unsupported() + " not backed by the material" : ""));
-        summary.getStyleClass().add("text-muted");
-        VBox list = new VBox(16, summary);
-        for (ItemDetail detail : queue) {
-            list.getChildren().add(reviewCard(detail));
-        }
-        return list;
-    }
-
-    private Node reviewCard(ItemDetail detail) {
-        LearningItem item = detail.item();
-        HBox tags = new HBox(8, new Chip(typeLabel(item.type()), Tone.NEUTRAL));
-        if (item.origin() == ItemOrigin.AI) {
-            tags.getChildren().add(new Chip("AI draft", Tone.ACCENT, Feather.FEATHER));
-        }
-        if (item.support() == SupportStatus.UNSUPPORTED) {
-            tags.getChildren().add(new Chip("Not backed by the passage", Tone.WARNING, Feather.ALERT_TRIANGLE));
-        }
-        for (var concept : detail.concepts()) {
-            tags.getChildren().add(new Chip(concept.name()));
-        }
-        Label prompt = new Label(item.prompt());
-        prompt.getStyleClass().add("review-prompt");
-        prompt.setWrapText(true);
-        VBox draft = new VBox(12, tags, prompt);
-        if (item.type() == ItemType.MCQ) {
-            VBox options = new VBox(6);
-            options.getChildren().add(option(item.answer(), true));
-            item.distractors().forEach(d -> options.getChildren().add(option(d, false)));
-            draft.getChildren().add(options);
-        } else {
-            Label answer = new Label((item.type() == ItemType.FLASHCARD ? "Back: " : "Answer: ") + item.answer());
-            answer.getStyleClass().add("review-answer");
-            answer.setWrapText(true);
-            draft.getChildren().add(answer);
-        }
-        HBox.setHgrow(draft, Priority.ALWAYS);
-        draft.setPrefWidth(REVIEW_COLUMN);
-
-        VBox source = new VBox(8);
-        source.getStyleClass().add("review-source");
-        source.setPrefWidth(REVIEW_COLUMN);
-        source.setMaxHeight(Region.USE_PREF_SIZE);
-        HBox.setHgrow(source, Priority.ALWAYS);
-        if (detail.source() != null) {
-            Label where = new Label(detail.source().ref().documentTitle() + " · "
-                    + Formats.pages(detail.source().ref().pageStart(), detail.source().ref().pageEnd()));
-            where.getStyleClass().add("text-caption");
-            Label passage = new Label(detail.source().text());
-            passage.getStyleClass().addAll("text-reading", "review-passage");
-            passage.setWrapText(true);
-            source.getChildren().addAll(where, passage);
-        } else {
-            Label none = new Label("Written by hand, without a source passage.");
-            none.getStyleClass().add("text-caption");
-            source.getChildren().add(none);
-        }
-
-        Button approve = new Button("Approve", Icons.of(Feather.CHECK, 14));
-        approve.getStyleClass().addAll("positive", "small");
-        approve.setOnAction(event -> act(() -> workspace().items().approve(item.id()), "Approved"));
-        Button edit = new Button("Edit");
-        edit.getStyleClass().add("small");
-        edit.setOnAction(event -> Toasts.info(page(), "Change the wording, then approve it."));
-        Button regenerate = new Button("Regenerate", Icons.of(Feather.REFRESH_CW, 14));
-        regenerate.getStyleClass().add("small");
-        regenerate.setOnAction(event -> act(() -> workspace().generation().regenerate(item.id()), "Writing a new draft"));
-        Button reject = new Button("Reject");
-        reject.getStyleClass().addAll("quiet", "small", "danger-text");
-        reject.setOnAction(event -> act(() -> workspace().items().reject(item.id()), "Rejected"));
-        HBox actions = new HBox(8, approve, edit, regenerate, spacer(), reject);
-        actions.setAlignment(Pos.CENTER_LEFT);
-
-        HBox columns = new HBox(28, draft, source);
-        Card card = new Card(columns, actions);
-        card.setInteractive(false);
-        card.getStyleClass().add("review-card");
-        card.setSpacing(20);
-        return card;
-    }
-
-    private void act(Runnable work, String done) {
-        run(() -> {
-            work.run();
-            return null;
-        }, ignored -> Toasts.success(page(), done), message -> Toasts.error(page(), message));
-    }
-
-    private static Node option(String text, boolean correct) {
-        Label label = new Label(text, Icons.of(correct ? Feather.CHECK_CIRCLE : Feather.CIRCLE, 14));
-        label.getStyleClass().addAll("review-option", correct ? "correct" : "distractor");
-        label.setWrapText(true);
-        return label;
-    }
-
     static String typeLabel(ItemType type) {
         return switch (type) {
             case MCQ -> "Multiple choice";
@@ -554,9 +389,26 @@ public final class StudioPage extends PageView {
         };
     }
 
-    private static Region spacer() {
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
-        return spacer;
+    /** The review queue tab, built by {@link edu.learnsphere.app.ui.studio.review.ReviewQueueTab}. */
+    private static final class ReviewQueueSection extends StudioSection {
+
+        private final edu.learnsphere.app.ui.studio.review.ReviewQueueTab queue;
+
+        ReviewQueueSection(StudioHost host) {
+            super(host);
+            queue = new edu.learnsphere.app.ui.studio.review.ReviewQueueTab(host.context(), host.navigator(),
+                    host.courseId());
+        }
+
+        @Override
+        Region root() {
+            return queue.root();
+        }
+
+        @Override
+        void dispose() {
+            queue.dispose();
+            super.dispose();
+        }
     }
 }

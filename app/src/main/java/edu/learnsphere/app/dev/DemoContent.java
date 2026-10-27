@@ -466,6 +466,53 @@ final class DemoContent {
         scannedPages.put(4, page(scanned, 4, "Esters form when a carboxylic acid reacts with an alcohol, releasing "
                 + "water. They often smell fruity: ethyl ethanoate is used in nail varnish remover.", false));
         store.pages.put(scanned, scannedPages);
+        reviewQueueExtras(m, ready, addition, cAddition, cPolar, cStereo);
+    }
+
+    /**
+     * Drafts that show the review queue's harder cases: a long passage, a draft the source may not back, a
+     * learner's flag, a question written by hand without a source, and concepts the study assistant found.
+     */
+    private void reviewQueueExtras(ModuleBuilder reactions, String document, Passage addition, String cAddition,
+                                   String cPolar, String cStereo) {
+        store.extractedConcepts.add(cPolar);
+        store.extractedConcepts.add(cStereo);
+        String cSubstitution = reactions.concept("Substitution", "Replacing a leaving group on a saturated carbon.");
+        store.extractedConcepts.add(cSubstitution);
+        Passage substitution = reactions.passage(document, 41, "Substitution",
+                "In a nucleophilic substitution, an electron-rich nucleophile replaces a leaving group on a saturated "
+                        + "carbon. Two mechanisms are common. In the SN2 mechanism the nucleophile attacks from the side "
+                        + "opposite the leaving group, and bond making and bond breaking happen in a single step, so the "
+                        + "rate depends on both reactants. Because the attack comes from the back, the configuration at "
+                        + "that carbon is inverted, like an umbrella turning inside out in the wind. In the SN1 mechanism "
+                        + "the leaving group departs first, leaving a flat carbocation that the nucleophile can attack "
+                        + "from either face, so a single stereoisomer usually gives a mixture of both. SN1 is favoured by "
+                        + "tertiary carbons, whose carbocations are stabilised by the surrounding alkyl groups, and by "
+                        + "polar solvents that support the separated charges. Primary carbons, which would form unstable "
+                        + "carbocations, react by SN2 instead. Elimination competes with substitution, especially with "
+                        + "strong bases and at higher temperatures.");
+        String sn2 = reactions.status(ItemStatus.DRAFT).ai().mcq(cSubstitution, substitution,
+                "In an SN2 reaction, what happens to the configuration at the attacked carbon?", "It is inverted",
+                "The nucleophile attacks from the back, turning the carbon inside out.",
+                "It stays the same", "It becomes a mixture of both forms", "It becomes flat for good");
+        Flag learner = new Flag(DemoStore.newId(), sn2, FlagReason.WRONG_ANSWER,
+                "Our lecture notes say SN2 keeps the configuration.", FlagSource.LEARNER_FEEDBACK, null, now - 5 * HOUR,
+                now - 5 * HOUR);
+        store.flags.put(learner.id(), learner);
+
+        String doubtful = reactions.status(ItemStatus.DRAFT).ai().trueFalse(cAddition, addition,
+                "Addition reactions need a catalyst to happen at room temperature.", true,
+                "A catalyst lets the reaction run without heating.");
+        store.items.computeIfPresent(doubtful, (id, item) -> item.withSupport(SupportStatus.UNSUPPORTED,
+                "The source passage on p. " + addition.page() + " doesn't mention a catalyst.", item.updatedAt()));
+
+        LearningItem written = store.items.get(sn2);
+        LearningItem byHand = new LearningItem(DemoStore.newId(), ORGANIC_CHEMISTRY, written.moduleId(), ItemType.CLOZE,
+                "In an elimination reaction, a small molecule such as water is ____ and a C=C double bond forms.",
+                "removed", "Elimination is the reverse of addition.", List.of(), Difficulty.MEDIUM, null, null,
+                ItemOrigin.MANUAL, ItemStatus.DRAFT, SupportStatus.UNCHECKED, null, now - HOUR, now - HOUR);
+        store.items.put(byHand.id(), byHand);
+        store.itemConcepts.put(byHand.id(), new LinkedHashSet<>(List.of(cAddition)));
     }
 
     private DocumentPage page(String documentId, int number, String text, boolean reviewed) {

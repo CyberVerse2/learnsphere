@@ -28,6 +28,14 @@ public interface ItemService {
      */
     List<ItemDetail> reviewQueue(String courseId, String moduleId, int limit, int offset);
 
+    /**
+     * Items matching {@code filter} (any status), each with its source passage, concepts and flags, in the
+     * order of {@link #list}: what the Studio's review queue shows when it is filtered.
+     */
+    default List<ItemDetail> listDetails(ItemFilter filter) {
+        return list(filter).stream().map(summary -> get(summary.id())).toList();
+    }
+
     /** Counts per status, plus unsupported drafts and flagged items. */
     ItemCounts counts(String courseId);
 

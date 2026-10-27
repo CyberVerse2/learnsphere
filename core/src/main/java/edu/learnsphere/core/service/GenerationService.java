@@ -5,6 +5,7 @@ import edu.learnsphere.core.error.NotFoundException;
 import edu.learnsphere.core.error.UnavailableException;
 import edu.learnsphere.core.model.Concept;
 import java.util.List;
+import java.util.Set;
 
 /**
  * AI drafting of concepts and learning items. Long work runs as jobs (follow
@@ -17,6 +18,14 @@ public interface GenerationService {
 
     /** Concepts of a course, or of one module when {@code moduleId} is not null. */
     List<Concept> concepts(String courseId, String moduleId);
+
+    /**
+     * Ids of the course's concepts that the study assistant found ({@link #extractConcepts}) and nobody has
+     * renamed since, so the interface can label them as written by AI. Empty when none are.
+     */
+    default Set<String> extractedConceptIds(String courseId) {
+        return Set.of();
+    }
 
     /**
      * Extracts the key concepts of a module from its ready PDFs, replacing AI-extracted concepts that no

@@ -54,6 +54,19 @@ final class DemoGeneration implements GenerationService {
     }
 
     @Override
+    public Set<String> extractedConceptIds(String courseId) {
+        synchronized (store) {
+            Set<String> ids = new LinkedHashSet<>();
+            for (Concept concept : store.conceptsOf(courseId)) {
+                if (store.extractedConcepts.contains(concept.id())) {
+                    ids.add(concept.id());
+                }
+            }
+            return Set.copyOf(ids);
+        }
+    }
+
+    @Override
     public JobUpdate extractConcepts(String moduleId) {
         CourseModule module;
         synchronized (store) {
@@ -82,6 +95,7 @@ final class DemoGeneration implements GenerationService {
             Concept next = new Concept(c.id(), c.courseId(), c.moduleId(), name.strip(), description, c.createdAt(),
                     store.now());
             store.concepts.put(conceptId, next);
+            store.extractedConcepts.remove(conceptId);
             return next;
         }
     }
@@ -91,6 +105,7 @@ final class DemoGeneration implements GenerationService {
         synchronized (store) {
             concept(conceptId);
             store.concepts.remove(conceptId);
+            store.extractedConcepts.remove(conceptId);
             store.itemConcepts.values().forEach(set -> set.remove(conceptId));
         }
     }

@@ -24,6 +24,14 @@ import java.util.stream.Collectors;
  */
 final class DemoJobs {
 
+    /** What finding concepts reports, shaped like the real pipeline's outcome. */
+    record ConceptsFound(String moduleId, int concepts, int added, int removed) {
+    }
+
+    /** What drafting questions reports, shaped like the real pipeline's outcome. */
+    record QuestionsDrafted(int created, int duplicates, int unsupported) {
+    }
+
     private final DemoStore store;
     private final DemoDocuments documents;
     private final DemoGeneration generation;
@@ -106,7 +114,10 @@ final class DemoJobs {
                 Concept concept = new Concept(DemoStore.newId(), courseId, moduleId, name,
                         "A main idea of " + module.title() + ".", now, now);
                 store.concepts.put(concept.id(), concept);
+                store.extractedConcepts.add(concept.id());
             }
+            int inModule = (int) store.conceptsOf(courseId).stream().filter(c -> moduleId.equals(c.moduleId())).count();
+            context.setResult(new ConceptsFound(moduleId, inModule, sections.size(), 0));
         }
         context.progress(1, "Done");
         store.events.publish(new CourseChanged(courseId, ChangeType.UPDATED));
@@ -125,7 +136,7 @@ final class DemoJobs {
         synchronized (store) {
             created = generation.draftFrom(payload);
         }
-        context.setResult(created.size());
+        context.setResult(new QuestionsDrafted(created.size(), 0, 0));
         context.progress(1, "Done");
         generation.published(payload.courseId(), payload.moduleId(),
                 created.stream().map(LearningItem::id).collect(Collectors.toSet()));

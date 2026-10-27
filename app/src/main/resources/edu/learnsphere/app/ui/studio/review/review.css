@@ -1,0 +1,425 @@
+/*
+ * The Studio's review queue and its dialogs. Colours, type sizes and spacing come only from the theme's
+ * -ls-* tokens and type classes (docs/DESIGN.md); light and dark follow from the tokens.
+ *
+ * The one signature here is the source passage: a sunken sheet whose left rule takes the support verdict's
+ * colour, with the sentences that carry the answer marked like a highlighter pen.
+ */
+
+/* ---- Key concepts ------------------------------------------------------------------------------------ */
+
+.concepts-panel {
+    -fx-background-color: -ls-border, -ls-surface;
+    -fx-background-insets: 0, 1px;
+    -fx-background-radius: 14px, 13px;
+    -fx-padding: 16px 24px 16px 24px;
+}
+
+.concepts-rows {
+    -fx-padding: 8px 0 0 0;
+}
+
+.concept-row {
+    -fx-padding: 16px 0 16px 0;
+    -fx-border-color: -ls-border transparent transparent transparent;
+    -fx-border-width: 1px 0 0 0;
+}
+
+.concept-row.first {
+    -fx-padding: 12px 0 8px 0;
+}
+
+.concept-chip {
+    -fx-background-color: -ls-surface-sunken;
+    -fx-background-radius: 999px;
+    -fx-padding: 0 4px 0 0;
+    -fx-min-height: 30px;
+    -fx-pref-height: 30px;
+}
+
+.concept-chip.found {
+    -fx-background-color: -ls-accent-soft;
+}
+
+.concept-chip > .button.concept-name {
+    -fx-background-color: transparent;
+    -fx-background-radius: 999px;
+    -fx-padding: 0 4px 0 12px;
+    -fx-min-height: 30px;
+    -fx-pref-height: 30px;
+    -fx-font-size: 13px;
+    -fx-text-fill: -ls-text;
+    -fx-graphic-text-gap: 6px;
+}
+
+.concept-chip.found > .button.concept-name {
+    -fx-text-fill: -ls-accent;
+}
+
+.concept-chip.found > .button.concept-name .ikonli-font-icon {
+    -fx-icon-color: -ls-accent;
+}
+
+.concept-chip > .button.concept-name:hover {
+    -fx-underline: true;
+}
+
+.concept-chip > .button.concept-name:focus-visible {
+    -fx-background-color: -ls-focus;
+    -fx-background-insets: 0;
+}
+
+.concept-chip > .button.icon-button.small.concept-remove {
+    -fx-min-width: 22px;
+    -fx-pref-width: 22px;
+    -fx-min-height: 22px;
+    -fx-pref-height: 22px;
+    -fx-background-radius: 999px;
+}
+
+.concept-chip > .button.icon-button.small.concept-remove .ikonli-font-icon {
+    -fx-icon-size: 12px;
+}
+
+.button.concept-add {
+    -fx-background-color: -ls-border-strong, -ls-surface;
+    -fx-background-insets: 0, 1px;
+    -fx-background-radius: 999px;
+    -fx-border-color: transparent;
+    -fx-padding: 0 12px 0 10px;
+    -fx-min-height: 30px;
+    -fx-pref-height: 30px;
+    -fx-font-size: 13px;
+    -fx-text-fill: -ls-text-muted;
+    -fx-graphic-text-gap: 6px;
+}
+
+.button.concept-add:hover {
+    -fx-text-fill: -ls-text;
+}
+
+.button.concept-add:focus-visible {
+    -fx-background-color: -ls-focus, -ls-border-strong, -ls-surface;
+    -fx-background-insets: -3px, 0, 1px;
+    -fx-background-radius: 999px;
+}
+
+.text-field.concept-editor {
+    -fx-min-height: 30px;
+    -fx-pref-height: 30px;
+    -fx-font-size: 13px;
+    -fx-padding: 0 10px 0 10px;
+}
+
+/* ---- Toolbar, filters and the generation line --------------------------------------------------------- */
+
+.review-filters {
+    -fx-padding: 0 0 4px 0;
+}
+
+.review-filters > .choice-box {
+    -fx-min-height: 34px;
+    -fx-pref-height: 34px;
+    -fx-font-size: 13px;
+}
+
+.review-filters > .toggle-chip {
+    -fx-graphic-text-gap: 6px;
+}
+
+.generation-banner {
+    -fx-background-color: -ls-border, -ls-surface;
+    -fx-background-insets: 0, 1px;
+    -fx-background-radius: 12px, 11px;
+    -fx-padding: 12px 12px 12px 16px;
+    -fx-spacing: 12px;
+}
+
+.generation-banner.working {
+    -fx-background-color: -ls-accent-muted, -ls-surface;
+}
+
+.generation-banner.done {
+    -fx-background-color: -ls-success-soft;
+    -fx-background-insets: 0;
+}
+
+.generation-banner.done .label {
+    -fx-text-fill: -ls-success-text;
+}
+
+.generation-banner.done > .ikonli-font-icon {
+    -fx-icon-color: -ls-success;
+}
+
+.generation-banner.problem {
+    -fx-background-color: -ls-danger-soft;
+    -fx-background-insets: 0;
+}
+
+.generation-banner.problem .label {
+    -fx-text-fill: -ls-danger-text;
+}
+
+.generation-banner.problem > .ikonli-font-icon {
+    -fx-icon-color: -ls-danger;
+}
+
+.selection-bar {
+    -fx-padding: 0 4px 0 4px;
+    -fx-min-height: 32px;
+}
+
+.key-hint {
+    -fx-text-fill: -ls-text-faint;
+}
+
+/* ---- Cards ------------------------------------------------------------------------------------------- */
+
+.review-card.review-item {
+    -fx-padding: 20px 28px 16px 24px;
+}
+
+.review-card.review-item:current {
+    -fx-background-color: -ls-accent, -ls-surface;
+    -fx-background-insets: 0, 1.5px;
+    -fx-background-radius: 14px, 12.5px;
+}
+
+.review-card.review-item:selected {
+    -fx-background-color: -ls-accent-muted, -ls-surface;
+    -fx-background-insets: 0, 1px;
+}
+
+.review-card.review-item:current:selected {
+    -fx-background-color: -ls-accent, -ls-surface;
+    -fx-background-insets: 0, 1.5px;
+}
+
+.review-card.review-skeleton {
+    -fx-effect: null;
+}
+
+.review-meta {
+    -fx-text-fill: -ls-text-muted;
+}
+
+.review-prompt-run {
+    -fx-fill: -ls-text;
+    -fx-font-size: 19px;
+}
+
+.review-prompt-flow {
+    -fx-line-spacing: 3px;
+}
+
+.review-prompt-run.cloze-fill {
+    -fx-fill: -ls-accent;
+    -fx-underline: true;
+}
+
+.review-back {
+    -fx-font-size: 16px;
+    -fx-line-spacing: 4px;
+    -fx-text-fill: -ls-text;
+}
+
+.review-part-label {
+    -fx-text-fill: -ls-text-faint;
+}
+
+.review-answer .ikonli-font-icon {
+    -fx-icon-color: -ls-text-muted;
+}
+
+.review-flags {
+    -fx-background-color: -ls-warning-soft;
+    -fx-background-radius: 10px;
+    -fx-padding: 10px 8px 10px 14px;
+}
+
+.flag-reason {
+    -fx-text-fill: -ls-warning-text;
+    -fx-graphic-text-gap: 8px;
+}
+
+.flag-reason .ikonli-font-icon {
+    -fx-icon-color: -ls-warning;
+}
+
+.flag-note {
+    -fx-text-fill: -ls-text;
+    -fx-padding: 0 0 0 22px;
+}
+
+.review-busy {
+    -fx-padding: 2px 0 0 0;
+}
+
+.review-error {
+    -fx-graphic-text-gap: 8px;
+}
+
+.review-error .ikonli-font-icon {
+    -fx-icon-color: -ls-danger;
+}
+
+.review-actions {
+    -fx-padding: 14px 0 0 0;
+    -fx-border-color: -ls-border transparent transparent transparent;
+    -fx-border-width: 1px 0 0 0;
+}
+
+/* ---- The source passage ------------------------------------------------------------------------------ */
+
+.review-source {
+    -fx-background-color: -ls-border-strong, -ls-surface-sunken;
+    -fx-background-insets: 0, 0 0 0 3px;
+    -fx-background-radius: 10px, 0 10px 10px 0;
+    -fx-padding: 14px 16px 14px 20px;
+}
+
+.review-source.source-backed {
+    -fx-background-color: -ls-success, -ls-surface-sunken;
+}
+
+.review-source.source-doubtful {
+    -fx-background-color: -ls-warning, -ls-surface-sunken;
+}
+
+.review-source.source-no_source,
+.review-source.source-source_removed {
+    -fx-background-color: -ls-border, -ls-surface-sunken;
+}
+
+.verdict-title {
+    -fx-font-size: 13px;
+    -fx-graphic-text-gap: 8px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.source-backed .verdict-title {
+    -fx-text-fill: -ls-success-text;
+}
+
+.source-backed .verdict-title .ikonli-font-icon {
+    -fx-icon-color: -ls-success;
+}
+
+.source-doubtful .verdict-title {
+    -fx-text-fill: -ls-warning-text;
+}
+
+.source-doubtful .verdict-title .ikonli-font-icon {
+    -fx-icon-color: -ls-warning;
+}
+
+.verdict-note {
+    -fx-padding: 0 0 0 22px;
+}
+
+.verdict-line {
+    -fx-padding: 0 0 2px 0;
+}
+
+.source-document {
+    -fx-font-size: 13px;
+}
+
+.passage-flow {
+    -fx-line-spacing: 5px;
+}
+
+.passage-run {
+    -fx-fill: -ls-text;
+    -fx-font-size: 15px;
+}
+
+/* The highlighter: a soft band behind the lines that carry the answer, its rounded stroke the pen's tip. */
+.passage-mark {
+    -fx-fill: -ls-highlight;
+    -fx-stroke: -ls-highlight;
+    -fx-stroke-width: 4px;
+    -fx-stroke-line-join: round;
+}
+
+.button.quiet.small.passage-expand {
+    -fx-padding: 0 8px 0 0;
+    -fx-min-height: 26px;
+    -fx-pref-height: 26px;
+}
+
+/* ---- Dialogs ----------------------------------------------------------------------------------------- */
+
+.review-modal-card {
+    -fx-background-color: -ls-border, -ls-raised;
+    -fx-background-insets: 0, 1px;
+    -fx-background-radius: 16px, 15px;
+    -fx-padding: 24px 28px 20px 28px;
+    -fx-effect: dropshadow(gaussian, -ls-shadow-pop, 48, 0, 0, 16);
+}
+
+.review-modal-head {
+    -fx-padding: 0 0 18px 0;
+}
+
+.scroll-pane.review-modal-body,
+.scroll-pane.review-modal-body > .viewport {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-padding: 0;
+}
+
+.review-modal-content {
+    -fx-padding: 4px 6px 14px 4px;
+}
+
+.review-modal-card:scrolling .review-modal-content {
+    -fx-padding: 4px 20px 14px 4px;
+}
+
+.review-modal-footer {
+    -fx-padding: 16px 0 0 0;
+    -fx-border-color: -ls-border transparent transparent transparent;
+    -fx-border-width: 1px 0 0 0;
+}
+
+.field-error {
+    -fx-text-fill: -ls-danger-text;
+}
+
+.review-modal .text-input:invalid {
+    -fx-background-color: -ls-danger, -ls-surface-sunken;
+    -fx-background-insets: 0, 1px;
+}
+
+.review-modal .text-input:invalid:focused {
+    -fx-background-color: -ls-focus, -ls-danger, -ls-surface;
+    -fx-background-insets: -3px, 0, 1.5px;
+}
+
+.text-area.editor-area .content {
+    -fx-padding: 10px 12px 10px 12px;
+}
+
+.option-row > .ikonli-font-icon {
+    -fx-icon-color: -ls-text-faint;
+}
+
+.count-stepper > .text-field.count-field {
+    -fx-pref-width: 64px;
+    -fx-max-width: 64px;
+    -fx-alignment: center;
+}
+
+.dialog-error {
+    -fx-graphic-text-gap: 8px;
+}
+
+.dialog-error .ikonli-font-icon {
+    -fx-icon-color: -ls-danger;
+}
+
+.editor-source {
+    -fx-padding: 0;
+}

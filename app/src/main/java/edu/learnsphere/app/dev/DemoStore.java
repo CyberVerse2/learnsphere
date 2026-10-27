@@ -67,6 +67,8 @@ final class DemoStore {
     final Map<String, Map<Integer, DocumentPage>> pages = new HashMap<>();
     final Map<String, Passage> passages = new LinkedHashMap<>();
     final Map<String, Concept> concepts = new LinkedHashMap<>();
+    /** Concepts the study assistant found and nobody has renamed since. */
+    final Set<String> extractedConcepts = new LinkedHashSet<>();
     final Map<String, LearningItem> items = new LinkedHashMap<>();
     final Map<String, Set<String>> itemConcepts = new HashMap<>();
     final Map<String, ReviewState> reviews = new HashMap<>();
