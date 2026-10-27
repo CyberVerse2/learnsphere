@@ -154,18 +154,26 @@ final class SummaryView {
         root.getChildren().add(actions);
     }
 
-    /** Time as a number with its unit: "&lt;1 min", "12 min", "1.5 h". */
-    static StatTile timeTile(long durationMs) {
+    /** A length of time as a number and its unit, for a stat: "&lt;1" min, "12" min, "1.5" h. */
+    record Time(String value, String unit) {
+    }
+
+    /** {@code durationMs} as a number and its unit. */
+    static Time time(long durationMs) {
         long minutes = Math.round(durationMs / 60_000.0);
         if (minutes < 1) {
-            return new StatTile("Time", "<1").unit("min").framed(false);
+            return new Time("<1", "min");
         }
         if (minutes < 60) {
-            return new StatTile("Time", minutes).unit("min").framed(false);
+            return new Time(Long.toString(minutes), "min");
         }
         double hours = Math.round(minutes / 6.0) / 10.0;
-        String text = hours == Math.rint(hours) ? Long.toString((long) hours) : Double.toString(hours);
-        return new StatTile("Time", text).unit("h").framed(false);
+        return new Time(hours == Math.rint(hours) ? Long.toString((long) hours) : Double.toString(hours), "h");
+    }
+
+    private static StatTile timeTile(long durationMs) {
+        Time time = time(durationMs);
+        return new StatTile("Time", time.value()).unit(time.unit()).framed(false);
     }
 
     private static Node section(String title, Node body) {

@@ -37,9 +37,13 @@ import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import javafx.application.Platform;
+import javafx.beans.value.ChangeListener;
+import javafx.beans.value.ObservableValue;
 import javafx.geometry.Bounds;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
+import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.ContentDisplay;
 import javafx.scene.control.Label;
@@ -128,6 +132,8 @@ public final class StudyPage implements View {
     private List<Node> actionChildren;
     private SourceSheet sheet;
     private Runnable primary;
+    /** The node the page last gave focus to; a delayed focus request applies only while it is still this one. */
+    private Node focusTarget;
     private boolean hinted;
     private long shownAt;
     private int answered;
@@ -371,11 +377,9 @@ public final class StudyPage implements View {
         footer.getChildren().setAll(first instanceof Button button
                 ? StudyParts.legend("Enter", button.getText(), "Esc", "Close") : StudyParts.legend("Esc", "Close"));
         leaveButton.setText("Close");
-        Fx.run(() -> {
-            if (first != null) {
-                first.requestFocus();
-            }
-        });
+        if (first != null) {
+            focus(first);
+        }
     }
 
     // ---- one card -----------------------------------------------------------------------------------
@@ -440,12 +444,33 @@ public final class StudyPage implements View {
         stage.getChildren().setAll(body);
         Motion.enter(stage);
         scroller.setVvalue(0);
-        Node target = focus;
-        Fx.run(() -> {
-            if (target != null) {
-                target.requestFocus();
-            } else {
-                root.requestFocus();
+        focus(focus != null ? focus : root);
+    }
+
+    /**
+     * Gives {@code target} the keyboard focus. Right after the page opens, the scroll pane has not attached its
+     * content to the window yet and a focus request would be ignored (the window would then focus its first
+     * button, "Leave session"), so the request waits until {@code target} is in the window.
+     */
+    private void focus(Node target) {
+        focusTarget = target;
+        if (target.getScene() != null) {
+            target.requestFocus();
+            return;
+        }
+        target.sceneProperty().addListener(new ChangeListener<>() {
+            @Override
+            public void changed(ObservableValue<? extends Scene> property, Scene old, Scene scene) {
+                if (scene == null) {
+                    return;
+                }
+                property.removeListener(this);
+                // After the pulse that attached it, in which the window settles its own focus.
+                Platform.runLater(() -> {
+                    if (focusTarget == target && target.getScene() != null) {
+                        target.requestFocus();
+                    }
+                });
             }
         });
     }
@@ -735,10 +760,8 @@ public final class StudyPage implements View {
         primary = this::next;
         footer.getChildren().setAll(feedbackLegend());
         FeedbackView shown = feedbackView;
-        Fx.run(() -> {
-            shown.continueButton().requestFocus();
-            reveal(shown.root());
-        });
+        focus(shown.continueButton());
+        Fx.run(() -> reveal(shown.root()));
     }
 
     /**
@@ -889,7 +912,7 @@ public final class StudyPage implements View {
         footer.getChildren().setAll(StudyParts.legend("Enter", main.getText(), "Esc", "Close"));
         leaveButton.setText("Close");
         scroller.setVvalue(0);
-        Fx.run(main::requestFocus);
+        focus(main);
     }
 
     /** More of what is ready now, in this page so leaving still returns to where the session was opened. */
