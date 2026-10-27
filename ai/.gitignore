@@ -1,0 +1,3 @@
+# The root .gitignore ignores folders named runtime/ (the llama.cpp runtime at the repository root).
+# This module's source folders for the edu.learnsphere.ai.runtime package are code and must be tracked.
+!/src/**/runtime/

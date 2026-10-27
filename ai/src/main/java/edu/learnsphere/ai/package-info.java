@@ -1,6 +1,7 @@
 /**
  * Local AI for LearnSphere: implementations of the AI interfaces in {@code edu.learnsphere.core.spi}
- * backed by bundled llama.cpp {@code llama-server} processes.
+ * backed by bundled llama.cpp {@code llama-server} processes. {@link edu.learnsphere.ai.LocalAi} builds the
+ * whole {@code AiCapabilities} bundle; nothing runs until the runtime is started or a request needs it.
  *
  * <ul>
  *   <li>{@code edu.learnsphere.ai.runtime}: finding the runtime folder, hardware checks, starting and
