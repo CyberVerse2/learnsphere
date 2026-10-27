@@ -1,6 +1,7 @@
 package edu.learnsphere.core.service.impl;
 
 import edu.learnsphere.core.AppPaths;
+import edu.learnsphere.core.db.AuditLogRepository;
 import edu.learnsphere.core.db.Database;
 import edu.learnsphere.core.db.Repositories;
 import edu.learnsphere.core.error.ConflictException;
@@ -8,6 +9,7 @@ import edu.learnsphere.core.error.InvalidInputException;
 import edu.learnsphere.core.error.LearnSphereException;
 import edu.learnsphere.core.error.UserMessage;
 import edu.learnsphere.core.events.EventBus;
+import edu.learnsphere.core.model.EntityType;
 import edu.learnsphere.core.model.Profile;
 import edu.learnsphere.core.profile.ProfileRegistry;
 import edu.learnsphere.core.security.PasswordHasher;
@@ -279,11 +281,27 @@ public final class ProfileServiceImpl implements ProfileService {
             }
             Files.move(partial, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
             partial = null;
+            recordAudit(folder.database(), AuditAction.BACKUP, profileId, target.getFileName().toString());
         } catch (IOException | UncheckedIOException | org.jdbi.v3.core.JdbiException e) {
             throw new LearnSphereException(BACKUP_FAILED, "Backup of profile " + profileId + " failed", e);
         } finally {
             deleteQuietly(snapshot);
             deleteQuietly(partial);
+        }
+    }
+
+    /**
+     * Appends an entry to the audit log of the profile database at {@code database}, when it exists. The
+     * backup or restore it records has already succeeded, so a failure here is logged, never thrown.
+     */
+    private void recordAudit(Path database, AuditAction action, String profileId, String detail) {
+        if (!Files.isRegularFile(database)) {
+            return;
+        }
+        try (Database db = Database.openWithoutMigrations(database)) {
+            action.record(new AuditLogRepository(db, clock), EntityType.PROFILE, profileId, detail);
+        } catch (RuntimeException e) {
+            LOG.warn("Could not record the {} of profile {}", action.code(), profileId, e);
         }
     }
 
@@ -310,6 +328,7 @@ public final class ProfileServiceImpl implements ProfileService {
             Profile restored = new Profile(id, original.displayName(), original.avatarHue(), original.passwordHash(),
                     original.createdAt(), original.lastOpenedAt());
             registry.save(restored);
+            recordAudit(paths.profile(id).database(), AuditAction.RESTORE, id, original.id());
             return ProfileSummary.of(restored);
         } catch (java.util.zip.ZipException e) {
             throw new InvalidInputException(NOT_A_BACKUP, "Not a zip file: " + zipFile, e);
