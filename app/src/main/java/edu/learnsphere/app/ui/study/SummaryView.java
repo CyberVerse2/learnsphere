@@ -14,6 +14,7 @@ import edu.learnsphere.core.service.StudyNext;
 import java.time.Clock;
 import java.util.List;
 import java.util.Objects;
+import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
@@ -145,12 +146,11 @@ final class SummaryView {
             primary = button("Study more", studyMore, true);
             primary.setGraphic(Icons.of(Feather.ARROW_RIGHT, 16));
             primary.setContentDisplay(ContentDisplay.RIGHT);
-            actions.getChildren().addAll(primary, button(homeLabel, home, false));
+            actions.getChildren().addAll(primary, enterKey(), button(homeLabel, home, false));
         } else {
             primary = button(homeLabel, home, true);
-            actions.getChildren().addAll(primary, button("See your progress", progress, false));
+            actions.getChildren().addAll(primary, enterKey(), button("See your progress", progress, false));
         }
-        actions.getChildren().add(StudyParts.key("Enter"));
         root.getChildren().add(actions);
     }
 
@@ -174,6 +174,13 @@ final class SummaryView {
     private static StatTile timeTile(long durationMs) {
         Time time = time(durationMs);
         return new StatTile("Time", time.value()).unit(time.unit()).framed(false);
+    }
+
+    /** The Enter key cap, beside the button Enter presses, with a little more room before the next button. */
+    private static Node enterKey() {
+        Label key = StudyParts.key("Enter");
+        HBox.setMargin(key, new Insets(0, 12, 0, 0));
+        return key;
     }
 
     private static Node section(String title, Node body) {
