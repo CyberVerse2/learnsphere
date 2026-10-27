@@ -85,13 +85,14 @@ import org.sqlite.SQLiteException;
  *   <li><b>Extract</b> ({@code extracting}): the text layer of every page into {@code document_pages}
  *       ({@code text_layer}).</li>
  *   <li><b>Read</b> ({@code reading}): pages with under 25 characters of text and an image are rendered at
- *       150 DPI and transcribed by the {@link PageReader} ({@code ai_read}, not reviewed). While any such page
- *       is unreviewed the document waits in {@code needs_review} and the job ends: unreviewed pages are never
- *       chunked, embedded or indexed. Approving the last page enqueues this job again, which continues.</li>
+ *       {@value #READ_DPI} DPI and transcribed by the {@link PageReader} ({@code ai_read}, not reviewed). While
+ *       any such page is unreviewed the document waits in {@code needs_review} and the job ends: unreviewed
+ *       pages are never chunked, embedded or indexed. Approving the last page enqueues this job again, which
+ *       continues.</li>
  *   <li><b>Figures</b> ({@code reading}, only when {@link SettingKeys#DESCRIBE_FIGURES} is on): text-layer
- *       pages whose images cover at least {@value #FIGURE_MIN_COVERAGE} of the page get {@link FigureDescriber}
- *       notes, added to their passages as {@code "Figure: …"} lines. Best effort: a page that cannot be
- *       described is left without notes.</li>
+ *       pages whose images cover at least {@value #FIGURE_MIN_COVERAGE} of the page are rendered at
+ *       {@value #READ_DPI} DPI and get {@link FigureDescriber} notes, added to their passages as
+ *       {@code "Figure: …"} lines. Best effort: a page that cannot be described is left without notes.</li>
  *   <li><b>Chunk, embed, index</b> ({@code indexing}): {@link Chunker} over the usable pages, embeddings in
  *       batches of {@value #EMBED_BATCH} stored in {@code chunks}, then {@link SearchIndex#upsert} and
  *       {@code ready}.</li>
@@ -113,8 +114,13 @@ public final class IngestionService implements JobHandler {
     /** Pages with fewer non-whitespace characters than this and an image are read from the page image. */
     public static final int MIN_TEXT_CHARS = 25;
 
-    /** Resolution scanned pages are rendered at for reading. */
-    public static final int READ_DPI = 150;
+    /**
+     * Resolution pages are rendered at for the study assistant, both scanned pages to read and pages with
+     * figures to describe. The assistant's work on an image grows faster than its pixel count; at this
+     * resolution scanned pages read as accurately as at 150 DPI and figure labels stay legible, for about
+     * two thirds of the image tokens.
+     */
+    public static final int READ_DPI = 120;
 
     /** Share of a page images must cover for its figures to be described. */
     public static final double FIGURE_MIN_COVERAGE = 0.10;

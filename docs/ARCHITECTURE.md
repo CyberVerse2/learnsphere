@@ -194,8 +194,8 @@ In `edu.learnsphere.core.spi`:
 
 1. **Check:** size ≤ 300 MB, opens, not encrypted, ≤ 2,000 pages. Copy into `files/` by SHA-256 (the same PDF imported twice reuses the file).
 2. **Extract:** text layer per page into `document_pages` (`source=text_layer`).
-3. **Read:** pages with under 25 characters of text and an image are rendered at 150 DPI and transcribed by `PageReader` (`source=ai_read`, `reviewed=0`). If any exist, the document waits in `needs_review` until a creator approves or edits those pages; unreviewed AI-read pages are never used as evidence.
-4. **Figures:** if the setting is on, pages with significant image coverage get `FigureDescriber` notes, appended to their chunks as `Figure: …` lines.
+3. **Read:** pages with under 25 characters of text and an image are rendered at 120 DPI and transcribed by `PageReader` (`source=ai_read`, `reviewed=0`). If any exist, the document waits in `needs_review` until a creator approves or edits those pages; unreviewed AI-read pages are never used as evidence.
+4. **Figures:** if the setting is on, pages with significant image coverage are rendered at 120 DPI and get `FigureDescriber` notes, appended to their chunks as `Figure: …` lines.
 5. **Chunk, embed, index:** `Chunker` → `Embedder` (batches of 16) → store embeddings in `chunks` → `SearchIndex.upsert` → `ready`.
 
 Every stage is idempotent and updates `documents.status`/`progress`, so an interrupted import resumes where it stopped.

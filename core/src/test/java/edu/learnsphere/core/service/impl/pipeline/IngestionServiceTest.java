@@ -24,6 +24,7 @@ import edu.learnsphere.core.spi.EmbedKind;
 import edu.learnsphere.core.spi.Embedder;
 import edu.learnsphere.core.spi.FigureDescriber;
 import edu.learnsphere.core.spi.PageReader;
+import edu.learnsphere.core.spi.PageRenderer;
 import edu.learnsphere.core.spi.PageTranscription;
 import edu.learnsphere.core.util.CancellationToken;
 import java.nio.charset.StandardCharsets;
@@ -252,6 +253,26 @@ class IngestionServiceTest {
         assertThat(f.repos.chunks().listByDocument(document.id())).singleElement()
                 .satisfies(chunk -> assertThat(chunk.text()).doesNotContain("Figure:"));
         assertThat(reload(document).status()).isEqualTo(DocumentStatus.READY);
+    }
+
+    @Test
+    void showsTheAssistantScannedPagesAndFiguresAtTheReadingResolution() {
+        List<String> images = new java.util.concurrent.CopyOnWriteArrayList<>();
+        PageReader reader = (png, pageNumber, token) -> {
+            images.add(new String(png, StandardCharsets.UTF_8));
+            return new PageTranscription("Text read from page " + pageNumber + ".", List.of());
+        };
+        FigureDescriber describer = (png, pageNumber, token) -> {
+            images.add(new String(png, StandardCharsets.UTF_8));
+            return List.of("A diagram");
+        };
+        IngestionService ingestion = f.ingestion(f.ai.embedder(), reader, describer);
+
+        importWith(ingestion, f.addPdf(course, module, "Scans", FakePdf.document().scannedPage()));
+        importWith(ingestion, f.addPdf(course, module, "Diagrams", FakePdf.document().page(page(1), 0.5)));
+
+        float scale = IngestionService.READ_DPI / PageRenderer.POINTS_PER_INCH;
+        assertThat(images).containsExactly("PNG page 1 at " + scale, "PNG page 1 at " + scale);
     }
 
     // ---- failures ------------------------------------------------------------------------------------

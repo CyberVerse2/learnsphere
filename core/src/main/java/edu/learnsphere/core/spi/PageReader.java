@@ -6,7 +6,7 @@ import edu.learnsphere.core.util.CancellationToken;
 public interface PageReader {
 
     /**
-     * @param pngImage the page rendered at about 150 DPI
+     * @param pngImage the page rendered at about 120 DPI
      */
     PageTranscription read(byte[] pngImage, int pageNumber, CancellationToken token);
 }
