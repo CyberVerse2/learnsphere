@@ -13,6 +13,9 @@ dependencies {
     // Tests of the AI pipelines run against the deterministic fakes in edu.learnsphere.ai.fake. Only the
     // test classpath sees the ai module, so core's main code still depends on no other module.
     testImplementation(project(":ai"))
+
+    // TestWorkerHome hooks into the JUnit launcher, which every test run already has.
+    testFixturesCompileOnly(libs.junit.platform.launcher)
 }
 
 // Test fixtures (edu.learnsphere.core.testing: TestDb, MutableClock, logback-test.xml) are shared with the

@@ -14,7 +14,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Random;
+import org.apache.fontbox.ttf.TTFParser;
+import org.apache.fontbox.ttf.TrueTypeFont;
 import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.io.RandomAccessReadBuffer;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
@@ -361,7 +364,12 @@ public final class TestPdf {
                     if (font == null) {
                         throw new IOException("Font not found: " + EMBEDDED_FONT);
                     }
-                    embedded = PDType0Font.load(document, font);
+                    TrueTypeFont program = new TTFParser().parse(RandomAccessReadBuffer.createBufferFromStream(font));
+                    // Glyph substitution off: the font's substitutions never apply to ASCII text, yet PDFBox would
+                    // look them up word by word for every line shown, most of the time a long book takes to write.
+                    program.setEnableGsub(false);
+                    document.registerTrueTypeFontForClosing(program);
+                    embedded = PDType0Font.load(document, program, true);
                 }
                 regular = embedded;
                 bold = embedded;

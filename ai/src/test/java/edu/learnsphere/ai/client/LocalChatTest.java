@@ -57,10 +57,12 @@ class LocalChatTest {
 
     @Test
     void aPreemptedBackgroundRequestRunsAgainAfterTheInteractiveOne() throws Exception {
-        // Background replies are slow to start, so the interactive request arrives before anything streams.
-        server.onChat(body -> lastUserText(body).equals("background")
-                ? new Reply(200, null, List.of("page ", "text"), "stop", 0, 1_500)
-                : Reply.text("answer"));
+        // The first background reply is slow to start, so the interactive request arrives before anything streams.
+        AtomicInteger backgroundRequests = new AtomicInteger();
+        server.onChat(body -> !lastUserText(body).equals("background") ? Reply.text("answer")
+                : backgroundRequests.incrementAndGet() == 1
+                        ? new Reply(200, null, List.of("page ", "text"), "stop", 0, 1_500)
+                        : Reply.text("page ", "text"));
         LocalChat chat = server.localChat(client);
         List<String> finished = Collections.synchronizedList(new ArrayList<>());
 
@@ -87,10 +89,12 @@ class LocalChatTest {
 
     @Test
     void aBackgroundRequestPreemptedMidReplyStartsOverAndReturnsTheWholeText() throws Exception {
-        // The interactive request arrives after the background reply has started streaming.
-        server.onChat(body -> lastUserText(body).equals("background")
-                ? new Reply(200, null, List.of("page ", "one ", "of ", "the ", "notes"), "stop", 0, 200)
-                : Reply.text("answer"));
+        // The interactive request arrives after the first background reply has started streaming.
+        AtomicInteger backgroundRequests = new AtomicInteger();
+        server.onChat(body -> !lastUserText(body).equals("background") ? Reply.text("answer")
+                : backgroundRequests.incrementAndGet() == 1
+                        ? new Reply(200, null, List.of("page ", "one ", "of ", "the ", "notes"), "stop", 0, 200)
+                        : Reply.text("page ", "one ", "of ", "the ", "notes"));
         LocalChat chat = server.localChat(client);
 
         CompletableFuture<ChatResult> background = CompletableFuture.supplyAsync(() -> chat.complete(
