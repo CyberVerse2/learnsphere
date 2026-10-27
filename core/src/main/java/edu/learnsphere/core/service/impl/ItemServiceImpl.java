@@ -66,8 +66,7 @@ public final class ItemServiceImpl implements ItemService {
     static final int MAX_FLAG_NOTE = 1_000;
 
     static final UserMessage CONCEPT_NOT_IN_COURSE = UserMessage.of("Choose concepts from this course.");
-    static final UserMessage ONLY_DRAFTS_REJECTED =
-            UserMessage.of("Only questions waiting for review can be rejected. Retire an approved question instead.");
+    static final UserMessage ONLY_DRAFTS_REJECTED = UserMessage.of("Only questions waiting for review can be rejected.");
     static final UserMessage ONLY_APPROVED_RETIRED = UserMessage.of("Only approved questions can be retired.");
     static final UserMessage NOTE_TOO_LONG = UserMessage.of("This note is too long. Shorten it and try again.");
 
