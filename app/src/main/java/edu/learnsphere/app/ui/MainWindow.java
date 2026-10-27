@@ -5,6 +5,7 @@ import edu.learnsphere.app.dev.ComponentGallery;
 import edu.learnsphere.app.theme.Motion;
 import edu.learnsphere.app.ui.ask.AskPage;
 import edu.learnsphere.app.ui.components.Overlays;
+import edu.learnsphere.app.ui.components.Page;
 import edu.learnsphere.app.ui.components.TopBar;
 import edu.learnsphere.app.ui.components.TopBar.Crumb;
 import edu.learnsphere.app.ui.course.CoursePage;
@@ -159,6 +160,7 @@ public final class MainWindow extends StackPane {
         boolean full = route.isFullScreen();
         topBar.setVisible(!full);
         topBar.setManaged(!full);
+        topBar.setColumnMaxWidth(navigator.currentView() instanceof PageView ? Page.MAX_WIDTH : Double.POSITIVE_INFINITY);
         boolean animate = route.isFocusMode() || (old != null && old.route().isFocusMode());
         showSidebar(!full, animate);
         updateCrumbs(destination);

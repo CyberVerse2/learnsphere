@@ -45,6 +45,10 @@ public final class Theme {
     private static final String STYLESHEET = Objects.requireNonNull(
             Theme.class.getResource("learnsphere.css"), "learnsphere.css").toExternalForm();
     private static final ReadOnlyBooleanWrapper DARK_ACTIVE = new ReadOnlyBooleanWrapper(false);
+    // Full URLs, so the base theme loads whatever class loader the FX thread has (the screenshot tour starts
+    // the toolkit without one).
+    private static final String BASE_LIGHT = resolve(new PrimerLight());
+    private static final String BASE_DARK = resolve(new PrimerDark());
 
     private final Scene scene;
     private final ChangeListener<ColorScheme> systemListener = (obs, old, scheme) -> refresh();
@@ -143,9 +147,7 @@ public final class Theme {
             case DARK -> true;
             case SYSTEM -> Platform.getPreferences().getColorScheme() == ColorScheme.DARK;
         };
-        Application.setUserAgentStylesheet(dark
-                ? new PrimerDark().getUserAgentStylesheet()
-                : new PrimerLight().getUserAgentStylesheet());
+        Application.setUserAgentStylesheet(dark ? BASE_DARK : BASE_LIGHT);
         // The window frame follows the chosen palette too (null: follow the system).
         scene.getPreferences().setColorScheme(preference == ThemePreference.SYSTEM
                 ? null : dark ? ColorScheme.DARK : ColorScheme.LIGHT);
@@ -159,6 +161,12 @@ public final class Theme {
             matchSceneFill(root);
         }
         DARK_ACTIVE.set(dark);
+    }
+
+    private static String resolve(atlantafx.base.theme.Theme base) {
+        String path = base.getUserAgentStylesheet();
+        var url = base.getClass().getResource(path.startsWith("/") ? path : "/" + path);
+        return url == null ? path : url.toExternalForm();
     }
 
     /** Paints the scene behind the root in the root's own background colour, so resizing never flashes white. */

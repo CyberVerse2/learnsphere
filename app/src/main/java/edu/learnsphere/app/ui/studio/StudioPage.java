@@ -71,6 +71,8 @@ public final class StudioPage extends PageView {
 
     /** Drafts shown in the review queue at once. */
     static final int QUEUE_PAGE = 6;
+    /** Starting width of each review card column; both grow to share the card. */
+    private static final double REVIEW_COLUMN = 420;
 
     private final Destination.Studio destination;
     private final VBox body = new VBox(24);
@@ -273,6 +275,9 @@ public final class StudioPage extends PageView {
             }
             row.setAlignment(Pos.CENTER_LEFT);
             row.getStyleClass().add("list-row");
+            if (list.getChildren().isEmpty()) {
+                row.getStyleClass().add("first");
+            }
             list.getChildren().add(row);
         }
         Button add = new Button("Add module", Icons.of(Feather.PLUS));
@@ -314,6 +319,9 @@ public final class StudioPage extends PageView {
             HBox row = new HBox(14, icon, text, status);
             row.setAlignment(Pos.CENTER_LEFT);
             row.getStyleClass().add("list-row");
+            if (list.getChildren().isEmpty()) {
+                row.getStyleClass().add("first");
+            }
             if (d.status() == DocumentStatus.FAILED) {
                 Button retry = new Button("Try again");
                 retry.getStyleClass().add("small");
@@ -380,11 +388,12 @@ public final class StudioPage extends PageView {
             draft.getChildren().add(answer);
         }
         HBox.setHgrow(draft, Priority.ALWAYS);
-        draft.setPrefWidth(0);
+        draft.setPrefWidth(REVIEW_COLUMN);
 
         VBox source = new VBox(8);
         source.getStyleClass().add("review-source");
-        source.setPrefWidth(0);
+        source.setPrefWidth(REVIEW_COLUMN);
+        source.setMaxHeight(Region.USE_PREF_SIZE);
         HBox.setHgrow(source, Priority.ALWAYS);
         if (detail.source() != null) {
             Label where = new Label(detail.source().ref().documentTitle() + " · "

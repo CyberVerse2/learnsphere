@@ -77,6 +77,7 @@
     -ls-illo-line: #B9B1A4;
     -ls-illo-sphere-a: #DCE3FA;
     -ls-illo-sphere-b: #9DB0EE;
+    -ls-page-highlight: #FFE08A;
 }
 
 .root.dark, .theme-dark {
@@ -136,6 +137,8 @@
     -ls-illo-line: #4A453F;
     -ls-illo-sphere-a: #26305A;
     -ls-illo-sphere-b: #4D61B8;
+    /* PDF pages stay light in the dark appearance, so their highlight does too. */
+    -ls-page-highlight: #F5D36E;
 }
 
 /* AtlantaFX base theme mapped onto the tokens (resolved per subtree, so scoped panels follow too). */
@@ -2137,7 +2140,6 @@
     -fx-text-fill: -ls-accent;
     -fx-font-size: 11px;
     -fx-padding: 1px 7px 1px 7px;
-    -fx-min-width: 20px;
     -fx-alignment: center;
 }
 
@@ -2286,4 +2288,882 @@
 
 .menu-bar.in-window {
     -fx-padding: 2px 12px 2px 12px;
+}
+
+/* ===================================================================================================
+ * Screens
+ * ================================================================================================ */
+
+.app-root,
+.main-column {
+    -fx-background-color: -ls-bg;
+}
+
+.sidebar-course-title {
+    -fx-font-size: 13px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.nav-item:hover .sidebar-course-title,
+.nav-item:selected .sidebar-course-title {
+    -fx-text-fill: -ls-text;
+}
+
+.hairline {
+    -fx-background-color: -ls-border;
+    -fx-min-height: 1px;
+    -fx-pref-height: 1px;
+    -fx-max-height: 1px;
+}
+
+.field-label {
+    -fx-font-size: 13px;
+    -fx-text-fill: -ls-text;
+}
+
+.panel {
+    -fx-padding: 24px 28px 24px 28px;
+}
+
+/* Scroll panes that sit directly on the paper. */
+.ask-scroller,
+.ask-scroller > .viewport,
+.study-scroller,
+.study-scroller > .viewport,
+.source-scroller,
+.source-scroller > .viewport,
+.gallery-scroller,
+.gallery-scroller > .viewport {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-border-width: 0;
+    -fx-padding: 0;
+}
+
+/* ---- Home ---------------------------------------------------------------------------------------- */
+
+.study-next {
+    -fx-background-color: -ls-border, linear-gradient(to right, -ls-surface 40%, -ls-accent-soft 140%);
+    -fx-padding: 28px 32px 28px 32px;
+}
+
+.study-next-overline {
+    -fx-text-fill: -ls-accent;
+}
+
+.study-next-numeral {
+    -fx-font-size: 56px;
+}
+
+.study-next-unit {
+    -fx-font-size: 17px;
+    -fx-text-fill: -ls-text;
+}
+
+.study-next-detail {
+    -fx-font-size: 14px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.ring-numeral {
+    -fx-font-size: 32px;
+}
+
+.week-card {
+    -fx-padding: 22px 24px 20px 24px;
+}
+
+.week-streak {
+    -fx-background-color: -ls-accent-soft;
+    -fx-background-radius: 999px;
+    -fx-padding: 3px 10px 3px 10px;
+    -fx-font-size: 12px;
+    -fx-text-fill: -ls-accent;
+}
+
+.recent-question {
+    -fx-padding: 20px 24px 20px 24px;
+    -fx-cursor: hand;
+}
+
+.recent-question-text {
+    -fx-font-size: 19px;
+    -fx-text-fill: -ls-text;
+}
+
+.recent-question-answer {
+    -fx-font-size: 14px;
+    -fx-line-spacing: 3px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+/* ---- Library and course ------------------------------------------------------------------------- */
+
+.library-controls {
+    -fx-spacing: 12px;
+    -fx-alignment: center-left;
+}
+
+.course-heading {
+    -fx-padding: 4px 0 0 0;
+}
+
+.course-meta {
+    -fx-text-fill: -ls-text-muted;
+}
+
+.course-title {
+    -fx-line-spacing: 2px;
+}
+
+.course-description {
+    -fx-font-size: 15px;
+    -fx-line-spacing: 4px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.module-path {
+    -fx-padding: 6px 0 0 0;
+}
+
+.module-step {
+    -fx-padding: 0 0 4px 0;
+}
+
+.module-text {
+    -fx-padding: 4px 0 22px 0;
+}
+
+.module-line {
+    -fx-background-color: -ls-border;
+    -fx-min-width: 2px;
+    -fx-pref-width: 2px;
+    -fx-max-width: 2px;
+    -fx-min-height: 8px;
+}
+
+.module-title {
+    -fx-font-size: 15px;
+    -fx-text-fill: -ls-text;
+}
+
+.module-summary {
+    -fx-font-size: 13px;
+    -fx-line-spacing: 2px;
+    -fx-text-fill: -ls-text-muted;
+    -fx-padding: 2px 0 4px 0;
+}
+
+/* ---- Ask ----------------------------------------------------------------------------------------- */
+
+.ask-page,
+.ask-conversation {
+    -fx-background-color: -ls-bg;
+}
+
+.ask-head {
+    -fx-padding: 4px 40px 18px 40px;
+    -fx-border-color: transparent transparent -ls-border transparent;
+    -fx-border-width: 0 0 1px 0;
+}
+
+.ask-messages {
+    -fx-padding: 28px 40px 32px 40px;
+    -fx-spacing: 28px;
+}
+
+.ask-question {
+    -fx-background-color: -ls-accent-soft;
+    -fx-background-radius: 16px 16px 4px 16px;
+    -fx-padding: 12px 16px 12px 16px;
+    -fx-font-size: 15px;
+    -fx-line-spacing: 3px;
+    -fx-text-fill: -ls-text;
+    -fx-max-width: 520px;
+}
+
+.ask-answer {
+    -fx-spacing: 10px;
+}
+
+.reading-flow {
+    -fx-line-spacing: 7px;
+}
+
+.reading-flow > .text-reading {
+    -fx-fill: -ls-text;
+    -fx-font-size: 17px;
+}
+
+.citation-chip.inline {
+    -fx-translate-y: 3px;
+}
+
+.ask-thinking .label {
+    -fx-font-size: 13px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.insufficient-card {
+    -fx-background-color: -ls-border-strong, -ls-surface-sunken;
+    -fx-background-insets: 0, 1px;
+    -fx-background-radius: 14px, 13px;
+    -fx-padding: 18px 22px 18px 20px;
+    -fx-alignment: top-left;
+}
+
+.insufficient-card > .ikonli-font-icon {
+    -fx-icon-color: -ls-warning;
+}
+
+.ask-composer {
+    -fx-padding: 14px 40px 22px 40px;
+    -fx-border-color: -ls-border transparent transparent transparent;
+    -fx-border-width: 1px 0 0 0;
+}
+
+.ask-input {
+    -fx-font-size: 15px;
+}
+
+.ask-composer .button.primary {
+    -fx-min-height: 44px;
+    -fx-pref-height: 44px;
+}
+
+.source-viewer {
+    -fx-background-color: -ls-border, -ls-surface;
+    -fx-background-insets: 0, 0 0 0 1px;
+    -fx-padding: 22px 24px 24px 24px;
+    -fx-spacing: 12px;
+}
+
+.source-page-placeholder {
+    -fx-background-color: -ls-border-strong, -ls-surface-sunken;
+    -fx-background-insets: 0, 1px;
+    -fx-background-radius: 12px, 11px;
+    -fx-min-height: 120px;
+}
+
+.source-page {
+    -fx-background-color: -ls-surface-sunken;
+    -fx-background-radius: 12px;
+    -fx-padding: 0;
+}
+
+.source-page-image {
+    -fx-effect: dropshadow(gaussian, -ls-shadow-hover, 16, 0, 0, 4);
+}
+
+.passage-highlight {
+    -fx-fill: -ls-page-highlight;
+    -fx-blend-mode: multiply;
+}
+
+/* ---- Study session ------------------------------------------------------------------------------- */
+
+.study-page {
+    -fx-background-color: -ls-bg;
+}
+
+.study-top {
+    -fx-padding: 14px 32px 0 24px;
+    -fx-min-height: 56px;
+}
+
+.study-centring {
+    -fx-padding: 40px 40px 72px 40px;
+}
+
+.study-stage {
+    -fx-spacing: 32px;
+}
+
+.study-overline {
+    -fx-text-fill: -ls-accent;
+}
+
+.study-prompt {
+    -fx-line-spacing: 4px;
+}
+
+.study-option {
+    -fx-background-color: -ls-border, -ls-surface;
+    -fx-background-insets: 0, 1px;
+    -fx-background-radius: 14px, 13px;
+    -fx-padding: 16px 20px 16px 16px;
+    -fx-min-height: 64px;
+    -fx-cursor: hand;
+    -fx-effect: dropshadow(gaussian, -ls-shadow, 12, 0, 0, 3);
+}
+
+.study-option:hover {
+    -fx-background-color: -ls-border-strong, -ls-surface;
+    -fx-effect: dropshadow(gaussian, -ls-shadow-hover, 16, 0, 0, 5);
+}
+
+.study-option:focus-visible {
+    -fx-background-color: -ls-focus, -ls-accent, -ls-surface;
+    -fx-background-insets: -4px, 0, 1.5px;
+    -fx-background-radius: 18px, 14px, 12.5px;
+}
+
+.study-option.selected {
+    -fx-background-color: -ls-accent, -ls-accent-soft;
+    -fx-background-insets: 0, 1.5px;
+    -fx-background-radius: 14px, 12.5px;
+}
+
+.study-option.correct {
+    -fx-background-color: -ls-success, -ls-success-soft;
+    -fx-background-insets: 0, 1.5px;
+    -fx-background-radius: 14px, 12.5px;
+    -fx-effect: null;
+}
+
+.study-option.wrong {
+    -fx-background-color: -ls-danger, -ls-danger-soft;
+    -fx-background-insets: 0, 1.5px;
+    -fx-background-radius: 14px, 12.5px;
+    -fx-effect: null;
+}
+
+.study-option.revealed {
+    -fx-background-color: -ls-success, -ls-surface;
+    -fx-background-insets: 0, 1.5px;
+    -fx-background-radius: 14px, 12.5px;
+    -fx-effect: null;
+}
+
+.study-option.dimmed {
+    -fx-opacity: 0.5;
+    -fx-effect: null;
+}
+
+.option-key {
+    -fx-background-color: -ls-surface-sunken;
+    -fx-background-radius: 8px;
+    -fx-min-width: 30px;
+    -fx-min-height: 30px;
+    -fx-alignment: center;
+    -fx-font-size: 13px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.study-option.selected .option-key {
+    -fx-background-color: -ls-accent;
+    -fx-text-fill: -ls-on-accent;
+}
+
+.study-option.correct .option-key,
+.study-option.revealed .option-key {
+    -fx-background-color: -ls-success;
+    -fx-text-fill: -ls-on-accent;
+}
+
+.study-option.wrong .option-key {
+    -fx-background-color: -ls-danger;
+    -fx-text-fill: -ls-on-danger;
+}
+
+.option-text {
+    -fx-font-size: 18px;
+    -fx-line-spacing: 3px;
+    -fx-text-fill: -ls-text;
+}
+
+.option-mark .ikonli-font-icon {
+    -fx-icon-color: -ls-success;
+}
+
+.study-option.wrong .option-mark .ikonli-font-icon {
+    -fx-icon-color: -ls-danger;
+}
+
+.check-mark {
+    -fx-fill: transparent;
+    -fx-stroke: -ls-success;
+    -fx-stroke-width: 2.5px;
+    -fx-stroke-line-cap: round;
+    -fx-stroke-line-join: round;
+}
+
+.text-input.study-input {
+    -fx-font-size: 18px;
+}
+
+.text-field.study-input {
+    -fx-padding: 0 16px 0 16px;
+    -fx-min-height: 56px;
+    -fx-pref-height: 56px;
+}
+
+.text-area.study-input .content {
+    -fx-padding: 14px 16px 14px 16px;
+}
+
+.text-input.study-input.correct {
+    -fx-background-color: -ls-success, -ls-success-soft;
+    -fx-background-insets: 0, 1.5px;
+    -fx-background-radius: 6px, 4.5px;
+}
+
+.text-input.study-input.wrong {
+    -fx-background-color: -ls-danger, -ls-danger-soft;
+    -fx-background-insets: 0, 1.5px;
+    -fx-background-radius: 6px, 4.5px;
+}
+
+.study-actions {
+    -fx-spacing: 16px;
+    -fx-alignment: center-left;
+}
+
+.flashcard {
+    -fx-padding: 40px 48px 40px 48px;
+    -fx-min-height: 220px;
+    -fx-alignment: center;
+}
+
+.flashcard-hint {
+    -fx-font-size: 15px;
+    -fx-text-alignment: center;
+}
+
+.flashcard-back {
+    -fx-font-size: 21px;
+    -fx-line-spacing: 6px;
+    -fx-text-alignment: center;
+}
+
+.rating-button {
+    -fx-min-width: 96px;
+}
+
+.feedback-panel {
+    -fx-background-color: -ls-border, -ls-surface;
+    -fx-background-insets: 0, 1px;
+    -fx-background-radius: 14px, 13px;
+    -fx-padding: 24px 28px 22px 28px;
+}
+
+.feedback-panel.correct {
+    -fx-background-color: -ls-success-soft;
+    -fx-background-insets: 0;
+    -fx-background-radius: 14px;
+}
+
+.feedback-panel.wrong {
+    -fx-background-color: -ls-danger-soft;
+    -fx-background-insets: 0;
+    -fx-background-radius: 14px;
+}
+
+.feedback-panel.correct .feedback-verdict {
+    -fx-text-fill: -ls-success-text;
+}
+
+.feedback-panel.wrong .feedback-verdict {
+    -fx-text-fill: -ls-danger-text;
+}
+
+.feedback-actions {
+    -fx-alignment: center-left;
+}
+
+.button.source-link {
+    -fx-text-fill: -ls-accent;
+    -fx-padding: 4px 8px 4px 0;
+}
+
+.button.source-link .ikonli-font-icon {
+    -fx-icon-color: -ls-accent;
+}
+
+.summary-card {
+    -fx-padding: 28px 36px 28px 32px;
+}
+
+/* ---- Progress ------------------------------------------------------------------------------------ */
+
+.stat-row {
+    -fx-spacing: 16px;
+}
+
+.module-progress-grid {
+    -fx-hgap: 24px;
+    -fx-vgap: 18px;
+}
+
+/* ---- Studio -------------------------------------------------------------------------------------- */
+
+.studio-top {
+    -fx-padding: 0 0 4px 0;
+}
+
+.tab-strip {
+    -fx-border-color: transparent transparent -ls-border transparent;
+    -fx-border-width: 0 0 1px 0;
+    -fx-spacing: 4px;
+}
+
+.tab-button {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 0;
+    -fx-padding: 10px 12px 12px 12px;
+    -fx-graphic-text-gap: 8px;
+    -fx-font-size: 14px;
+    -fx-text-fill: -ls-text-muted;
+    -fx-cursor: hand;
+}
+
+.tab-button:hover {
+    -fx-text-fill: -ls-text;
+}
+
+.tab-button:selected {
+    -fx-background-color: -ls-accent, -ls-bg;
+    -fx-background-insets: 0, 0 0 2px 0;
+    -fx-text-fill: -ls-text;
+}
+
+.tab-button:focus-visible {
+    -fx-background-color: -ls-focus, -ls-bg;
+    -fx-background-insets: 2px, 4px;
+    -fx-background-radius: 8px, 6px;
+}
+
+.tab-count {
+    -fx-background-color: -ls-surface-sunken;
+    -fx-background-radius: 999px;
+    -fx-padding: 1px 7px 1px 7px;
+    -fx-font-size: 11px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.tab-count.warning {
+    -fx-background-color: -ls-warning-soft;
+    -fx-text-fill: -ls-warning-text;
+}
+
+.tab-button:selected .tab-count {
+    -fx-background-color: -ls-accent-soft;
+    -fx-text-fill: -ls-accent;
+}
+
+.tab-button:selected .tab-count.warning {
+    -fx-background-color: -ls-warning-soft;
+    -fx-text-fill: -ls-warning-text;
+}
+
+.row-list {
+    -fx-spacing: 0;
+}
+
+.list-row {
+    -fx-padding: 14px 4px 14px 4px;
+    -fx-min-height: 64px;
+    -fx-border-color: -ls-border transparent transparent transparent;
+    -fx-border-width: 1px 0 0 0;
+}
+
+.list-row.first {
+    -fx-border-width: 0;
+}
+
+.drag-handle {
+    -fx-cursor: move;
+}
+
+.drag-handle .ikonli-font-icon {
+    -fx-icon-color: -ls-text-faint;
+}
+
+.module-number {
+    -fx-background-color: -ls-surface-sunken;
+    -fx-background-radius: 999px;
+    -fx-min-width: 28px;
+    -fx-min-height: 28px;
+    -fx-alignment: center;
+    -fx-font-size: 12px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.review-card {
+    -fx-padding: 24px 28px 20px 28px;
+}
+
+.review-prompt {
+    -fx-font-size: 19px;
+    -fx-line-spacing: 3px;
+    -fx-text-fill: -ls-text;
+}
+
+.review-option {
+    -fx-font-size: 14px;
+    -fx-graphic-text-gap: 10px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.review-option.correct {
+    -fx-text-fill: -ls-text;
+}
+
+.review-option.correct .ikonli-font-icon {
+    -fx-icon-color: -ls-success;
+}
+
+.review-option.distractor .ikonli-font-icon {
+    -fx-icon-color: -ls-text-faint;
+}
+
+.review-answer {
+    -fx-font-size: 14px;
+    -fx-line-spacing: 3px;
+    -fx-text-fill: -ls-text;
+}
+
+.review-source {
+    -fx-background-color: -ls-page-highlight, -ls-surface-sunken;
+    -fx-background-insets: 0, 0 0 0 3px;
+    -fx-background-radius: 10px, 0 10px 10px 0;
+    -fx-padding: 14px 18px 16px 20px;
+}
+
+.review-passage {
+    -fx-font-size: 15px;
+    -fx-line-spacing: 4px;
+}
+
+.scanned-page {
+    -fx-background-color: -ls-surface-sunken;
+    -fx-background-radius: 10px;
+    -fx-padding: 14px;
+    -fx-min-width: 448px;
+}
+
+.scanned-page > .image-view {
+    -fx-effect: dropshadow(gaussian, -ls-shadow-hover, 12, 0, 0, 3);
+}
+
+.text-area.page-text .content {
+    -fx-padding: 14px 16px 14px 16px;
+}
+
+.text-area.page-text {
+    -fx-font-size: 14px;
+}
+
+.version-row {
+    -fx-padding: 14px 0 14px 0;
+    -fx-border-color: -ls-border transparent transparent transparent;
+    -fx-border-width: 1px 0 0 0;
+}
+
+/* ---- Settings ------------------------------------------------------------------------------------ */
+
+.settings-section {
+    -fx-padding: 24px 28px 24px 28px;
+}
+
+.settings-row-title {
+    -fx-font-size: 14px;
+    -fx-text-fill: -ls-text;
+}
+
+.settings-row-detail {
+    -fx-font-size: 13px;
+    -fx-line-spacing: 2px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+/* ---- Profiles and onboarding (full screen) ------------------------------------------------------- */
+
+.full-screen {
+    -fx-background-color: -ls-bg;
+    -fx-padding: 48px;
+}
+
+.full-screen-column {
+    -fx-spacing: 12px;
+}
+
+.full-screen-title {
+    -fx-font-size: 40px;
+}
+
+.profile-tile {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 18px;
+    -fx-padding: 22px 16px 20px 16px;
+    -fx-min-width: 172px;
+    -fx-pref-width: 172px;
+    -fx-min-height: 196px;
+    -fx-alignment: top-center;
+    -fx-content-display: top;
+    -fx-graphic-text-gap: 12px;
+    -fx-font-size: 15px;
+    -fx-text-fill: -ls-text-muted;
+    -fx-cursor: hand;
+}
+
+.profile-tile:hover {
+    -fx-background-color: -ls-border, -ls-surface;
+    -fx-background-insets: 0, 1px;
+    -fx-background-radius: 18px, 17px;
+    -fx-effect: dropshadow(gaussian, -ls-shadow-hover, 24, 0, 0, 8);
+}
+
+.profile-tile:armed {
+    -fx-background-color: -ls-border-strong, -ls-surface-sunken;
+}
+
+.profile-tile:focus-visible {
+    -fx-background-color: -ls-focus, -ls-accent, -ls-surface;
+    -fx-background-insets: -4px, 0, 1.5px;
+    -fx-background-radius: 22px, 18px, 16.5px;
+}
+
+.profile-tile .ikonli-font-icon {
+    -fx-icon-color: -ls-text-faint;
+}
+
+.profile-tile-name {
+    -fx-font-size: 16px;
+    -fx-text-fill: -ls-text;
+}
+
+.profile-tile.current .text-caption {
+    -fx-text-fill: -ls-accent;
+}
+
+.profile-add-circle {
+    -fx-background-color: transparent;
+    -fx-background-radius: 999px;
+    -fx-border-color: -ls-border-strong;
+    -fx-border-width: 1.5px;
+    -fx-border-style: segments(5, 5);
+    -fx-border-radius: 999px;
+}
+
+.profile-tile.add .profile-tile-name {
+    -fx-text-fill: -ls-text-muted;
+}
+
+.profile-tile.add:hover .profile-tile-name {
+    -fx-text-fill: -ls-text;
+}
+
+.profile-tile.add:hover .profile-add-circle {
+    -fx-border-color: -ls-accent;
+}
+
+.profile-tile.add:hover .ikonli-font-icon {
+    -fx-icon-color: -ls-accent;
+}
+
+.onboarding-card {
+    -fx-padding: 32px 36px 32px 36px;
+}
+
+.onboarding-step-body {
+    -fx-spacing: 16px;
+}
+
+.onboarding-steps {
+    -fx-spacing: 8px;
+}
+
+.onboarding-step {
+    -fx-background-color: -ls-border-strong;
+    -fx-background-radius: 999px;
+    -fx-min-width: 8px;
+    -fx-pref-width: 8px;
+    -fx-max-width: 8px;
+    -fx-min-height: 8px;
+    -fx-max-height: 8px;
+}
+
+.onboarding-step.done {
+    -fx-background-color: -ls-accent-muted;
+}
+
+.onboarding-step.current {
+    -fx-background-color: -ls-accent;
+    -fx-min-width: 24px;
+    -fx-pref-width: 24px;
+    -fx-max-width: 24px;
+}
+
+.avatar-swatch {
+    -fx-background-color: transparent;
+    -fx-background-radius: 999px;
+    -fx-padding: 3px;
+    -fx-cursor: hand;
+}
+
+.avatar-swatch:hover {
+    -fx-background-color: -ls-border-strong, -ls-surface;
+    -fx-background-insets: 0, 1.5px;
+}
+
+.avatar-swatch:selected {
+    -fx-background-color: -ls-accent, -ls-surface;
+    -fx-background-insets: 0, 2px;
+}
+
+.avatar-swatch:focus-visible {
+    -fx-background-color: -ls-focus, -ls-accent, -ls-surface;
+    -fx-background-insets: -3px, 0, 2px;
+}
+
+.onboarding-status {
+    -fx-background-color: -ls-surface-sunken;
+    -fx-background-radius: 12px;
+    -fx-padding: 14px 16px 14px 14px;
+}
+
+.onboarding-ready-dot {
+    -fx-fill: -ls-success;
+}
+
+.onboarding-ready .ikonli-font-icon {
+    -fx-icon-color: -ls-on-accent;
+}
+
+.onboarding-unavailable .ikonli-font-icon {
+    -fx-icon-color: -ls-warning;
+}
+
+/* ---- Component gallery (demo only) --------------------------------------------------------------- */
+
+.gallery-column {
+    -fx-background-color: -ls-bg;
+    -fx-padding: 40px 40px 56px 40px;
+}
+
+.gallery-section-title {
+    -fx-padding: 0 0 8px 0;
+    -fx-border-color: transparent transparent -ls-border transparent;
+    -fx-border-width: 0 0 1px 0;
+    -fx-max-width: infinity;
+}
+
+.gallery-swatch {
+    -fx-background-radius: 10px;
+    -fx-background-insets: 0, 1px;
+    -fx-min-width: 64px;
+    -fx-min-height: 40px;
+}
+
+.gallery-well {
+    -fx-background-color: -ls-scrim;
+    -fx-background-radius: 14px;
+    -fx-padding: 28px;
+}
+
+.label.tooltip.gallery-tooltip {
+    -fx-max-width: 280px;
 }

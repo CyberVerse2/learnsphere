@@ -49,6 +49,8 @@ import javafx.scene.layout.VBox;
  */
 public final class ProgressPage extends PageView {
 
+    private static final double STAT_WIDTH = 200;
+
     /** Concepts shown in the mastery chart before "and N more". */
     static final int CONCEPT_LIMIT = 10;
     private static final DateTimeFormatter DAY_MONTH = DateTimeFormatter.ofPattern("d MMM", Locale.ENGLISH);
@@ -148,7 +150,11 @@ public final class ProgressPage extends PageView {
             accuracy.format(v -> Math.round(v) + "%");
             accuracy.countTo(Math.round(p.accuracy() * 100));
         }
-        StatTile time = new StatTile("Time studied", Formats.hours(p.studyTimeMs())).detail("In study sessions", Tone.NEUTRAL);
+        long minutes = Math.round(p.studyTimeMs() / 60_000.0);
+        StatTile time = minutes < 60
+                ? new StatTile("Time studied", minutes).unit("min")
+                : new StatTile("Time studied", Formats.hours(p.studyTimeMs())).unit("h");
+        time.detail("In study sessions", Tone.NEUTRAL);
         ProgressRing ring = new ProgressRing(56, 6);
         ring.setProgress(p.progress());
         StatTile progress = new StatTile("Course progress", Formats.percent(p.progress())).graphic(ring)
@@ -160,6 +166,8 @@ public final class ProgressPage extends PageView {
         HBox row = new HBox(16);
         row.getStyleClass().add("stat-row");
         for (StatTile tile : tiles) {
+            // Equal starting widths, so the tiles share the row evenly.
+            tile.setPrefWidth(STAT_WIDTH);
             tile.setMaxWidth(Double.MAX_VALUE);
             HBox.setHgrow(tile, Priority.ALWAYS);
             row.getChildren().add(tile);

@@ -152,7 +152,7 @@ public final class HomePage extends PageView {
         card.getStyleClass().add("week-card");
         card.setMinWidth(300);
         card.setPrefWidth(330);
-        Label title = new Label("This week");
+        Label title = new Label("Last 7 days");
         title.getStyleClass().add("text-heading");
         Label streak = new Label(d.streakDays() == 0 ? "Start a streak today"
                 : Formats.count(d.streakDays(), "day", "days") + " in a row");
@@ -163,7 +163,7 @@ public final class HomePage extends PageView {
         strip.setDays(d.week().stream().map(day -> new WeekStrip.Day(Formats.weekdayInitial(day.date()),
                 day.reviews(), day.today())).toList());
         int total = d.week().stream().mapToInt(DayActivity::reviews).sum();
-        Label caption = new Label(Formats.count(total, "review", "reviews") + " this week");
+        Label caption = new Label(Formats.count(total, "review", "reviews") + " in the last 7 days");
         caption.getStyleClass().add("text-caption");
         card.getChildren().addAll(head, strip, caption);
         card.setSpacing(14);

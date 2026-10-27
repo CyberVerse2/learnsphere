@@ -237,6 +237,7 @@ public final class StudyPage implements View {
             Label text = new Label(choice);
             text.getStyleClass().add("option-text");
             text.setWrapText(true);
+            text.setMaxWidth(Double.MAX_VALUE);
             HBox.setHgrow(text, Priority.ALWAYS);
             StackPane mark = new StackPane();
             mark.getStyleClass().add("option-mark");
@@ -469,10 +470,9 @@ public final class StudyPage implements View {
             Button from = new Button("From your material: " + source.documentTitle() + ", "
                     + Formats.pages(source.pageStart(), source.pageEnd()), Icons.of(Feather.BOOK_OPEN, 14));
             from.getStyleClass().addAll("quiet", "small", "source-link");
-            from.setOnAction(event -> navigator.navigate(new Destination.Ask(session.courseId() == null
-                    ? "" : session.courseId(), null, new Citation(1, source.chunkId(), source.documentId(),
-                    source.documentTitle(), source.pageStart(), source.pageEnd(), ""))));
-            from.setDisable(session.courseId() == null);
+            Citation citation = new Citation(1, source.chunkId(), source.documentId(), source.documentTitle(),
+                    source.pageStart(), source.pageEnd(), "");
+            from.setOnAction(event -> openSource(citation));
             meta.getChildren().add(from);
         }
         Label next = new Label(Formats.nextReview(result.nextDueAt(), context.clock()) + ".");
@@ -491,6 +491,21 @@ public final class StudyPage implements View {
         VBox wrapper = new VBox(20, panel, actions);
         Motion.fadeIn(wrapper, Motion.ROUTE);
         return wrapper;
+    }
+
+    /** Opens Ask on the cited page; a mixed session finds the course through the document. */
+    private void openSource(Citation citation) {
+        if (session.courseId() != null) {
+            navigator.navigate(new Destination.Ask(session.courseId(), null, citation));
+            return;
+        }
+        Workspace workspace = context.workspace();
+        if (workspace == null) {
+            return;
+        }
+        disposer.add(UiTasks.run(() -> workspace.documents().get(citation.documentId()).courseId(),
+                courseId -> navigator.navigate(new Destination.Ask(courseId, null, citation)),
+                message -> Toasts.error(root, message)));
     }
 
     private void advance() {

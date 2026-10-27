@@ -51,7 +51,9 @@ public final class ScreenshotTour {
     public static final int WIDTH = 1440;
     public static final int HEIGHT = 900;
 
-    private static final Duration SETTLE_TIMEOUT = Duration.ofSeconds(20);
+    private static final Duration SETTLE_TIMEOUT = Duration.ofMinutes(2);
+    /** Longer than the longest standard animation (progress, 600 ms). */
+    private static final Duration ANIMATION_SETTLE = Duration.ofMillis(900);
 
     /**
      * One screen to capture: {@code prepare} puts the window in the state to capture; {@code then}, when not
@@ -197,6 +199,7 @@ public final class ScreenshotTour {
                         settle();
                     }
                     Path file = out.resolve(shot.name() + "-" + preference.code() + ".png");
+                    System.out.println("Rendering " + file.getFileName());
                     Path full = out.resolve(shot.name() + "-full-" + preference.code() + ".png");
                     files.addAll(onFx(() -> {
                         try {
@@ -220,7 +223,10 @@ public final class ScreenshotTour {
     private record Capture(MainWindow window, Scene scene, Theme theme) {
     }
 
-    /** Waits for background loads and the FX updates they queue (twice, for loads started by results). */
+    /**
+     * Waits for background loads and the FX updates they queue (twice, for loads started by results), then
+     * for entrance and progress animations to finish.
+     */
     private static void settle() throws Exception {
         for (int round = 0; round < 2; round++) {
             if (!UiExecutors.awaitIdle(SETTLE_TIMEOUT)) {
@@ -228,6 +234,8 @@ public final class ScreenshotTour {
             }
             onFx(() -> null);
         }
+        Thread.sleep(ANIMATION_SETTLE.toMillis());
+        onFx(() -> null);
     }
 
     private static <T> T onFx(Callable<T> action) throws Exception {
@@ -248,6 +256,7 @@ public final class ScreenshotTour {
         node.layout();
         SnapshotParameters parameters = new SnapshotParameters();
         parameters.setFill(Color.TRANSPARENT);
+        parameters.setViewport(new javafx.geometry.Rectangle2D(0, 0, node.getWidth(), node.getHeight()));
         WritableImage image = node.snapshot(parameters, null);
         ImageIO.write(SwingFXUtils.fromFXImage(image, null), "png", file.toFile());
         return file;

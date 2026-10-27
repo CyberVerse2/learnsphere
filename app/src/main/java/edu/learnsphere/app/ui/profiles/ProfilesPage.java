@@ -17,7 +17,6 @@ import java.util.List;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
-import javafx.scene.control.ContentDisplay;
 import javafx.scene.control.Label;
 import javafx.scene.control.PasswordField;
 import javafx.scene.layout.FlowPane;
@@ -51,6 +50,7 @@ public final class ProfilesPage implements View {
         Label subtitle = new Label("Each profile keeps its own courses and progress.");
         subtitle.getStyleClass().add("text-muted");
         tiles.setAlignment(Pos.CENTER);
+        tiles.setRowValignment(javafx.geometry.VPos.TOP);
         tiles.setPrefWrapLength(4 * 180);
         tiles.setMaxWidth(4 * 200);
         unlock.setAlignment(Pos.CENTER);
@@ -93,9 +93,13 @@ public final class ProfilesPage implements View {
             boolean current = open != null && open.profile().id().equals(profile.id());
             tiles.getChildren().add(tile(profile, current));
         }
-        Button add = new Button("Add a profile", plus());
+        Label addLabel = new Label("Add a profile");
+        addLabel.getStyleClass().add("profile-tile-name");
+        VBox addBox = new VBox(10, plus(), addLabel);
+        addBox.setAlignment(Pos.TOP_CENTER);
+        Button add = new Button(null, addBox);
         add.getStyleClass().addAll("profile-tile", "add");
-        add.setContentDisplay(ContentDisplay.TOP);
+        add.setAccessibleText("Add a profile");
         add.setOnAction(event -> navigator.navigate(Destination.ONBOARDING));
         tiles.getChildren().add(add);
     }
@@ -112,7 +116,7 @@ public final class ProfilesPage implements View {
         if (profile.passwordProtected()) {
             box.getChildren().add(Icons.of(Feather.LOCK, 14));
         }
-        box.setAlignment(Pos.CENTER);
+        box.setAlignment(Pos.TOP_CENTER);
         Button tile = new Button(null, box);
         tile.getStyleClass().add("profile-tile");
         if (current) {

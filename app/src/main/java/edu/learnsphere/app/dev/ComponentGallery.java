@@ -80,6 +80,8 @@ public final class ComponentGallery implements View {
 
     /** Width of one appearance's column. */
     public static final double COLUMN_WIDTH = 640;
+    /** Narrow enough that both columns fit beside the sidebar in the smallest window. */
+    public static final double MIN_COLUMN_WIDTH = 420;
 
     private final ScrollPane root = new ScrollPane();
     private final HBox columns;
@@ -106,7 +108,7 @@ public final class ComponentGallery implements View {
     private VBox column(boolean dark) {
         VBox column = new VBox(40);
         column.getStyleClass().addAll("gallery-column", dark ? Theme.SCOPE_DARK : Theme.SCOPE_LIGHT);
-        column.setMinWidth(COLUMN_WIDTH);
+        column.setMinWidth(MIN_COLUMN_WIDTH);
         column.setPrefWidth(COLUMN_WIDTH);
         HBox.setHgrow(column, Priority.ALWAYS);
         Label title = new Label(dark ? "Dark" : "Light");

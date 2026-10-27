@@ -57,11 +57,10 @@ final class DemoProgress implements ProgressService {
                     .filter(c -> store.enrolled.contains(c.id()))
                     .sorted(Comparator.comparing((Course c) -> c.lastOpenedAt() == null ? 0L : c.lastOpenedAt()).reversed())
                     .map(c -> store.summary(c.id())).toList();
-            LocalDate monday = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
             List<DayActivity> week = new ArrayList<>();
-            for (int i = 0; i < 7; i++) {
-                LocalDate day = monday.plusDays(i);
-                week.add(new DayActivity(day, day.isAfter(today) ? 0 : store.reviewsOn(day), day.equals(today)));
+            for (int i = 6; i >= 0; i--) {
+                LocalDate day = today.minusDays(i);
+                week.add(new DayActivity(day, store.reviewsOn(day), i == 0));
             }
             return new DashboardData(store.profileName, today, studyNext(null), continuing, week, store.streakDays(),
                     store.reviewsOn(today), recentQuestions(4));

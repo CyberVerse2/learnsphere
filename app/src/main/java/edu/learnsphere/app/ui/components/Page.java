@@ -14,6 +14,8 @@ import javafx.scene.layout.VBox;
 public class Page extends ScrollPane {
 
     public static final double MAX_WIDTH = 1120;
+    /** Space between the content column and the edges of the page, either side. */
+    public static final double SIDE_PADDING = 40;
 
     private final VBox column = new VBox();
 

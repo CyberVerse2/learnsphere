@@ -679,7 +679,7 @@ final class DemoContent {
 
         String document(String title, String fileName, int pages, long bytes) {
             String id = DemoStore.newId();
-            String sha = Integer.toHexString(fileName.hashCode()).repeat(8).substring(0, 64);
+            String sha = String.format("%08x", fileName.hashCode()).repeat(8);
             store.documents.put(id, new Document(id, courseId, moduleId, title, fileName, sha, bytes, pages,
                     DocumentStatus.READY, 1, null, null, now - 20 * DAY, now - 20 * DAY));
             return id;

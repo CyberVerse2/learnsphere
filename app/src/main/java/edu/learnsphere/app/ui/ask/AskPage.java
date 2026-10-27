@@ -111,6 +111,7 @@ public final class AskPage implements View {
         question.getStyleClass().add("ask-input");
         HBox.setHgrow(question, Priority.ALWAYS);
         askButton.getStyleClass().add("primary");
+        askButton.setMinWidth(Region.USE_PREF_SIZE);
         askButton.setGraphic(Icons.of(Feather.ARROW_UP, 16));
         askButton.disableProperty().bind(question.textProperty().map(String::isBlank));
         askButton.setOnAction(event -> ask());

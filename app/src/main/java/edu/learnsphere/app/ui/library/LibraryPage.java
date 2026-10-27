@@ -83,12 +83,10 @@ public final class LibraryPage extends PageView {
     }
 
     private void refresh() {
-        load(() -> new List[] {workspace().courses().list(CourseFilter.studying()),
-                workspace().courses().list(CourseFilter.creating())}, lists -> {
-                    @SuppressWarnings("unchecked")
-                    List<CourseSummary> first = lists[0];
-                    @SuppressWarnings("unchecked")
-                    List<CourseSummary> second = lists[1];
+        load(() -> List.of(workspace().courses().list(CourseFilter.studying()),
+                workspace().courses().list(CourseFilter.creating())), lists -> {
+                    List<CourseSummary> first = lists.get(0);
+                    List<CourseSummary> second = lists.get(1);
                     studying = first;
                     creating = second;
                     render();

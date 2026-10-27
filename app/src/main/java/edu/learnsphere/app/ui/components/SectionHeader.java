@@ -29,7 +29,8 @@ public final class SectionHeader extends HBox {
 
     public SectionHeader(String title) {
         getStyleClass().add("section-header");
-        setAlignment(Pos.BOTTOM_LEFT);
+        setAlignment(Pos.CENTER_LEFT);
+        setFillHeight(false);
         this.title = new Label(Objects.requireNonNull(title, "title"));
         this.title.getStyleClass().addAll("section-title", "text-heading");
         this.title.setWrapText(true);

@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Objects;
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.SimpleBooleanProperty;
+import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
@@ -39,18 +40,28 @@ public final class TopBar extends HBox {
 
     /** Longest a crumb gets before its text is shortened with an ellipsis. */
     public static final double CRUMB_MAX_WIDTH = 300;
+    private static final double GAP = 8;
+    /** How far a crumb's text sits inside its own edge. */
+    private static final double CRUMB_INSET = 6;
+    /** How far the back button's arrow sits inside its own edge. */
+    private static final double BACK_ICON_INSET = 10;
 
     private final IconButton back = new IconButton(Feather.CHEVRON_LEFT, "Back");
     private final HBox crumbs = new HBox(4);
     private final HBox trailing = new HBox(12);
     private final BooleanProperty canGoBack = new SimpleBooleanProperty(this, "canGoBack", false);
+    private double columnMaxWidth = Page.MAX_WIDTH;
+    private Node aligned;
+    private double alignedSpace = -1;
 
     public TopBar() {
         getStyleClass().add("top-bar");
         setAlignment(Pos.CENTER_LEFT);
-        setSpacing(8);
+        setSpacing(GAP);
         back.getStyleClass().add("top-bar-back");
         back.disableProperty().bind(canGoBack.not());
+        back.visibleProperty().bind(canGoBack);
+        back.managedProperty().bind(canGoBack);
         crumbs.getStyleClass().add("breadcrumbs");
         crumbs.setAlignment(Pos.CENTER_LEFT);
         crumbs.setMinWidth(0);
@@ -59,6 +70,34 @@ public final class TopBar extends HBox {
         trailing.setAlignment(Pos.CENTER_RIGHT);
         trailing.setMinWidth(Region.USE_PREF_SIZE);
         getChildren().addAll(back, crumbs, trailing);
+    }
+
+    /**
+     * The widest the content column gets: {@link Page#MAX_WIDTH} for pages (the default), or
+     * {@link Double#POSITIVE_INFINITY} for views that fill the content area with {@link Page#SIDE_PADDING} margins.
+     */
+    public void setColumnMaxWidth(double maxWidth) {
+        if (maxWidth != columnMaxWidth) {
+            columnMaxWidth = maxWidth;
+            requestLayout();
+        }
+    }
+
+    /** The back arrow, or the first crumb's text when there is no way back, starts on the content column's edge. */
+    @Override
+    protected void layoutChildren() {
+        double column = Math.max(0, (getWidth() - columnMaxWidth) / 2) + Page.SIDE_PADDING;
+        Node first = back.isManaged() ? back : crumbs;
+        double space = Math.max(0, column - snappedLeftInset() - (first == back ? BACK_ICON_INSET : CRUMB_INSET));
+        if (first != aligned || space != alignedSpace) {
+            if (aligned != null && aligned != first) {
+                HBox.setMargin(aligned, null);
+            }
+            HBox.setMargin(first, new Insets(0, 0, 0, space));
+            aligned = first;
+            alignedSpace = space;
+        }
+        super.layoutChildren();
     }
 
     /** Whether the back button is enabled. Bind it to the navigator's history. */

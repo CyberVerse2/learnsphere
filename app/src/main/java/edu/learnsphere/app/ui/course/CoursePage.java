@@ -117,7 +117,11 @@ public final class CoursePage extends PageView {
         ring.setProgress(course.progress());
         progress.graphic(ring);
         HBox stats = new HBox(16, due, progress);
-        stats.getChildren().forEach(n -> HBox.setHgrow(n, Priority.ALWAYS));
+        stats.getChildren().forEach(n -> {
+            ((Region) n).setPrefWidth(160);
+            ((Region) n).setMaxWidth(Double.MAX_VALUE);
+            HBox.setHgrow(n, Priority.ALWAYS);
+        });
 
         FlowPane chips = new FlowPane(8, 8);
         detail.concepts().stream().sorted(Comparator.comparing(ConceptMastery::name)).forEach(c ->
@@ -167,6 +171,7 @@ public final class CoursePage extends PageView {
         HBox.setHgrow(text, Priority.ALWAYS);
         Button quiz = new Button("Quiz");
         quiz.getStyleClass().addAll("quiet", "small");
+        quiz.setMinWidth(Region.USE_PREF_SIZE);
         quiz.setOnAction(event -> navigator.navigate(new Destination.Study(
                 SessionRequest.moduleQuiz(module.module().courseId(), module.module().id()))));
         HBox row = new HBox(16, rail, text, quiz);
