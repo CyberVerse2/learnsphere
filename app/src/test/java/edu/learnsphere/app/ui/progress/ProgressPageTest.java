@@ -30,7 +30,6 @@ import edu.learnsphere.core.service.StudySession;
 import edu.learnsphere.core.service.ThemePreference;
 import edu.learnsphere.core.service.Workspace;
 import edu.learnsphere.core.testing.MutableClock;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.HashMap;
@@ -43,8 +42,10 @@ import javafx.scene.control.Button;
 import javafx.scene.control.Labeled;
 import javafx.stage.Stage;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 import org.testfx.api.FxRobot;
 import org.testfx.framework.junit5.ApplicationExtension;
 import org.testfx.framework.junit5.Start;
@@ -58,7 +59,8 @@ import org.testfx.util.WaitForAsyncUtils;
 class ProgressPageTest {
 
     private Stage stage;
-    private Path dir;
+    @TempDir
+    Path dir;
     private RealWorkspaces real;
     private MainWindow window;
     private MutableClock clock;
@@ -71,10 +73,14 @@ class ProgressPageTest {
     private final List<String> missed = new java.util.ArrayList<>();
 
     @Start
-    void start(Stage stage) throws Exception {
+    void start(Stage stage) {
         this.stage = stage;
         Typography.load();
-        dir = Files.createTempDirectory("learnsphere-progress");
+    }
+
+    /** Opens the profile off the FX thread, after the stage is up. */
+    @BeforeEach
+    void openProfile() {
         clock = MutableClock.fixed();
         real = RealWorkspaces.open(dir, FakeAi.create(), clock);
     }
