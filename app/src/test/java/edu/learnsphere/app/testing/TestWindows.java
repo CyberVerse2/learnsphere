@@ -71,6 +71,16 @@ public final class TestWindows {
         WaitForAsyncUtils.waitForFxEvents();
     }
 
+    /** Reads {@code value} on the FX thread, after the events queued so far. */
+    public static <T> T fx(java.util.function.Supplier<T> value) {
+        WaitForAsyncUtils.waitForFxEvents();
+        try {
+            return WaitForAsyncUtils.asyncFx(value::get).get(10, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            throw new AssertionError("Couldn't read the value on the FX thread", e);
+        }
+    }
+
     /** The screen on display, as {@code type}. */
     public static <T extends View> T current(MainWindow window, Class<T> type) {
         View view = window.navigator().currentView();
