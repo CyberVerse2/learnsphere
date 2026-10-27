@@ -38,9 +38,14 @@ import org.slf4j.LoggerFactory;
  * background. Closing stops the jobs, then the assistant, then the index; the profile service closes the
  * database and event bus afterwards.
  *
- * <p>Settings, the study assistant and the job queue are implemented; the course, document, ask,
- * generation, item, practice, progress and sharing services throw {@link UnsupportedOperationException}
- * until their pipelines are written.
+ * <p>Starting also queues documents whose processing was interrupted (see
+ * {@link DocumentServiceImpl#resumeInterrupted()}). The document pipeline handles
+ * {@link JobKind#INGEST_DOCUMENT} jobs once its handler is {@link JobQueue#register registered}; until then
+ * they wait in the queue.
+ *
+ * <p>Settings, the study assistant, the job queue and the course, document and item services are
+ * implemented; the ask, generation, practice, progress and sharing services throw
+ * {@link UnsupportedOperationException}.
  */
 public final class WorkspaceImpl implements Workspace {
 
@@ -51,6 +56,10 @@ public final class WorkspaceImpl implements Workspace {
     private final SettingsServiceImpl settings;
     private final AssistantServiceImpl assistant;
     private final JobQueueImpl jobs;
+    private final PdfStore pdfs;
+    private final CourseServiceImpl courses;
+    private final DocumentServiceImpl documents;
+    private final ItemServiceImpl items;
     private final AtomicBoolean closed = new AtomicBoolean();
 
     private WorkspaceImpl(ProfileContext context, Capabilities capabilities) {
@@ -61,6 +70,11 @@ public final class WorkspaceImpl implements Workspace {
         this.settings = new SettingsServiceImpl(repos.settings(), context.events());
         this.assistant = new AssistantServiceImpl(capabilities.aiRuntime(), settings, context.events());
         this.jobs = new JobQueueImpl(repos.jobs(), context.events(), context.clock());
+        this.pdfs = new PdfStore(context.paths(), repos.documents());
+        this.courses = new CourseServiceImpl(repos, context.events(), context.clock(), jobs, index, pdfs);
+        this.documents = new DocumentServiceImpl(repos, context.events(), context.clock(), jobs, index, pdfs,
+                capabilities.pageRenderer(), capabilities.passageLocator());
+        this.items = new ItemServiceImpl(repos, context.events(), context.clock(), jobs);
     }
 
     /** The factory {@code ProfileServices.create(…, Capabilities)} uses. */
@@ -93,6 +107,7 @@ public final class WorkspaceImpl implements Workspace {
         if (index.needsRebuild()) {
             jobs.enqueue(JobSpec.of(JobKind.REBUILD_INDEX, null, null).withPriority(JobSpec.BACKGROUND_PRIORITY));
         }
+        documents.resumeInterrupted();
         assistant.start();
     }
 
@@ -107,6 +122,11 @@ public final class WorkspaceImpl implements Workspace {
         return index;
     }
 
+    /** The profile's stored PDFs, shared by every service that adds or removes documents. */
+    public PdfStore pdfs() {
+        return pdfs;
+    }
+
     @Override
     public ProfileSummary profile() {
         return context.profile();
@@ -114,12 +134,12 @@ public final class WorkspaceImpl implements Workspace {
 
     @Override
     public CourseService courses() {
-        return Services.COURSES;
+        return courses;
     }
 
     @Override
     public DocumentService documents() {
-        return Services.DOCUMENTS;
+        return documents;
     }
 
     @Override
@@ -134,7 +154,7 @@ public final class WorkspaceImpl implements Workspace {
 
     @Override
     public ItemService items() {
-        return Services.ITEMS;
+        return items;
     }
 
     @Override
@@ -192,11 +212,8 @@ public final class WorkspaceImpl implements Workspace {
 
     /** Services without an implementation yet. */
     private static final class Services {
-        static final CourseService COURSES = Unimplemented.service(CourseService.class);
-        static final DocumentService DOCUMENTS = Unimplemented.service(DocumentService.class);
         static final AskService ASK = Unimplemented.service(AskService.class);
         static final GenerationService GENERATION = Unimplemented.service(GenerationService.class);
-        static final ItemService ITEMS = Unimplemented.service(ItemService.class);
         static final PracticeService PRACTICE = Unimplemented.service(PracticeService.class);
         static final ProgressService PROGRESS = Unimplemented.service(ProgressService.class);
         static final SharingService SHARING = Unimplemented.service(SharingService.class);
