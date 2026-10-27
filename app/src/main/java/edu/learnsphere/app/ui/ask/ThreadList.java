@@ -85,7 +85,7 @@ final class ThreadList extends VBox {
         newButton.setMaxWidth(Double.MAX_VALUE);
         newButton.setAlignment(Pos.CENTER_LEFT);
         newButton.setOnAction(event -> actions.newConversation());
-        Tooltip.install(newButton, tooltip("Start a new conversation (Shortcut+N)"));
+        Tooltip.install(newButton, tooltip("Start a new conversation (" + AskPage.NEW_CONVERSATION.getDisplayText() + ")"));
         VBox top = new VBox(12, heading, newButton);
         top.getStyleClass().add("ask-threads-top");
 

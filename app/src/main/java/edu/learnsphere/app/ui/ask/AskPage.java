@@ -93,7 +93,8 @@ public final class AskPage implements View {
     private static final int MAX_TOPICS = 5;
     private static final PseudoClass ACTIVE = PseudoClass.getPseudoClass("active");
     private static final PseudoClass ON = PseudoClass.getPseudoClass("on");
-    private static final KeyCombination NEW_CONVERSATION = new KeyCodeCombination(KeyCode.N, KeyCombination.SHORTCUT_DOWN);
+    /** Starts a new conversation (Cmd+N on macOS, Ctrl+N elsewhere). */
+    static final KeyCombination NEW_CONVERSATION = new KeyCodeCombination(KeyCode.N, KeyCombination.SHORTCUT_DOWN);
     private static final String STYLESHEET = Objects.requireNonNull(AskPage.class.getResource("ask.css"),
             "ask.css").toExternalForm();
 
@@ -351,7 +352,7 @@ public final class AskPage implements View {
     private void showFailure(UserMessage message) {
         threadList.showError(message);
         composer.setBlocked(message.text());
-        showNotice(new EmptyState(EmptyIllustration.Kind.SEARCH, "Ask couldn't open", message.text())
+        showNotice(new EmptyState(EmptyIllustration.Kind.SEARCH, "Your conversations couldn't open", message.text())
                 .secondary("Go to Library", () -> navigator.navigate(Destination.LIBRARY)));
     }
 
