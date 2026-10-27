@@ -126,13 +126,10 @@ public final class ScreenshotTour {
                         }),
                 new Shot("studio-documents-preview", window -> studio(window, new Destination.Studio(chemistry, StudioTab.DOCUMENTS)),
                         window -> fire(window, ".document-preview")),
-                new Shot("studio-pages-checked", window -> {
-                    var documents = window.context().workspace().documents();
-                    for (var document : documents.list(chemistry)) {
-                        documents.approvePages(document.id(), documents.pagesNeedingReview(document.id()).stream()
-                                .map(page -> page.pageNumber()).toList());
-                    }
-                    studio(window, new Destination.Studio(chemistry, StudioTab.PAGES));
+                new Shot("studio-pages-checked", window -> studio(window,
+                        new Destination.Studio(chemistry, StudioTab.PAGES)), window -> {
+                    fire(window, ".approve-all");
+                    fire(window, ".modal-confirm");
                 }),
                 new Shot("studio-publish-exported", window -> {
                     window.context().workspace().courses().publish(chemistry, "First edition for the spring term.");

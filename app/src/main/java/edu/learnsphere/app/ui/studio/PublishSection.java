@@ -534,7 +534,7 @@ final class PublishSection extends StudioSection {
         prompt.getStyleClass().addAll("flag-prompt");
         prompt.setWrapText(true);
         prompt.setMnemonicParsing(false);
-        VBox text = new VBox(6, reason, prompt);
+        VBox text = new VBox(4, prompt);
         if (!summary.flag().note().isBlank()) {
             Label note = new Label("“" + summary.flag().note() + "”");
             note.getStyleClass().add("flag-note");
@@ -553,7 +553,6 @@ final class PublishSection extends StudioSection {
                 openItem(summary);
             }
         });
-        HBox.setHgrow(text, Priority.ALWAYS);
         IconButton open = new IconButton(Feather.EYE, "Show the question").small();
         open.getStyleClass().add("flag-open");
         open.setOnAction(event -> openItem(summary));
@@ -567,10 +566,9 @@ final class PublishSection extends StudioSection {
                 return null;
             }, "Flag resolved");
         });
-        VBox buttons = new VBox(6, resolve, open);
-        buttons.setAlignment(Pos.TOP_RIGHT);
-        HBox row = new HBox(12, text, buttons);
-        row.setAlignment(Pos.TOP_LEFT);
+        HBox top = new HBox(8, reason, StudioUi.grow(), open, resolve);
+        top.setAlignment(Pos.CENTER_LEFT);
+        VBox row = new VBox(8, top, text);
         row.getStyleClass().add("flag-row");
         return row;
     }
