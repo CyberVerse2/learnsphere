@@ -139,15 +139,15 @@ class ChartsTest {
     // ---------------------------------------------------------------------------------------------------
 
     @Test
-    void lineChartDescribesItsFirstAndLastPoints(FxRobot robot) {
+    void lineChartDescribesEveryPoint(FxRobot robot) {
         LineChart chart = new LineChart();
         robot.interact(() -> chart.setPoints(List.of(new Point("29 Sep", 0.62), new Point("13 Oct", 0.7),
                 new Point("27 Oct", 0.81))));
 
-        assertThat(chart.getAccessibleText()).isEqualTo("29 Sep 62% to 27 Oct 81%");
+        assertThat(chart.getAccessibleText()).isEqualTo("29 Sep 62%, 13 Oct 70%, 27 Oct 81%");
 
         robot.interact(() -> chart.setFormatter(value -> Math.round(value * 10) + " of 10"));
-        assertThat(chart.getAccessibleText()).isEqualTo("29 Sep 6 of 10 to 27 Oct 8 of 10");
+        assertThat(chart.getAccessibleText()).isEqualTo("29 Sep 6 of 10, 13 Oct 7 of 10, 27 Oct 8 of 10");
         assertThatThrownBy(() -> chart.setRange(1, 1)).isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -219,11 +219,13 @@ class ChartsTest {
             chart.setMinSize(width, height);
             chart.setPrefSize(width, height);
             chart.setMaxSize(width, height);
+            // The final drawing, without the intro animation.
+            chart.setAnimated(false);
             host.getChildren().setAll(chart);
             setUp.run();
             host.applyCss();
             host.layout();
-            Canvas canvas = (Canvas) chart.getChildrenUnmodifiable().getFirst();
+            Canvas canvas = chart.canvas();
             image.set(canvas.snapshot(null, null));
         });
         return image.get();
