@@ -173,7 +173,30 @@ class LlamaImplementationsTest {
         assertThat(scores[1]).isCloseTo(1 / (1 + Math.exp(-4)), within(1e-9));
         assertThat(scores[2]).isZero();
         assertThat(server.rerankRequests().getFirst().path("documents")).hasSize(2);
-        assertThat(LlamaReranker.toProbability(0.7)).isEqualTo(0.7);
+    }
+
+    @Test
+    void probabilitiesFromTheServerAreUsedAsTheyAre() {
+        server.rerankScores((query, document) -> Double.parseDouble(document));
+        LlamaReranker reranker = new LlamaReranker(server.endpoints(), client);
+        assertThat(reranker.score("q", List.of("0.2", "0.9", "1.0", "0"), CancellationToken.NONE))
+                .containsExactly(0.2, 0.9, 1.0, 0.0);
+    }
+
+    @Test
+    void logitsAreTransformedTogetherSoTheOrderHolds() {
+        server.rerankScores((query, document) -> Double.parseDouble(document));
+        LlamaReranker reranker = new LlamaReranker(server.endpoints(), client);
+
+        double[] scores = reranker.score("q", List.of("0.9", "1.1", "-2"), CancellationToken.NONE);
+
+        assertThat(scores[1]).isGreaterThan(scores[0]);
+        assertThat(scores[0]).isGreaterThan(scores[2]);
+        assertThat(scores[0]).isCloseTo(1 / (1 + Math.exp(-0.9)), within(1e-9));
+        // Once the server has shown it reports logits, a later call whose scores happen to lie in 0-1 is
+        // read the same way.
+        assertThat(reranker.score("q", List.of("0.5"), CancellationToken.NONE)[0])
+                .isCloseTo(1 / (1 + Math.exp(-0.5)), within(1e-9));
     }
 
     // ------------------------------------------------------------------ structured replies

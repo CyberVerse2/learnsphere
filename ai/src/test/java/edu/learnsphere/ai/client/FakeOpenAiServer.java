@@ -23,6 +23,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
+import java.util.function.ToDoubleBiFunction;
 
 /**
  * An in-process stand-in for llama-server's OpenAI-compatible endpoints. Chat replies are scripted per
@@ -79,6 +80,12 @@ final class FakeOpenAiServer implements AutoCloseable {
     private volatile int dimensions = 4;
     private volatile CountDownLatch disconnected = new CountDownLatch(1);
     private final AtomicInteger piecesSent = new AtomicInteger();
+    private volatile ToDoubleBiFunction<String, String> rerankScore = (query, document) -> {
+        // A raw logit, like a reranker without a probability head: positive when the document shares the
+        // query's first word.
+        String first = query.split("\\s+")[0];
+        return document.toLowerCase().contains(first) ? 4.0 : -4.0;
+    };
 
     FakeOpenAiServer() throws IOException {
         server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
@@ -111,6 +118,12 @@ final class FakeOpenAiServer implements AutoCloseable {
                 return queue.size() > 1 ? queue.removeFirst() : queue.getFirst();
             }
         });
+    }
+
+    /** Scripts rerank scores from (lower-cased query, document). */
+    FakeOpenAiServer rerankScores(ToDoubleBiFunction<String, String> score) {
+        this.rerankScore = score;
+        return this;
     }
 
     FakeOpenAiServer dimensions(int dimensions) {
@@ -256,12 +269,10 @@ final class FakeOpenAiServer implements AutoCloseable {
         ArrayNode results = reply.putArray("results");
         List<JsonNode> documents = new ArrayList<>();
         body.path("documents").forEach(documents::add);
-        // Reverse order, like the server (sorted by score); a raw logit: positive when the document shares
-        // the query's first word.
-        String first = query.split("\\s+")[0];
+        // Reverse order, like the server (sorted by score).
         for (int i = documents.size() - 1; i >= 0; i--) {
-            boolean match = documents.get(i).asText().toLowerCase().contains(first);
-            results.addObject().put("index", i).put("relevance_score", match ? 4.0 : -4.0);
+            results.addObject().put("index", i)
+                    .put("relevance_score", rerankScore.applyAsDouble(query, documents.get(i).asText()));
         }
         respond(exchange, 200, Json.write(reply));
     }
