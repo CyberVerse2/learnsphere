@@ -93,8 +93,10 @@ import org.slf4j.LoggerFactory;
  *       replacing the draft's content in place.</li>
  * </ul>
  *
- * <p>Items generated so far are stored after each concept, and the job's progress is the share of the wanted
- * count stored, so a job interrupted by a restart continues with the remaining count. Study-assistant requests
+ * <p>The wanted count is a target: drafts that break their type's rules or repeat an existing item are dropped,
+ * so fewer may be stored. Drafts are stored after each concept together with the job's progress (the share of
+ * the wanted count stored, written in the same transaction), so a job interrupted by a restart continues with
+ * the remaining count. Study-assistant requests
  * wait while the assistant is starting; generation, support checks and concept extraction run at
  * {@link edu.learnsphere.core.spi.ChatPriority#USER_WAITING}, which their implementations use, and the jobs are
  * queued with {@link JobSpec#USER_PRIORITY}. Thread-safe.
