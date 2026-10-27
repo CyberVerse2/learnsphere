@@ -1,52 +1,293 @@
 package edu.learnsphere.app.ui;
 
 import edu.learnsphere.app.AppContext;
-import edu.learnsphere.app.ui.components.Page;
-import javafx.scene.control.Label;
+import edu.learnsphere.app.dev.ComponentGallery;
+import edu.learnsphere.app.theme.Motion;
+import edu.learnsphere.app.ui.ask.AskPage;
+import edu.learnsphere.app.ui.components.Overlays;
+import edu.learnsphere.app.ui.components.TopBar;
+import edu.learnsphere.app.ui.components.TopBar.Crumb;
+import edu.learnsphere.app.ui.course.CoursePage;
+import edu.learnsphere.app.ui.home.HomePage;
+import edu.learnsphere.app.ui.library.LibraryPage;
+import edu.learnsphere.app.ui.onboarding.OnboardingPage;
+import edu.learnsphere.app.ui.profiles.ProfilesPage;
+import edu.learnsphere.app.ui.progress.ProgressPage;
+import edu.learnsphere.app.ui.settings.SettingsPage;
+import edu.learnsphere.app.ui.studio.StudioPage;
+import edu.learnsphere.app.ui.study.StudyPage;
+import edu.learnsphere.core.service.Workspace;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import javafx.animation.KeyFrame;
+import javafx.animation.KeyValue;
+import javafx.animation.Timeline;
+import javafx.beans.value.ChangeListener;
+import javafx.geometry.Pos;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.Priority;
 import javafx.scene.layout.StackPane;
+import javafx.scene.layout.VBox;
+import javafx.scene.shape.Rectangle;
+import javafx.util.Duration;
 
 /**
- * The window content: the {@link Sidebar} on the left and the routed content area in the centre. Screens
- * register with {@link #navigator()} by destination type; the sidebar hides for full-screen routes (study
- * sessions, onboarding, profile choice).
+ * The window content: the {@link Sidebar} on the left, the {@link TopBar} with breadcrumbs and back above
+ * the routed content, and the overlay layers for toasts and dialogs on top. Every route has its screen
+ * registered here. The study session is focus mode: the sidebar folds away and the top bar hides;
+ * onboarding and profile choice take the whole window too.
  */
-public final class MainWindow extends BorderPane {
+public final class MainWindow extends StackPane {
 
+    /** Width of the sidebar. */
+    public static final double SIDEBAR_WIDTH = 232;
+
+    private final AppContext context;
     private final Navigator navigator;
     private final Sidebar sidebar;
+    private final StackPane sidebarHolder;
+    private final TopBar topBar = new TopBar();
+    private final AssistantIndicator assistant;
+    private final Overlays overlays;
+    private final Map<String, String> courseTitles = new ConcurrentHashMap<>();
+    private final ChangeListener<Workspace> workspaceListener = (obs, old, workspace) -> workspaceChanged(old, workspace);
+    private Timeline sidebarAnimation;
+    private double targetWidth = SIDEBAR_WIDTH;
+    private Disposer crumbScope = new Disposer();
 
     public MainWindow(AppContext context) {
-        getStyleClass().add("app-shell");
+        this.context = context;
+        getStyleClass().add("app-root");
         StackPane content = new StackPane();
         content.getStyleClass().add("content");
+        VBox.setVgrow(content, Priority.ALWAYS);
 
         navigator = new Navigator(content, MainWindow::untitledPage);
-        navigator.register(Destination.Home.class, destination -> new WelcomePage(context, navigator));
+        register(context);
 
         sidebar = new Sidebar(context, navigator);
-        setLeft(sidebar);
-        setCenter(content);
-        navigator.currentProperty().addListener((obs, old, destination) ->
-                setLeft(destination != null && destination.route().isFullScreen() ? null : sidebar));
-        navigator.reset(Destination.HOME);
+        sidebarHolder = new StackPane(sidebar);
+        sidebarHolder.getStyleClass().add("sidebar-holder");
+        sidebarHolder.setAlignment(Pos.TOP_RIGHT);
+        sidebarHolder.setMinWidth(0);
+        sidebarHolder.setPrefWidth(SIDEBAR_WIDTH);
+        sidebarHolder.setMaxWidth(SIDEBAR_WIDTH);
+        Rectangle clip = new Rectangle();
+        clip.widthProperty().bind(sidebarHolder.widthProperty());
+        clip.heightProperty().bind(sidebarHolder.heightProperty());
+        sidebarHolder.setClip(clip);
+
+        topBar.canGoBackProperty().bind(navigator.canGoBackProperty());
+        topBar.setOnBack(navigator::back);
+        assistant = new AssistantIndicator(context, navigator);
+        topBar.setTrailing(assistant);
+
+        VBox main = new VBox(topBar, content);
+        main.getStyleClass().add("main-column");
+        BorderPane shell = new BorderPane(main);
+        shell.getStyleClass().add("app-shell");
+        shell.setLeft(sidebarHolder);
+        getChildren().add(shell);
+        overlays = Overlays.install(this);
+
+        navigator.currentProperty().addListener((obs, old, destination) -> routeChanged(old, destination));
+        context.workspaceProperty().addListener(workspaceListener);
+        navigator.reset(startDestination(context));
+    }
+
+    /** Where the window opens: Home with a profile open, otherwise the profile choice or first-run welcome. */
+    public static Destination startDestination(AppContext context) {
+        if (context.workspace() != null) {
+            return Destination.HOME;
+        }
+        return context.profiles().list().isEmpty() ? Destination.ONBOARDING : Destination.PROFILES;
+    }
+
+    private void register(AppContext context) {
+        navigator.register(Destination.Home.class, d -> new HomePage(context, navigator));
+        navigator.register(Destination.Library.class, d -> new LibraryPage(context, navigator));
+        navigator.register(Destination.Course.class, d -> new CoursePage(context, navigator, d));
+        navigator.register(Destination.Ask.class, d -> new AskPage(context, navigator, d));
+        navigator.register(Destination.Study.class, d -> new StudyPage(context, navigator, d));
+        navigator.register(Destination.Progress.class, d -> new ProgressPage(context, navigator, d));
+        navigator.register(Destination.Studio.class, d -> new StudioPage(context, navigator, d));
+        navigator.register(Destination.Settings.class, d -> new SettingsPage(context, navigator));
+        navigator.register(Destination.Onboarding.class, d -> new OnboardingPage(context, navigator));
+        navigator.register(Destination.Profiles.class, d -> new ProfilesPage(context, navigator));
+        if (context.isDemo()) {
+            navigator.register(Destination.Gallery.class, d -> new ComponentGallery());
+        }
+    }
+
+    /** The application context the window shows. */
+    public AppContext context() {
+        return context;
     }
 
     public Navigator navigator() {
         return navigator;
     }
 
-    /** A screen that is not built yet: its title on an empty page. */
+    public TopBar topBar() {
+        return topBar;
+    }
+
+    public Sidebar sidebar() {
+        return sidebar;
+    }
+
+    public AssistantIndicator assistantIndicator() {
+        return assistant;
+    }
+
+    public Overlays overlays() {
+        return overlays;
+    }
+
+    /** True while the sidebar is (or is becoming) visible. */
+    public boolean isSidebarShown() {
+        return targetWidth > 0;
+    }
+
+    private void routeChanged(Destination old, Destination destination) {
+        if (destination == null) {
+            return;
+        }
+        Route route = destination.route();
+        boolean full = route.isFullScreen();
+        topBar.setVisible(!full);
+        topBar.setManaged(!full);
+        boolean animate = route.isFocusMode() || (old != null && old.route().isFocusMode());
+        showSidebar(!full, animate);
+        updateCrumbs(destination);
+    }
+
+    private void showSidebar(boolean show, boolean animate) {
+        double target = show ? SIDEBAR_WIDTH : 0;
+        if (target == targetWidth && sidebarAnimation == null) {
+            sidebarHolder.setVisible(show);
+            return;
+        }
+        targetWidth = target;
+        if (sidebarAnimation != null) {
+            sidebarAnimation.stop();
+            sidebarAnimation = null;
+        }
+        if (!animate || Motion.reduced() || getScene() == null) {
+            sidebarHolder.setPrefWidth(target);
+            sidebarHolder.setVisible(show);
+            return;
+        }
+        sidebarHolder.setVisible(true);
+        sidebarAnimation = new Timeline(new KeyFrame(Duration.millis(240),
+                new KeyValue(sidebarHolder.prefWidthProperty(), target, Motion.EASE_IN_OUT)));
+        sidebarAnimation.setOnFinished(event -> {
+            sidebarHolder.setVisible(show);
+            sidebarAnimation = null;
+        });
+        sidebarAnimation.play();
+    }
+
+    private void workspaceChanged(Workspace old, Workspace workspace) {
+        courseTitles.clear();
+        Destination current = navigator.current();
+        if (current != null && current.route() == Route.ONBOARDING) {
+            // Onboarding opens the new profile itself and finishes on its last step.
+            return;
+        }
+        if (workspace != null && old != workspace) {
+            navigator.reset(Destination.HOME);
+        } else if (workspace == null && current != null && !current.route().isFullScreen()) {
+            navigator.reset(Destination.PROFILES);
+        }
+    }
+
+    /** Breadcrumbs for {@code destination}; course names load in the background. */
+    private void updateCrumbs(Destination destination) {
+        crumbScope.dispose();
+        crumbScope = new Disposer();
+        String courseId = courseOf(destination);
+        Workspace workspace = context.workspace();
+        if (courseId == null || courseTitles.containsKey(courseId) || workspace == null) {
+            topBar.setCrumbs(crumbs(destination, courseId == null ? null : courseTitles.get(courseId)));
+            return;
+        }
+        topBar.setCrumbs(crumbs(destination, null));
+        crumbScope.add(UiTasks.run(() -> workspace.courses().summary(courseId).title(), title -> {
+            courseTitles.put(courseId, title);
+            if (destination.equals(navigator.current())) {
+                topBar.setCrumbs(crumbs(destination, title));
+            }
+        }, message -> { }));
+    }
+
+    private static String courseOf(Destination destination) {
+        return switch (destination) {
+            case Destination.Course d -> d.courseId();
+            case Destination.Ask d -> d.courseId();
+            case Destination.Studio d -> d.courseId();
+            case Destination.Progress d -> d.courseId();
+            case Destination.Study d -> d.request().courseId();
+            default -> null;
+        };
+    }
+
+    /** The crumbs for {@code destination}; {@code title} is its course's name, or null while it loads. */
+    List<Crumb> crumbs(Destination destination, String title) {
+        List<Crumb> list = new ArrayList<>();
+        switch (destination) {
+            case Destination.Course d -> {
+                list.add(link("Library", Destination.LIBRARY));
+                addTitle(list, title, null);
+            }
+            case Destination.Ask d -> {
+                list.add(link("Library", Destination.LIBRARY));
+                addTitle(list, title, new Destination.Course(d.courseId()));
+                list.add(Crumb.current("Ask"));
+            }
+            case Destination.Studio d when d.courseId() != null -> {
+                list.add(link("Studio", Destination.Studio.courses()));
+                addTitle(list, title, null);
+                list.add(Crumb.current(d.tab().title()));
+            }
+            case Destination.Progress d when d.courseId() != null -> {
+                list.add(link("Progress", Destination.Progress.overview()));
+                addTitle(list, title, null);
+            }
+            default -> list.add(Crumb.current(destination.route().title()));
+        }
+        return list;
+    }
+
+    private void addTitle(List<Crumb> list, String title, Destination target) {
+        if (title != null) {
+            list.add(target == null ? Crumb.current(title) : link(title, target));
+        }
+    }
+
+    private Crumb link(String label, Destination target) {
+        return new Crumb(label, () -> navigator.navigate(target));
+    }
+
+    /** A screen without a view: its title on an empty page. */
     private static View untitledPage(Destination destination) {
-        Label title = new Label(destination.route().title());
+        javafx.scene.control.Label title = new javafx.scene.control.Label(destination.route().title());
         title.getStyleClass().add("text-display");
-        Page page = new Page(title);
+        edu.learnsphere.app.ui.components.Page page = new edu.learnsphere.app.ui.components.Page(title);
         return () -> page;
     }
 
-    /** Disposes the screen on display (window closing). */
+    /** Disposes the screen on display and stops following the profile (window closing). */
     public void dispose() {
+        context.workspaceProperty().removeListener(workspaceListener);
+        crumbScope.dispose();
         navigator.dispose();
         sidebar.dispose();
+        assistant.dispose();
+        if (sidebarAnimation != null) {
+            sidebarAnimation.stop();
+        }
     }
 }

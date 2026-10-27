@@ -14,7 +14,9 @@ public enum Route {
     STUDY("Study"),
     PROGRESS("Progress"),
     STUDIO("Studio"),
-    SETTINGS("Settings");
+    SETTINGS("Settings"),
+    /** The component gallery (demo builds only). */
+    GALLERY("Components");
 
     private final String title;
 
@@ -29,5 +31,10 @@ public enum Route {
     /** True for screens that hide the sidebar (focus mode and first-run flows). */
     public boolean isFullScreen() {
         return this == STUDY || this == ONBOARDING || this == PROFILES;
+    }
+
+    /** True for the study session: the sidebar folds away and the session gets the whole window. */
+    public boolean isFocusMode() {
+        return this == STUDY;
     }
 }

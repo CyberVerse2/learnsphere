@@ -81,6 +81,16 @@ public final class ConfirmDialog {
         return result;
     }
 
+    /**
+     * The dialog's card on its own, without the dimmed window behind it or any behaviour, for the component
+     * gallery.
+     */
+    public Region preview() {
+        Modal modal = new Modal(new CompletableFuture<>());
+        modal.getChildren().remove(modal.card);
+        return modal.card;
+    }
+
     /** The open dialog: scrim plus card. Package-visible for tests. */
     final class Modal extends StackPane {
 

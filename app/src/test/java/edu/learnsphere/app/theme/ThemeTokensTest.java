@@ -55,8 +55,8 @@ class ThemeTokensTest {
 
     @Test
     void definesEveryTokenForLightAndDark() {
-        Map<String, String> light = block("\n.root ");
-        Map<String, String> dark = block(".root.dark ");
+        Map<String, String> light = block(".root, .theme-light ");
+        Map<String, String> dark = block(".root.dark, .theme-dark ");
         for (String[] token : TOKENS) {
             assertThat(light.get(token[0])).as("light %s", token[0]).isEqualToIgnoringCase(token[1]);
             assertThat(dark.get(token[0])).as("dark %s", token[0]).isEqualToIgnoringCase(token[2]);

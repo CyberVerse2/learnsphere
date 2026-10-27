@@ -171,7 +171,7 @@ public final class CourseCard extends Card {
     }
 
     /** The small line above the title: the author for studied courses, the publishing state for created ones. */
-    static String metaLine(CourseSummary course, Mode mode) {
+    public static String metaLine(CourseSummary course, Mode mode) {
         if (mode == Mode.CREATING) {
             if (course.status() == CourseStatus.ARCHIVED) {
                 return "Archived";

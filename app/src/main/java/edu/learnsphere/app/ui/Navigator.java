@@ -7,6 +7,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
+import javafx.beans.property.ReadOnlyBooleanProperty;
+import javafx.beans.property.ReadOnlyBooleanWrapper;
 import javafx.beans.property.ReadOnlyObjectProperty;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.scene.layout.Region;
@@ -29,6 +31,7 @@ public final class Navigator {
     private final Function<Destination, ? extends View> fallback;
     private final ReadOnlyObjectWrapper<Destination> current = new ReadOnlyObjectWrapper<>(this, "current");
     private final Deque<Destination> history = new ArrayDeque<>();
+    private final ReadOnlyBooleanWrapper canGoBack = new ReadOnlyBooleanWrapper(this, "canGoBack", false);
     private View currentView;
 
     /**
@@ -82,6 +85,7 @@ public final class Navigator {
         if (previous != null) {
             history.push(previous);
         }
+        canGoBack.set(!history.isEmpty());
     }
 
     /** Shows {@code destination} without a transition and clears history (start-up, profile switch, screenshots). */
@@ -90,6 +94,7 @@ public final class Navigator {
         Objects.requireNonNull(destination, "destination");
         show(destination, false);
         history.clear();
+        canGoBack.set(false);
     }
 
     /** Returns to the previous destination; false when there is none. */
@@ -101,11 +106,32 @@ public final class Navigator {
         }
         show(previous, true);
         history.pop();
+        canGoBack.set(!history.isEmpty());
         return true;
     }
 
     public boolean canGoBack() {
         return !history.isEmpty();
+    }
+
+    /** True while there is somewhere to go back to (binds the back button). */
+    public ReadOnlyBooleanProperty canGoBackProperty() {
+        return canGoBack.getReadOnlyProperty();
+    }
+
+    /**
+     * Replaces the destination on screen without a transition or a history entry: for a screen that changes
+     * what it shows in place (a new conversation, another tab) so back and the breadcrumbs stay right. The
+     * view is rebuilt only when {@code rebuild} is true.
+     */
+    public void replace(Destination destination, boolean rebuild) {
+        Fx.requireFxThread();
+        Objects.requireNonNull(destination, "destination");
+        if (rebuild) {
+            show(destination, false);
+        } else {
+            current.set(destination);
+        }
     }
 
     /** Disposes the view on screen and empties the content area (window closing). */
@@ -115,6 +141,7 @@ public final class Navigator {
         currentView = null;
         host.getChildren().clear();
         history.clear();
+        canGoBack.set(false);
         current.set(null);
         if (old != null) {
             dispose(old);

@@ -89,6 +89,11 @@ public final class AppPaths {
         return home().resolve("app-settings.json");
     }
 
+    /** The main window's last size and position, see {@code WindowStateStore} in the app module. */
+    public Path windowStateFile() {
+        return home().resolve("window.json");
+    }
+
     /** Application and AI process logs. */
     public Path logsDir() {
         return directory(home.resolve("logs"));

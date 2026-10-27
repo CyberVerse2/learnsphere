@@ -6,7 +6,12 @@ import edu.learnsphere.app.theme.Theme;
 import edu.learnsphere.app.theme.Typography;
 import edu.learnsphere.app.ui.Destination;
 import edu.learnsphere.app.ui.MainWindow;
+import edu.learnsphere.app.ui.StudioTab;
 import edu.learnsphere.app.ui.UiExecutors;
+import edu.learnsphere.app.ui.library.LibraryPage;
+import edu.learnsphere.app.ui.study.StudyPage;
+import edu.learnsphere.core.model.Citation;
+import edu.learnsphere.core.service.SessionRequest;
 import edu.learnsphere.core.service.ThemePreference;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -20,7 +25,15 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import javafx.application.Platform;
 import javafx.embed.swing.SwingFXUtils;
+import javafx.event.Event;
+import javafx.scene.Node;
 import javafx.scene.Scene;
+import javafx.scene.control.TextInputControl;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyEvent;
+import javafx.scene.SnapshotParameters;
+import javafx.scene.layout.Region;
+import javafx.scene.paint.Color;
 import javafx.scene.image.WritableImage;
 import javax.imageio.ImageIO;
 
@@ -40,15 +53,88 @@ public final class ScreenshotTour {
 
     private static final Duration SETTLE_TIMEOUT = Duration.ofSeconds(20);
 
-    /** One screen to capture: {@code prepare} sets up the window before rendering. */
-    public record Shot(String name, Consumer<MainWindow> prepare) {
+    /**
+     * One screen to capture: {@code prepare} puts the window in the state to capture; {@code then}, when not
+     * null, runs once that state has loaded (to answer a question, say) and the window settles again.
+     */
+    public record Shot(String name, Consumer<MainWindow> prepare, Consumer<MainWindow> then) {
+
+        public Shot(String name, Consumer<MainWindow> prepare) {
+            this(name, prepare, null);
+        }
+
+        /** A shot of {@code destination}. */
+        static Shot of(String name, Destination destination) {
+            return new Shot(name, window -> window.navigator().reset(destination));
+        }
     }
 
     private ScreenshotTour() {
     }
 
+    /** Every route, a few states worth seeing, and the component gallery. */
     static List<Shot> shots() {
-        return List.of(new Shot("shell", window -> window.navigator().reset(Destination.HOME)));
+        String os = DemoContent.OPERATING_SYSTEMS;
+        String chemistry = DemoContent.ORGANIC_CHEMISTRY;
+        return List.of(
+                Shot.of("home", Destination.HOME),
+                Shot.of("library", Destination.LIBRARY),
+                new Shot("library-creating", window -> {
+                    window.navigator().reset(Destination.LIBRARY);
+                    if (window.navigator().currentView() instanceof LibraryPage library) {
+                        library.shelf().setValue(LibraryPage.Shelf.CREATING);
+                    }
+                }),
+                Shot.of("course", new Destination.Course(os)),
+                new Shot("ask", window -> window.navigator().reset(askWithSource(window, os))),
+                Shot.of("study", new Destination.Study(SessionRequest.studyNext())),
+                new Shot("study-feedback", window -> window.navigator().reset(new Destination.Study(SessionRequest.studyNext())),
+                        ScreenshotTour::answerFirstQuestion),
+                Shot.of("progress", Destination.Progress.overview()),
+                Shot.of("progress-course", new Destination.Progress(os)),
+                Shot.of("studio", Destination.Studio.courses()),
+                Shot.of("studio-review", new Destination.Studio(chemistry, StudioTab.REVIEW)),
+                Shot.of("studio-documents", new Destination.Studio(chemistry, StudioTab.DOCUMENTS)),
+                Shot.of("studio-pages", new Destination.Studio(chemistry, StudioTab.PAGES)),
+                Shot.of("studio-details", new Destination.Studio(chemistry, StudioTab.DETAILS)),
+                Shot.of("studio-publish", new Destination.Studio(chemistry, StudioTab.PUBLISH)),
+                Shot.of("settings", Destination.SETTINGS),
+                Shot.of("profiles", Destination.PROFILES),
+                Shot.of("onboarding", Destination.ONBOARDING),
+                Shot.of("gallery", Destination.GALLERY));
+    }
+
+    /** The demo conversation about {@code courseId} with its first citation open in the source viewer. */
+    private static Destination askWithSource(MainWindow window, String courseId) {
+        var ask = window.context().workspace().ask();
+        var thread = ask.threads(courseId).getFirst();
+        Citation first = ask.messages(thread.id()).stream().flatMap(m -> m.citations().stream()).findFirst().orElse(null);
+        return new Destination.Ask(courseId, thread.id(), first);
+    }
+
+    /**
+     * Answers the question on screen through the keyboard, as a learner would: the second option (or a typed
+     * answer, or turning a flashcard and rating it Good), then Enter.
+     */
+    private static void answerFirstQuestion(MainWindow window) {
+        if (!(window.navigator().currentView() instanceof StudyPage study)) {
+            return;
+        }
+        Node root = study.root();
+        if (root.lookup(".study-input") instanceof TextInputControl input) {
+            input.setText("The time a process waits in the ready queue");
+            press(root, KeyCode.ENTER, "\r");
+        } else if (root.lookup(".flashcard") != null) {
+            press(root, KeyCode.SPACE, " ");
+            press(root, KeyCode.DIGIT3, "3");
+        } else {
+            press(root, KeyCode.DIGIT2, "2");
+            press(root, KeyCode.ENTER, "\r");
+        }
+    }
+
+    private static void press(Node target, KeyCode code, String text) {
+        Event.fireEvent(target, new KeyEvent(KeyEvent.KEY_PRESSED, text, text, code, false, false, false, false));
     }
 
     public static void main(String[] args) {
@@ -103,10 +189,23 @@ public final class ScreenshotTour {
                         return new Capture(window, scene, theme);
                     });
                     settle();
+                    if (shot.then() != null) {
+                        onFx(() -> {
+                            shot.then().accept(capture.window());
+                            return null;
+                        });
+                        settle();
+                    }
                     Path file = out.resolve(shot.name() + "-" + preference.code() + ".png");
-                    files.add(onFx(() -> {
+                    Path full = out.resolve(shot.name() + "-full-" + preference.code() + ".png");
+                    files.addAll(onFx(() -> {
                         try {
-                            return write(capture.scene(), file);
+                            List<Path> written = new ArrayList<>();
+                            written.add(write(capture.scene(), file));
+                            if (capture.window().navigator().currentView() instanceof ComponentGallery gallery) {
+                                written.add(writeNode(gallery.content(), full));
+                            }
+                            return written;
                         } finally {
                             capture.window().dispose();
                             capture.theme().dispose();
@@ -141,6 +240,17 @@ public final class ScreenshotTour {
             }
         });
         return result.get(2, TimeUnit.MINUTES);
+    }
+
+    /** Writes {@code node} at its full laid-out size (the whole gallery, beyond the window's height). */
+    private static Path writeNode(Region node, Path file) throws IOException {
+        node.applyCss();
+        node.layout();
+        SnapshotParameters parameters = new SnapshotParameters();
+        parameters.setFill(Color.TRANSPARENT);
+        WritableImage image = node.snapshot(parameters, null);
+        ImageIO.write(SwingFXUtils.fromFXImage(image, null), "png", file.toFile());
+        return file;
     }
 
     private static Path write(Scene scene, Path file) throws IOException {

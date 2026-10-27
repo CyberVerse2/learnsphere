@@ -89,6 +89,14 @@ public final class Toasts {
         return toast;
     }
 
+    /**
+     * A toast that is not shown in a window and never times out, for the component gallery and tests that
+     * check its look.
+     */
+    public static Toast sample(Kind kind, String message, String actionLabel) {
+        return new Toast(kind, message, actionLabel, actionLabel == null ? null : () -> { }, Duration.INDEFINITE);
+    }
+
     /** One toast. {@link #dismiss()} closes it early. */
     public static final class Toast extends HBox {
 
