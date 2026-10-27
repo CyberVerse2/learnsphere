@@ -164,6 +164,16 @@ public final class ScreenshotTour {
                     }
                     window.navigator().reset(Destination.LIBRARY);
                 }),
+                new Shot("library-studying-empty", window -> {
+                    // Only the course made here is left, and the learner isn't studying it.
+                    Workspace workspace = window.context().workspace();
+                    workspace.courses().delete(os);
+                    workspace.courses().delete(methods);
+                    if (workspace.courses().summary(chemistry).enrolled()) {
+                        workspace.courses().leave(chemistry);
+                    }
+                    window.navigator().reset(Destination.LIBRARY);
+                }),
                 new Shot("library-new-course", window -> window.navigator().reset(Destination.LIBRARY),
                         window -> {
                             if (window.navigator().currentView() instanceof LibraryPage library) {
@@ -200,6 +210,16 @@ public final class ScreenshotTour {
                     window.navigator().navigate(new Destination.Course(os));
                 }, ScreenshotTour::scrollToBottom),
                 new Shot("course-creator", window -> {
+                    window.navigator().reset(Destination.LIBRARY);
+                    window.navigator().navigate(new Destination.Course(chemistry));
+                }),
+                new Shot("course-not-studying", window -> {
+                    window.context().workspace().courses().leave(os);
+                    window.navigator().reset(Destination.LIBRARY);
+                    window.navigator().navigate(new Destination.Course(os));
+                }),
+                new Shot("course-archived", window -> {
+                    window.context().workspace().courses().archive(chemistry);
                     window.navigator().reset(Destination.LIBRARY);
                     window.navigator().navigate(new Destination.Course(chemistry));
                 }),

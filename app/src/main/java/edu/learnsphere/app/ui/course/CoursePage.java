@@ -528,7 +528,8 @@ public final class CoursePage extends PageView {
                     : "This course has nothing to study yet. You can still ask about its material."));
         } else if (!course.enrolled()) {
             card.getChildren().add(todayHeadline("You're not studying this course"));
-            card.getChildren().add(todayDetail("Once you study it, its reviews appear on Home and in Study next."));
+            card.getChildren().add(todayDetail(course.isArchived() ? "Restore the course to study it."
+                    : "Once you study it, its reviews appear on Home and in Study next."));
         } else if (!next.caughtUp()) {
             boolean due = next.dueCount() > 0;
             Label numeral = new Label(Formats.number(due ? next.dueCount() : next.newCount()));

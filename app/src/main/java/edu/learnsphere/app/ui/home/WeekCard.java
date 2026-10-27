@@ -8,6 +8,7 @@ import edu.learnsphere.core.service.DayActivity;
 import javafx.geometry.Pos;
 import javafx.scene.control.Label;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 
 /** The last seven days on Home: the streak, reviews per day as a strip of columns, and the week's total. */
@@ -33,7 +34,11 @@ public final class WeekCard extends Card {
         total.getStyleClass().addAll("text-caption", "home-week-total");
         strip.getStyleClass().add("home-week-strip");
         VBox head = new VBox(4, overline, streak, streakHint);
-        getChildren().setAll(head, strip, total);
+        // Beside a taller Study next card, the total sits at the foot, level with that card's button.
+        VBox foot = new VBox(total);
+        foot.setAlignment(Pos.BOTTOM_LEFT);
+        VBox.setVgrow(foot, Priority.ALWAYS);
+        getChildren().setAll(head, strip, foot);
         setSpacing(18);
     }
 

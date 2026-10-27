@@ -154,8 +154,12 @@ class LibraryPageTest {
                 .isDisabled()).as("a title is needed").isTrue();
 
         robot.write("Cell Biology");
-        robot.clickOn(robot.lookup(".hue-swatch").queryAllAs(javafx.scene.control.ToggleButton.class).stream()
-                .filter(b -> b.getAccessibleText().equals("Cover colour: Coral")).findFirst().orElseThrow());
+        // Picked on the FX thread: a robot click on a small swatch can miss on a busy machine.
+        javafx.scene.control.ToggleButton coral = robot.lookup(".hue-swatch")
+                .queryAllAs(javafx.scene.control.ToggleButton.class).stream()
+                .filter(b -> b.getAccessibleText().equals("Cover colour: Coral")).findFirst().orElseThrow();
+        robot.interact(coral::fire);
+        assertThat(coral.isSelected()).isTrue();
         robot.clickOn("Create course");
         ScreenHarness.settle();
 

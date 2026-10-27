@@ -233,6 +233,8 @@
 
 .library-toolbar {
     -fx-padding: 0 0 4px 0;
+    /* As tall with or without the search field, so the shelves stay put when the library empties. */
+    -fx-min-height: 44px;
 }
 
 .segment-count {

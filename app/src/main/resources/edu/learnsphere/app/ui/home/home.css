@@ -9,7 +9,8 @@
     -fx-background-color: -ls-border, -ls-surface;
     -fx-background-insets: 0, 1px;
     -fx-background-radius: 14px, 13px;
-    -fx-padding: 28px 32px 28px 32px;
+    /* The same top and bottom as the week card beside it, so their first and last lines line up. */
+    -fx-padding: 28px 32px 24px 32px;
 }
 
 .study-hero-overline {
