@@ -223,6 +223,16 @@ public final class GenerationServiceImpl implements GenerationService {
     }
 
     @Override
+    public Set<String> extractedConceptIds(String courseId) {
+        repos.courses().get(courseId);
+        Set<String> ids = new HashSet<>();
+        for (CourseModule module : repos.modules().listByCourse(courseId)) {
+            ids.addAll(repos.concepts().extractedIds(module.id()));
+        }
+        return Set.copyOf(ids);
+    }
+
+    @Override
     public JobUpdate extractConcepts(String moduleId) {
         CourseModule module = repos.modules().get(moduleId);
         requireCreatedHere(repos.courses().get(module.courseId()));

@@ -134,6 +134,16 @@ public final class ItemServiceImpl implements ItemService {
     }
 
     @Override
+    public List<ItemDetail> listDetails(ItemFilter filter) {
+        Objects.requireNonNull(filter, "filter");
+        repos.courses().get(filter.courseId());
+        ItemQuery query = new ItemQuery(filter.courseId(), filter.moduleId(), filter.statuses(), filter.types(),
+                filter.support(), filter.origin(), filter.conceptId(), filter.search(), filter.flaggedOnly(),
+                Math.max(0, filter.limit()), Math.max(0, filter.offset()));
+        return details(filter.courseId(), repos.items().list(query));
+    }
+
+    @Override
     public List<ItemDetail> reviewQueue(String courseId, String moduleId, int limit, int offset) {
         if (limit < 1 || offset < 0) {
             throw new IllegalArgumentException("limit must be >= 1 and offset >= 0: " + limit + ", " + offset);

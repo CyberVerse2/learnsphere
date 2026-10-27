@@ -152,6 +152,21 @@ class GenerationServiceImplTest {
     }
 
     @Test
+    void namesTheConceptsTheStudyAssistantFoundUntilSomeoneRenamesThem() {
+        assertThat(generation.extractedConceptIds(course.id())).isEmpty();
+        result(await(generation.extractConcepts(module.id())), ConceptOutcome.class);
+        Map<String, Concept> found = byName(generation.concepts(course.id(), module.id()));
+        Concept manual = generation.addConcept(course.id(), module.id(), "Osmosis", "");
+
+        generation.updateConcept(found.get("Nucleus").id(), "Cell nucleus", "");
+
+        assertThat(generation.extractedConceptIds(course.id()))
+                .hasSize(4)
+                .doesNotContain(found.get("Nucleus").id(), manual.id())
+                .contains(found.get("Membrane").id());
+    }
+
+    @Test
     void conceptExtractionNeedsAReadyPdfAndAnAvailableAssistant() {
         CourseModule empty = f.t.module(course, "Genetics");
         assertThatThrownBy(() -> generation.extractConcepts(empty.id()))

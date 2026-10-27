@@ -285,6 +285,32 @@ class ItemServiceImplTest {
     }
 
     @Test
+    void listsDetailsOfFilteredItemsInAnyStatus() {
+        Document document = h.t.document(course, cells, "Cell notes");
+        Chunk chunk = h.t.chunk(document, 2, "The membrane surrounds the cell.");
+        LearningItem sourced = insert(LearningItem.draft(course.id(), cells.id(), ItemType.FLASHCARD,
+                "What surrounds the cell?", "The membrane", "", List.of(), Difficulty.MEDIUM, chunk.id(), 2, ItemOrigin.AI,
+                h.t.now()));
+        LearningItem approved = h.t.item(course, cells, ItemType.FLASHCARD, ItemStatus.APPROVED, "Approved");
+        h.t.item(course, cells, ItemType.MCQ, ItemStatus.APPROVED, "Another type");
+        items.reject(sourced.id());
+        items.addFlag(approved.id(), FlagReason.UNCLEAR, "Which cell?");
+
+        List<ItemDetail> flashcards = items.listDetails(ItemFilter.forCourse(course.id()).withTypes(ItemType.FLASHCARD));
+
+        assertThat(flashcards).extracting(d -> d.item().id()).containsExactlyInAnyOrder(sourced.id(), approved.id());
+        ItemDetail rejected = flashcards.stream().filter(d -> d.item().id().equals(sourced.id())).findFirst().orElseThrow();
+        assertThat(rejected.item().status()).isEqualTo(ItemStatus.REJECTED);
+        assertThat(rejected.source().text()).isEqualTo("The membrane surrounds the cell.");
+        ItemDetail flagged = flashcards.stream().filter(d -> d.item().id().equals(approved.id())).findFirst().orElseThrow();
+        assertThat(flagged.flags()).extracting(Flag::reason).containsExactly(FlagReason.UNCLEAR);
+        assertThat(items.listDetails(ItemFilter.forCourse(course.id()).withTypes(ItemType.FLASHCARD).withPage(1, 1)))
+                .hasSize(1);
+        assertThat(items.listDetails(ItemFilter.forCourse(course.id()).withStatuses(ItemStatus.DRAFT))).isEmpty();
+        assertThatThrownBy(() -> items.listDetails(ItemFilter.forCourse("missing"))).isInstanceOf(NotFoundException.class);
+    }
+
+    @Test
     void statisticsComeFromTheProgressSourceWhenThereIsOne() {
         LearningItem item = h.t.item(course, cells, ItemType.FLASHCARD, ItemStatus.DRAFT, "What is a cell?");
         ItemStats fromProgress = new ItemStats(item.id(), item.type(), item.prompt(), item.status(), 12, 9, 0.75, 0.8,
