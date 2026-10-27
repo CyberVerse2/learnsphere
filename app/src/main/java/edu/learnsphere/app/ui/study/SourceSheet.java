@@ -48,8 +48,8 @@ final class SourceSheet extends StackPane {
 
     /** Width of the sheet. */
     static final double WIDTH = 600;
-    /** Width the page image is shown at. */
-    private static final double PAGE_WIDTH = WIDTH - 2 * 32;
+    /** Width the page image is shown at: the sheet less its padding and room for the scroll bar. */
+    private static final double PAGE_WIDTH = WIDTH - 2 * 32 - 32;
     /** Render scale: crisp on high-density screens. */
     private static final double SCALE = 2;
 

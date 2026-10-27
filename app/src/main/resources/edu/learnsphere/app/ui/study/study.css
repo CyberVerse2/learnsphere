@@ -44,7 +44,12 @@
 }
 
 .study-centring {
-    -fx-padding: 40px 48px 64px 48px;
+    -fx-padding: 56px 48px 64px 48px;
+}
+
+/* Empty states sit in the middle of the page; a one-line message is centred too. */
+.study-stage .empty-state-message {
+    -fx-alignment: center;
 }
 
 .study-stage {
@@ -181,35 +186,36 @@
 }
 
 .text-field.study-input.cloze-field {
-    -fx-font-size: 28px;
+    -fx-font-size: 32px;
     -fx-text-fill: -ls-accent;
     -fx-prompt-text-fill: -ls-text-faint;
-    -fx-background-color: -ls-border-strong, -ls-surface-sunken;
+    -fx-highlight-fill: -ls-selection;
+    -fx-background-color: -ls-border-strong, -ls-bg;
     -fx-background-insets: 0, 0 0 2px 0;
-    -fx-background-radius: 6px 6px 0 0, 6px 6px 0 0;
-    -fx-padding: 0 10px 2px 10px;
-    -fx-min-height: 48px;
-    -fx-pref-height: 48px;
-    -fx-translate-y: 8px;
+    -fx-background-radius: 0;
+    -fx-padding: 0 6px 0 6px;
+    -fx-min-height: 44px;
+    -fx-pref-height: 44px;
 }
 
 .text-field.study-input.cloze-field:focused {
     -fx-background-color: -ls-accent, -ls-accent-soft;
     -fx-background-insets: 0, 0 0 2px 0;
+    -fx-background-radius: 4px 4px 0 0, 4px 4px 0 0;
 }
 
 .text-field.study-input.cloze-field.correct {
     -fx-text-fill: -ls-success-text;
     -fx-background-color: -ls-success, -ls-success-soft;
     -fx-background-insets: 0, 0 0 2px 0;
-    -fx-background-radius: 6px 6px 0 0, 6px 6px 0 0;
+    -fx-background-radius: 4px 4px 0 0, 4px 4px 0 0;
 }
 
 .text-field.study-input.cloze-field.wrong {
     -fx-text-fill: -ls-danger-text;
     -fx-background-color: -ls-danger, -ls-danger-soft;
     -fx-background-insets: 0, 0 0 2px 0;
-    -fx-background-radius: 6px 6px 0 0, 6px 6px 0 0;
+    -fx-background-radius: 4px 4px 0 0, 4px 4px 0 0;
 }
 
 .text-field.study-input.cloze-field.wrong .text {
@@ -217,11 +223,10 @@
 }
 
 .cloze-answer {
-    -fx-font-size: 28px;
+    -fx-font-size: 32px;
     -fx-text-fill: -ls-success-text;
-    -fx-padding: 0 4px 0 14px;
-    -fx-graphic-text-gap: 8px;
-    -fx-translate-y: 6px;
+    -fx-padding: 0 4px 0 12px;
+    -fx-graphic-text-gap: 6px;
 }
 
 .cloze-answer .ikonli-font-icon {
@@ -560,15 +565,20 @@
     -fx-background-color: -ls-border, -ls-surface, -ls-accent-muted, -ls-surface;
     -fx-background-insets: 0, 1px, 52px 1px 1px 1px, 54px 1px 1px 1px;
     -fx-background-radius: 14px, 13px, 0 0 13px 13px, 0 0 13px 13px;
-    -fx-padding: 76px 56px 56px 56px;
+    -fx-padding: 0;
     -fx-min-height: 320px;
-    -fx-alignment: center;
     -fx-effect: dropshadow(gaussian, -ls-shadow, 24, 0, 0, 8);
 }
 
-.flashcard.turned {
-    -fx-background-color: -ls-border, -ls-surface, -ls-accent-muted,
-        linear-gradient(from 0px 0px to 0px 34px, repeat, -ls-surface 0%, -ls-surface 95%, -ls-track 95%, -ls-track 100%);
+/* The index card's header line: what the card is about, written above the rule. */
+.flashcard-header {
+    -fx-min-height: 52px;
+    -fx-max-height: 52px;
+    -fx-padding: 0 24px 0 24px;
+}
+
+.flashcard-body {
+    -fx-padding: 40px 56px 48px 56px;
 }
 
 .flashcard-face {
@@ -726,7 +736,7 @@
 }
 
 .source-sheet {
-    -fx-background-color: -ls-border, -ls-raised;
+    -fx-background-color: -ls-border, -ls-bg;
     -fx-background-insets: 0, 0 0 0 1px;
     -fx-padding: 24px 32px 0 32px;
     -fx-spacing: 8px;
@@ -752,7 +762,7 @@
 }
 
 .source-content {
-    -fx-padding: 8px 0 32px 0;
+    -fx-padding: 8px 16px 32px 0;
     -fx-spacing: 24px;
 }
 

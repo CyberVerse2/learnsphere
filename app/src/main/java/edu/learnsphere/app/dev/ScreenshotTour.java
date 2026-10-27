@@ -23,6 +23,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 import javafx.application.Platform;
 import javafx.embed.swing.SwingFXUtils;
 import javafx.event.Event;
@@ -46,7 +47,8 @@ import javax.imageio.ImageIO;
  * for every capture, so each shot starts from the same demo content whatever earlier shots did (answering a
  * question changes due counts, for one) and light and dark show identical screens. Add a {@link Shot} to
  * {@link #shots()} for each new screen; it receives the main window and puts it in the state to capture.
- * Background loads finish before each capture.
+ * Background loads finish before each capture. With the environment variable {@code LEARNSPHERE_SHOTS} set
+ * (comma-separated name prefixes, e.g. {@code study}), only the matching shots are rendered.
  */
 public final class ScreenshotTour {
 
@@ -73,6 +75,33 @@ public final class ScreenshotTour {
         }
     }
 
+    /**
+     * A shot's {@code then} that takes several steps: {@code step} runs, each time once the background loads of
+     * the previous step finish, until {@code done} holds (or {@code max} steps ran); then {@code then} and
+     * {@code after} run, when not null, each once the window settles.
+     */
+    public record Steps(Predicate<MainWindow> done, Consumer<MainWindow> step, int max, Consumer<MainWindow> then,
+                        Consumer<MainWindow> after) implements Consumer<MainWindow> {
+
+        public Steps(Predicate<MainWindow> done, Consumer<MainWindow> step, int max) {
+            this(done, step, max, null, null);
+        }
+
+        /** Runs every step without waiting in between (outside the tour). */
+        @Override
+        public void accept(MainWindow window) {
+            for (int i = 0; i < max && !done.test(window); i++) {
+                step.accept(window);
+            }
+            if (then != null) {
+                then.accept(window);
+            }
+            if (after != null) {
+                after.accept(window);
+            }
+        }
+    }
+
     private ScreenshotTour() {
     }
 
@@ -80,7 +109,7 @@ public final class ScreenshotTour {
     static List<Shot> shots() {
         String os = DemoContent.OPERATING_SYSTEMS;
         String chemistry = DemoContent.ORGANIC_CHEMISTRY;
-        return List.of(
+        List<Shot> shots = new ArrayList<>(List.of(
                 Shot.of("home", Destination.HOME),
                 Shot.of("library", Destination.LIBRARY),
                 new Shot("library-creating", window -> {
@@ -112,7 +141,9 @@ public final class ScreenshotTour {
                 new Shot("onboarding-profile", window -> window.navigator().reset(Destination.ONBOARDING),
                         window -> ((javafx.scene.control.Button) window.navigator().currentView().root()
                                 .lookup(".button.primary")).fire()),
-                Shot.of("gallery", Destination.GALLERY));
+                Shot.of("gallery", Destination.GALLERY)));
+        shots.addAll(StudyShots.shots());
+        return shots;
     }
 
     /** The demo conversation about {@code courseId} with its first citation open in the source viewer. */
@@ -194,7 +225,13 @@ public final class ScreenshotTour {
         List<Path> files = new ArrayList<>();
         try (AppContext context = AppContext.create()) {
             DemoData.seedProfiles(context);
+            // LEARNSPHERE_SHOTS=study renders only the shots whose names start with "study" (comma-separated).
+            String only = System.getenv("LEARNSPHERE_SHOTS");
+            List<String> prefixes = only == null || only.isBlank() ? List.of() : List.of(only.split(","));
             for (Shot shot : shots()) {
+                if (!prefixes.isEmpty() && prefixes.stream().noneMatch(prefix -> shot.name().startsWith(prefix.strip()))) {
+                    continue;
+                }
                 for (ThemePreference preference : List.of(ThemePreference.LIGHT, ThemePreference.DARK)) {
                     // The demo profile afresh (opening it closes the previous one): every capture starts
                     // from the same content.
@@ -209,7 +246,25 @@ public final class ScreenshotTour {
                         return new Capture(window, scene, theme);
                     });
                     settle();
-                    if (shot.then() != null) {
+                    if (shot.then() instanceof Steps steps) {
+                        for (int i = 0; i < steps.max() && !onFx(() -> steps.done().test(capture.window())); i++) {
+                            onFx(() -> {
+                                steps.step().accept(capture.window());
+                                return null;
+                            });
+                            settleLoads();
+                        }
+                        settle();
+                        for (Consumer<MainWindow> next : java.util.Arrays.asList(steps.then(), steps.after())) {
+                            if (next != null) {
+                                onFx(() -> {
+                                    next.accept(capture.window());
+                                    return null;
+                                });
+                                settle();
+                            }
+                        }
+                    } else if (shot.then() != null) {
                         onFx(() -> {
                             shot.then().accept(capture.window());
                             return null;
@@ -246,14 +301,19 @@ public final class ScreenshotTour {
      * for entrance and progress animations to finish.
      */
     private static void settle() throws Exception {
+        settleLoads();
+        Thread.sleep(ANIMATION_SETTLE.toMillis());
+        onFx(() -> null);
+    }
+
+    /** Waits for background loads and the FX updates they queue (twice, for loads started by results). */
+    private static void settleLoads() throws Exception {
         for (int round = 0; round < 2; round++) {
             if (!UiExecutors.awaitIdle(SETTLE_TIMEOUT)) {
                 throw new IllegalStateException("Background loads did not finish within " + SETTLE_TIMEOUT);
             }
             onFx(() -> null);
         }
-        Thread.sleep(ANIMATION_SETTLE.toMillis());
-        onFx(() -> null);
     }
 
     private static <T> T onFx(Callable<T> action) throws Exception {

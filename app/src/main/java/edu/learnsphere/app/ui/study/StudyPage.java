@@ -37,6 +37,7 @@ import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import javafx.geometry.Bounds;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
@@ -107,6 +108,7 @@ public final class StudyPage implements View {
     private final StackPane centring = new StackPane(stage);
     private final ScrollPane scroller = new ScrollPane(centring);
     private final StackPane footer = new StackPane();
+    private final Button leaveButton = new Button("Leave session", Icons.of(Feather.X, 16));
 
     private Disposer tasks = new Disposer();
     private SessionRequest request;
@@ -141,7 +143,7 @@ public final class StudyPage implements View {
         root.getStyleClass().add("study-page");
         root.getStylesheets().add(STYLESHEET);
 
-        Button leave = new Button("Leave session", Icons.of(Feather.X, 16));
+        Button leave = leaveButton;
         leave.getStyleClass().addAll("quiet", "small", "study-leave");
         leave.setOnAction(event -> requestLeave());
         where.getStyleClass().addAll("medium", "study-where");
@@ -315,6 +317,7 @@ public final class StudyPage implements View {
         VBox prompt = new VBox(12, Skeleton.block(-1, 34), Skeleton.block(420, 34));
         stage.getChildren().setAll(Skeleton.line(180), prompt, options);
         stage.setSpacing(32);
+        stage.setAlignment(Pos.TOP_LEFT);
         footer.getChildren().clear();
     }
 
@@ -328,13 +331,18 @@ public final class StudyPage implements View {
 
     private void showEmpty(StudyNext next) {
         state = State.EMPTY;
-        String sentence = next == null ? null : StudyText.nextReview(next.nextReviewAt(), clock());
-        String body = sentence != null ? sentence
-                : request.kind() == SessionKind.MODULE_QUIZ ? "This module has no questions to answer yet."
-                : request.kind() == SessionKind.FLASHCARDS ? "This course has no flashcards to review yet."
-                : "Questions you study come back here when they're due.";
-        EmptyState empty = new EmptyState(EmptyIllustration.Kind.CAUGHT_UP, "Nothing to review right now", body)
-                .primary(homeLabel(), this::home);
+        EmptyState empty;
+        if (request.kind() == SessionKind.MODULE_QUIZ) {
+            empty = new EmptyState(EmptyIllustration.Kind.QUESTIONS, "No questions in this module yet",
+                    "Study next covers the rest of the course.").primary(homeLabel(), this::home);
+        } else {
+            String sentence = next == null ? null : StudyText.nextReview(next.nextReviewAt(), clock());
+            String body = sentence != null ? sentence
+                    : request.kind() == SessionKind.FLASHCARDS ? "Flashcards you study come back here when they're due."
+                    : "Questions you study come back here when they're due.";
+            empty = new EmptyState(EmptyIllustration.Kind.CAUGHT_UP, "Nothing to review right now", body)
+                    .primary(homeLabel(), this::home);
+        }
         showEmptyState(empty, this::home);
     }
 
@@ -356,11 +364,13 @@ public final class StudyPage implements View {
         summaryView = null;
         primary = enter;
         centring.setAlignment(Pos.CENTER);
+        stage.setAlignment(Pos.CENTER);
         stage.getChildren().setAll(empty);
         Motion.enter(stage);
         Node first = empty.actions().getChildren().isEmpty() ? null : empty.actions().getChildren().getFirst();
         footer.getChildren().setAll(first instanceof Button button
-                ? StudyParts.legend("Enter", button.getText(), "Esc", "Leave") : StudyParts.legend("Esc", "Leave"));
+                ? StudyParts.legend("Enter", button.getText(), "Esc", "Close") : StudyParts.legend("Esc", "Close"));
+        leaveButton.setText("Close");
         Fx.run(() -> {
             if (first != null) {
                 first.requestFocus();
@@ -386,15 +396,16 @@ public final class StudyPage implements View {
         hinted = false;
         shownAt = clock().millis();
         centring.setAlignment(Pos.TOP_CENTER);
+        leaveButton.setText("Leave session");
         counter.setText(queue.position() + " of " + queue.total());
         counter.setAccessibleText("Question " + queue.position() + " of " + queue.total());
         bar.setProgress(queue.finished() / (double) queue.total());
 
         List<Node> body = new ArrayList<>();
-        body.add(overline(item));
         Node focus;
         if (item.type() == ItemType.FLASHCARD) {
             flashcard = new FlashcardView(item);
+            flashcard.setHeader(overline(item));
             flashcard.setOnRate(rating -> rate(item, rating));
             flashcard.setOnTurn(() -> footer.getChildren().setAll(
                     StudyParts.legend("1", "Again", "2", "Hard", "3", "Good", "4", "Easy", "Esc", "Leave")));
@@ -406,6 +417,7 @@ public final class StudyPage implements View {
         } else {
             question = QuestionView.of(item);
             question.setOnChange(this::answerChanged);
+            body.add(overline(item));
             VBox head = new VBox(0, question.prompt());
             head.getStyleClass().add("study-question");
             body.add(head);
@@ -424,6 +436,7 @@ public final class StudyPage implements View {
             answerChanged();
         }
         stage.setSpacing(32);
+        stage.setAlignment(Pos.TOP_LEFT);
         stage.getChildren().setAll(body);
         Motion.enter(stage);
         scroller.setVvalue(0);
@@ -721,12 +734,31 @@ public final class StudyPage implements View {
         stage.getChildren().add(feedbackView.root());
         primary = this::next;
         footer.getChildren().setAll(feedbackLegend());
+        FeedbackView shown = feedbackView;
         Fx.run(() -> {
-            feedbackView.continueButton().requestFocus();
-            root.applyCss();
-            root.layout();
-            Motion.animate(scroller.vvalueProperty(), scroller.getVmax(), Motion.PROGRESS);
+            shown.continueButton().requestFocus();
+            reveal(shown.root());
         });
+    }
+
+    /**
+     * Scrolls just far enough to show all of {@code node} (the feedback and its Continue button), keeping as
+     * much of the question above it on screen as fits; a node taller than the page shows its top.
+     */
+    private void reveal(Node node) {
+        root.applyCss();
+        root.layout();
+        double viewport = scroller.getViewportBounds().getHeight();
+        double overflow = centring.getHeight() - viewport;
+        if (overflow <= 0 || node.getScene() == null) {
+            return;
+        }
+        Bounds bounds = centring.sceneToLocal(node.localToScene(node.getBoundsInLocal()));
+        double margin = 32;
+        double showBottom = bounds.getMaxY() + margin - viewport;
+        double showTop = bounds.getMinY() - margin;
+        double offset = Math.max(0, Math.min(showBottom, showTop));
+        Motion.animate(scroller.vvalueProperty(), Math.min(1, offset / overflow), Motion.PROGRESS);
     }
 
     private HBox feedbackLegend() {
@@ -849,11 +881,13 @@ public final class StudyPage implements View {
         centring.setAlignment(Pos.TOP_CENTER);
         summaryView = new SummaryView(finished.summary(), finished.extras(), clock(), this::studyMore, this::home,
                 this::progress, homeLabel());
+        stage.setAlignment(Pos.TOP_LEFT);
         stage.getChildren().setAll(summaryView.root());
         summaryView.play(finished.summary());
         Button main = summaryView.primaryButton();
         primary = main::fire;
-        footer.getChildren().setAll(StudyParts.legend("Enter", main.getText(), "Esc", "Leave"));
+        footer.getChildren().setAll(StudyParts.legend("Enter", main.getText(), "Esc", "Close"));
+        leaveButton.setText("Close");
         scroller.setVvalue(0);
         Fx.run(main::requestFocus);
     }

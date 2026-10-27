@@ -92,7 +92,7 @@ final class SummaryView {
         }
 
         answered = new StatTile("Answered", summary.answered()).framed(false);
-        StatTile time = new StatTile("Time", Formats.duration(summary.durationMs())).framed(false);
+        StatTile time = timeTile(summary.durationMs());
         StatTile learned = new StatTile("New questions", summary.newItemsLearned()).framed(false);
         StatTile streak = new StatTile("Streak", summary.streakDays()).framed(false)
                 .unit(summary.streakDays() == 1 ? "day" : "days");
@@ -106,6 +106,7 @@ final class SummaryView {
         HBox results = new HBox(48, ring, stats);
         results.setAlignment(Pos.CENTER_LEFT);
         results.getStyleClass().add("summary-results");
+        results.setMaxWidth(Region.USE_PREF_SIZE);
 
         root.getChildren().addAll(head, results);
 
@@ -151,6 +152,20 @@ final class SummaryView {
         }
         actions.getChildren().add(StudyParts.key("Enter"));
         root.getChildren().add(actions);
+    }
+
+    /** Time as a number with its unit: "&lt;1 min", "12 min", "1.5 h". */
+    static StatTile timeTile(long durationMs) {
+        long minutes = Math.round(durationMs / 60_000.0);
+        if (minutes < 1) {
+            return new StatTile("Time", "<1").unit("min").framed(false);
+        }
+        if (minutes < 60) {
+            return new StatTile("Time", minutes).unit("min").framed(false);
+        }
+        double hours = Math.round(minutes / 6.0) / 10.0;
+        String text = hours == Math.rint(hours) ? Long.toString((long) hours) : Double.toString(hours);
+        return new StatTile("Time", text).unit("h").framed(false);
     }
 
     private static Node section(String title, Node body) {

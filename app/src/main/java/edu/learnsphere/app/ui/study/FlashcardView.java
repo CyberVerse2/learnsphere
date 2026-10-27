@@ -8,6 +8,7 @@ import java.util.EnumMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
+import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
@@ -33,6 +34,8 @@ final class FlashcardView {
 
     private final SessionItem item;
     private final StackPane card = new StackPane();
+    private final StackPane body = new StackPane();
+    private final HBox header = new HBox(10);
     private final Button turnButton = new Button("Show answer");
     private final HBox turnRow;
     private final VBox ratingBox;
@@ -48,7 +51,13 @@ final class FlashcardView {
         this.item = Objects.requireNonNull(item, "item");
         card.getStyleClass().add("flashcard");
         card.setFocusTraversable(false);
-        card.getChildren().setAll(front());
+        header.getStyleClass().add("flashcard-header");
+        header.setAlignment(Pos.CENTER_LEFT);
+        StackPane.setAlignment(header, Pos.TOP_LEFT);
+        body.getStyleClass().add("flashcard-body");
+        body.getChildren().setAll(front());
+        StackPane.setMargin(body, new Insets(54, 0, 0, 0));
+        card.getChildren().setAll(body, header);
         card.setAccessibleText("Card front: " + item.prompt());
 
         turnButton.getStyleClass().addAll("primary", "large");
@@ -136,6 +145,11 @@ final class FlashcardView {
         return item;
     }
 
+    /** Puts {@code node} on the card's header line (what the card is about). */
+    void setHeader(Node node) {
+        header.getChildren().setAll(node);
+    }
+
     boolean isTurned() {
         return turned;
     }
@@ -159,7 +173,7 @@ final class FlashcardView {
             return;
         }
         turned = true;
-        Motion.flip(card, () -> card.getChildren().setAll(back()));
+        Motion.flip(card, () -> body.getChildren().setAll(back()));
         card.setAccessibleText("Card back: " + item.flashcardBack());
         card.getStyleClass().add("turned");
         turnRow.setManaged(false);

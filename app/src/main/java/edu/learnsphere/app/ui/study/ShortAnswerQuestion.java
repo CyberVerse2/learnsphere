@@ -68,6 +68,8 @@ final class ShortAnswerQuestion extends QuestionView {
     @Override
     void showResult(Feedback feedback) {
         setLocked(true);
+        // Fold the area to the answer's length so the answer stays in view above the grade.
+        area.setPrefRowCount(Math.max(1, Math.min(4, (int) Math.ceil(area.getText().strip().length() / 72.0))));
         area.getStyleClass().removeAll("correct", "partial", "wrong");
         area.getStyleClass().add(feedback.disputed() ? "correct"
                 : feedback.rating() == Rating.AGAIN ? "wrong"
