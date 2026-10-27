@@ -327,6 +327,25 @@ class LlamaServerManagerTest {
     }
 
     @Test
+    void closeEndsAServerThatIsWaitingToBeRestarted() throws Exception {
+        modes.put(ServerRole.RERANK, "hang");
+        ServerOptions slowRestart = options(1, Duration.ofSeconds(4))
+                .withTimings(Duration.ofSeconds(4), Duration.ofMillis(50), Duration.ofMinutes(10), WAIT,
+                        Duration.ofSeconds(3));
+        LlamaServerManager manager = manager(Optional.of(runtime), slowRestart);
+        manager.start(ModelChoice.AUTO);
+        waitUntil("rerank launched", () -> pids(manager).containsKey(ServerRole.RERANK));
+        long hung = manager.processIds().get(ServerRole.RERANK);
+        // It never answers, so the manager gives up on it and schedules a restart far in the future.
+        waitUntil("rerank given up on", () -> !manager.processIds().containsKey(ServerRole.RERANK));
+        assertThat(alive(hung)).isTrue();
+
+        manager.close();
+
+        assertThat(alive(hung)).isFalse();
+    }
+
+    @Test
     void theEntryPointStartsNothingAndSizesEmbeddingsFromTheModel() {
         LocalAi ai = LocalAi.create(Optional.of(runtime), TestRuntime.MACHINE_16GB, logs, options(3, Duration.ofSeconds(10)));
         toClose.add(ai);

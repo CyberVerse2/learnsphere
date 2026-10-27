@@ -216,12 +216,23 @@ public final class LlamaServerManager implements AiRuntime, EndpointProvider {
     @Override
     public void close() {
         stop();
-        Thread hook;
         synchronized (lock) {
             lifecycle = Lifecycle.CLOSED;
-            hook = shutdownHook;
-            shutdownHook = null;
             lock.notifyAll();
+        }
+        listeners.clear();
+        scheduler.shutdownNow();
+        workers.shutdownNow();
+        notifier.shutdown();
+        // Processes no slot holds any more: one waiting for a restart, or one a worker was still ending.
+        // A launch that was under way when this closed ends its own process (see runLaunch).
+        terminateAll(List.copyOf(liveProcesses));
+        Thread hook = null;
+        synchronized (lock) {
+            if (liveProcesses.isEmpty()) {
+                hook = shutdownHook;
+                shutdownHook = null;
+            }
         }
         if (hook != null) {
             try {
@@ -230,10 +241,6 @@ public final class LlamaServerManager implements AiRuntime, EndpointProvider {
                 // The JVM is already shutting down; the hook runs anyway.
             }
         }
-        listeners.clear();
-        scheduler.shutdownNow();
-        workers.shutdownNow();
-        notifier.shutdown();
         health.close();
         for (AutoCloseable resource : closeWith) {
             try {
@@ -377,7 +384,7 @@ public final class LlamaServerManager implements AiRuntime, EndpointProvider {
             setStatusLocked(new AiStatus(AiStatus.State.UNAVAILABLE, null, problem.get()));
             lock.notifyAll();
             if (!stopping.isEmpty()) {
-                workers.execute(() -> terminateAll(stopping));
+                inBackground(() -> terminateAll(stopping));
             }
             return;
         }
@@ -449,6 +456,9 @@ public final class LlamaServerManager implements AiRuntime, EndpointProvider {
             workers.execute(() -> runLaunch(slot, id, spec, previous));
         } catch (RejectedExecutionException e) {
             LOG.debug("Not launching the {} server: closing", slot.role.label());
+            if (previous != null) {
+                inBackground(() -> terminate(previous));
+            }
         }
     }
 
@@ -492,13 +502,19 @@ public final class LlamaServerManager implements AiRuntime, EndpointProvider {
             return;
         }
         liveProcesses.add(process);
+        boolean wanted;
         synchronized (lock) {
-            if (slot.launchId != id || lifecycle != Lifecycle.RUNNING) {
-                workers.execute(() -> terminate(process));
-                return;
+            wanted = slot.launchId == id && lifecycle == Lifecycle.RUNNING;
+            if (wanted) {
+                slot.process = process;
+                ensureShutdownHookLocked();
             }
-            slot.process = process;
-            ensureShutdownHookLocked();
+        }
+        if (!wanted) {
+            // Stopped or closed while launching. End it on this thread: the worker pool may already be shut down,
+            // and nothing else knows about this process.
+            terminate(process);
+            return;
         }
         LOG.info("Launched the {} server (pid {}) on port {}", role.label(), process.pid(), port);
         process.onExit().thenRun(() -> exited(slot, id, process));
@@ -621,7 +637,7 @@ public final class LlamaServerManager implements AiRuntime, EndpointProvider {
                 LOG.error("The {} server {} and was restarted {} times; giving up. See {}", slot.role.label(), reason,
                         options.maxRestarts(), logFile(slot.role));
                 if (broken != null) {
-                    workers.execute(() -> terminate(broken));
+                    inBackground(() -> terminate(broken));
                 }
             }
             updateStatusLocked();
@@ -633,7 +649,7 @@ public final class LlamaServerManager implements AiRuntime, EndpointProvider {
         synchronized (lock) {
             if (slot.launchId != id || lifecycle != Lifecycle.RUNNING) {
                 if (previous != null) {
-                    workers.execute(() -> terminate(previous));
+                    inBackground(() -> terminate(previous));
                 }
                 return;
             }
@@ -710,6 +726,18 @@ public final class LlamaServerManager implements AiRuntime, EndpointProvider {
             }
         });
         Runtime.getRuntime().addShutdownHook(shutdownHook);
+    }
+
+    /**
+     * Runs {@code work} (ending processes) on a worker, or on a thread of its own once the workers are shut down,
+     * so a process is never left running because this manager is closing.
+     */
+    private void inBackground(Runnable work) {
+        try {
+            workers.execute(work);
+        } catch (RejectedExecutionException e) {
+            Thread.ofPlatform().name("learnsphere-ai-stop").start(work);
+        }
     }
 
     /** Ends a process: politely, then forcibly after the stop timeout. Blocks until it is gone. */
