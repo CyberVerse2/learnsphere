@@ -125,6 +125,8 @@ public final class UnlockPage implements View {
         error.getStyleClass().add("unlock-error");
         error.setWrapText(true);
         error.setTextAlignment(TextAlignment.CENTER);
+        error.setAlignment(Pos.CENTER);
+        error.setMaxWidth(Double.MAX_VALUE);
         error.setAccessibleRole(AccessibleRole.TEXT);
         error.managedProperty().bind(error.textProperty().isNotEmpty());
         error.visibleProperty().bind(error.managedProperty());

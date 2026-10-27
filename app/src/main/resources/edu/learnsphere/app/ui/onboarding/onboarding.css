@@ -85,6 +85,15 @@
     -fx-stroke: -ls-border;
 }
 
+/* While it gets ready the orbit takes the accent, so the travelling moon reads as progress. */
+.assistant-orbit.starting .orbit-line {
+    -fx-stroke: -ls-accent-muted;
+}
+
+.assistant-orbit.starting .orbit-line.back {
+    -fx-stroke: -ls-border-strong;
+}
+
 .assistant-orbit .orbit-sphere {
     -fx-fill: -ls-accent-soft;
     -fx-stroke: -ls-accent-muted;

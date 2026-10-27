@@ -53,7 +53,7 @@ import org.kordamp.ikonli.feather.Feather;
 public final class ProfilesPage implements View {
 
     /** Tiles per row before wrapping. */
-    static final int TILES_PER_ROW = 4;
+    static final int TILES_PER_ROW = 5;
     private static final double TILE_WIDTH = 172;
     private static final double TILE_GAP = 20;
     private static final String STYLESHEET = Objects.requireNonNull(
@@ -223,6 +223,7 @@ public final class ProfilesPage implements View {
         name.setWrapText(true);
         name.setMaxWidth(TILE_WIDTH - 32);
         name.setTextAlignment(javafx.scene.text.TextAlignment.CENTER);
+        name.setAlignment(Pos.CENTER);
         name.setMnemonicParsing(false);
         Label meta = new Label(detail(profile, current));
         meta.getStyleClass().addAll("text-caption", "profile-tile-meta");

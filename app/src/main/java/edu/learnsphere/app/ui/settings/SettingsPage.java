@@ -191,6 +191,8 @@ public final class SettingsPage extends PageView {
         index.setMinWidth(INDEX_WIDTH);
         index.setPrefWidth(INDEX_WIDTH);
         index.setMaxWidth(INDEX_WIDTH);
+        // As tall as its items, so it can travel down beside the sections.
+        index.setMaxHeight(Region.USE_PREF_SIZE);
         for (Section section : Section.values()) {
             ToggleButton item = new ToggleButton(section.title());
             item.getStyleClass().setAll("settings-index-item");

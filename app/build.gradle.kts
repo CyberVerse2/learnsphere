@@ -85,6 +85,8 @@ tasks.register<JavaExec>("screenshots") {
     // Renders off screen: image writing needs no desktop AWT.
     jvmArgs("-Djava.awt.headless=true")
     systemProperty("learnsphere.demo", "true")
+    // -Pshots=settings,profiles renders only the shots whose names start with those words.
+    systemProperty("learnsphere.shots", providers.gradleProperty("shots").getOrElse(""))
     val outputDir = layout.buildDirectory.dir("screenshots")
     outputs.dir(outputDir)
     outputs.upToDateWhen { false }
@@ -92,6 +94,28 @@ tasks.register<JavaExec>("screenshots") {
     doFirst {
         val home = Files.createTempDirectory("learnsphere-screens")
         (this as JavaExec).systemProperty("learnsphere.home", home.toString())
+    }
+}
+
+tasks.register<JavaExec>("realRun") {
+    description = "Opens a new profile against the real study assistant off screen, waits until it is ready, " +
+        "quits and checks no assistant process is left (timings in the output, PNGs in build/real-run)."
+    group = ApplicationPlugin.APPLICATION_GROUP
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass = "edu.learnsphere.app.dev.RealRun"
+    jvmArgs(appJvmArgs)
+    jvmArgs("-Djava.awt.headless=true")
+    // -Pruntime=/path/to/runtime; the project's own runtime folder otherwise.
+    systemProperty("learnsphere.runtime",
+        providers.gradleProperty("runtime").getOrElse(rootProject.layout.projectDirectory.dir("runtime").asFile.absolutePath))
+    val outputDir = layout.buildDirectory.dir("real-run")
+    outputs.dir(outputDir)
+    outputs.upToDateWhen { false }
+    argumentProviders.add(CommandLineArgumentProvider { listOf(outputDir.get().asFile.absolutePath) })
+    doFirst {
+        val home = Files.createTempDirectory("learnsphere-real-run")
+        (this as JavaExec).systemProperty("learnsphere.home", home.toString())
+        logger.lifecycle("Real run home: $home")
     }
 }
 
