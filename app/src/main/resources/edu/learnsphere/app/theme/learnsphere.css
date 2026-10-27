@@ -1,20 +1,25 @@
 /*
  * LearnSphere theme. The single source of colours, type sizes, spacing and shapes for every screen.
  *
- * Tokens follow docs/DESIGN.md. Light values live on .root; .root.dark overrides them. Components use
- * only the -ls-* names (never literal colours). The AtlantaFX base theme's -color-* variables are mapped
- * onto the tokens so stock controls match.
+ * Tokens follow docs/DESIGN.md. Light values live on ".root, .theme-light"; ".root.dark, .theme-dark"
+ * overrides them. The scope classes let any subtree show the other appearance (the component gallery
+ * shows light and dark side by side). Components use only the -ls-* names, never literal colours. The
+ * AtlantaFX base theme's -color-* variables are mapped onto the tokens, and every stock control that the
+ * app uses is restyled below so nothing looks like a stock theme.
  *
  * Font families, weights and styles are not set here. Typography adds a generated stylesheet that gives
  * each text role and face class (.medium, .semibold, .bold, .serif, .serif-medium, .serif-italic) an exact
  * font face. This file sets sizes, line spacing and colours.
+ *
+ * Focus: keyboard focus shows a soft accent ring (:focus-visible) drawn as an outer background layer;
+ * text inputs show it whenever they are focused.
  */
 
-/* ---------------------------------------------------------------------------------------------------
+/* ===================================================================================================
  * Tokens
- * ------------------------------------------------------------------------------------------------ */
+ * ================================================================================================ */
 
-.root {
+.root, .theme-light {
     -ls-bg: #F6F3EE;
     -ls-surface: #FFFFFF;
     -ls-surface-sunken: #EFEBE4;
@@ -29,55 +34,53 @@
     -ls-danger: #B3413A;
     -ls-highlight: #FFE9A8;
 
-    /* Derived tokens (pairs checked for WCAG AA against their backgrounds). */
+    /* Derived tokens. Text/background pairs are checked for WCAG AA. */
     -ls-on-accent: #FFFFFF;
     -ls-accent-hover: #2647B8;
     -ls-accent-pressed: #203D9E;
+    -ls-accent-muted: rgba(47, 85, 212, 0.32);
+    -ls-on-danger: #FFFFFF;
+    -ls-danger-hover: #9C3731;
     -ls-success-soft: #E2F1E9;
     -ls-warning-soft: #F8ECDA;
     -ls-danger-soft: #F7E4E2;
+    -ls-success-text: #256A4C;
+    -ls-warning-text: #8F5208;
+    -ls-danger-text: #9E3630;
+    -ls-raised: #FFFFFF;
+    -ls-border-strong: #D6CFC3;
+    -ls-input-border: #D9D2C6;
+    -ls-control-border: #958E83;
+    -ls-toggle-off: #CFC8BC;
+    -ls-thumb: #FFFFFF;
+    -ls-track: #EAE5DC;
     -ls-hover: rgba(30, 28, 25, 0.05);
     -ls-pressed: rgba(30, 28, 25, 0.09);
+    -ls-selection: #C9D5FA;
     -ls-shadow: rgba(30, 28, 25, 0.06);
     -ls-shadow-hover: rgba(30, 28, 25, 0.11);
-    -ls-focus: rgba(47, 85, 212, 0.45);
-
-    /* AtlantaFX base theme mapped onto the tokens. */
-    -color-bg-default: -ls-surface;
-    -color-bg-overlay: -ls-surface;
-    -color-bg-subtle: -ls-surface-sunken;
-    -color-bg-inset: -ls-surface-sunken;
-    -color-fg-default: -ls-text;
-    -color-fg-muted: -ls-text-muted;
-    -color-fg-subtle: -ls-text-faint;
-    -color-fg-emphasis: -ls-on-accent;
-    -color-border-default: -ls-border;
-    -color-border-muted: -ls-border;
-    -color-border-subtle: -ls-border;
-    -color-shadow-default: -ls-shadow;
-    -color-accent-fg: -ls-accent;
-    -color-accent-emphasis: -ls-accent;
-    -color-accent-muted: -ls-focus;
-    -color-accent-subtle: -ls-accent-soft;
-    -color-success-fg: -ls-success;
-    -color-success-emphasis: -ls-success;
-    -color-success-muted: -ls-success-soft;
-    -color-success-subtle: -ls-success-soft;
-    -color-warning-fg: -ls-warning;
-    -color-warning-emphasis: -ls-warning;
-    -color-warning-muted: -ls-warning-soft;
-    -color-warning-subtle: -ls-warning-soft;
-    -color-danger-fg: -ls-danger;
-    -color-danger-emphasis: -ls-danger;
-    -color-danger-muted: -ls-danger-soft;
-    -color-danger-subtle: -ls-danger-soft;
-
-    -fx-background-color: -ls-bg;
-    -fx-font-size: 14px;
-    -fx-text-fill: -ls-text;
+    -ls-shadow-pop: rgba(30, 28, 25, 0.16);
+    -ls-focus: rgba(47, 85, 212, 0.42);
+    -ls-scrim: rgba(20, 19, 17, 0.36);
+    -ls-scroll-thumb: rgba(30, 28, 25, 0.20);
+    -ls-scroll-thumb-hover: rgba(30, 28, 25, 0.34);
+    -ls-tooltip-bg: #1E1C19;
+    -ls-tooltip-text: #F6F3EE;
+    -ls-toast-bg: #1E1C19;
+    -ls-toast-text: #F6F3EE;
+    -ls-toast-muted: #A59F95;
+    -ls-toast-accent: #9DB0FF;
+    -ls-toast-success: #5DBB8E;
+    -ls-toast-danger: #E5796F;
+    -ls-skeleton: #E9E4DB;
+    -ls-illo-glow: #EAE3D6;
+    -ls-illo-line: #B9B1A4;
+    -ls-illo-sphere-a: #DCE3FA;
+    -ls-illo-sphere-b: #9DB0EE;
+    -ls-page-highlight: #FFE08A;
 }
 
-.root.dark {
+.root.dark, .theme-dark {
     -ls-bg: #141311;
     -ls-surface: #1D1B19;
     -ls-surface-sunken: #100F0E;
@@ -95,19 +98,100 @@
     -ls-on-accent: #10142A;
     -ls-accent-hover: #93A8FF;
     -ls-accent-pressed: #A8B9FF;
+    -ls-accent-muted: rgba(126, 151, 255, 0.34);
+    -ls-on-danger: #1A0E0C;
+    -ls-danger-hover: #EC8F86;
     -ls-success-soft: #16291F;
     -ls-warning-soft: #2E2315;
     -ls-danger-soft: #33201D;
+    -ls-success-text: #5DBB8E;
+    -ls-warning-text: #E0A458;
+    -ls-danger-text: #E5796F;
+    -ls-raised: #24221F;
+    -ls-border-strong: #3A3631;
+    -ls-input-border: #34302B;
+    -ls-control-border: #7A746B;
+    -ls-toggle-off: #3A3631;
+    -ls-thumb: #F2EEE8;
+    -ls-track: #2A2724;
     -ls-hover: rgba(238, 234, 227, 0.05);
     -ls-pressed: rgba(238, 234, 227, 0.09);
+    -ls-selection: #2E3A6E;
     -ls-shadow: rgba(0, 0, 0, 0.32);
     -ls-shadow-hover: rgba(0, 0, 0, 0.46);
+    -ls-shadow-pop: rgba(0, 0, 0, 0.55);
     -ls-focus: rgba(126, 151, 255, 0.5);
+    -ls-scrim: rgba(0, 0, 0, 0.55);
+    -ls-scroll-thumb: rgba(238, 234, 227, 0.20);
+    -ls-scroll-thumb-hover: rgba(238, 234, 227, 0.34);
+    -ls-tooltip-bg: #EEEAE3;
+    -ls-tooltip-text: #141311;
+    -ls-toast-bg: #2A2724;
+    -ls-toast-text: #EEEAE3;
+    -ls-toast-muted: #A59F95;
+    -ls-toast-accent: #9DB0FF;
+    -ls-toast-success: #5DBB8E;
+    -ls-toast-danger: #E5796F;
+    -ls-skeleton: #262320;
+    -ls-illo-glow: #1E1C19;
+    -ls-illo-line: #4A453F;
+    -ls-illo-sphere-a: #26305A;
+    -ls-illo-sphere-b: #4D61B8;
+    /* PDF pages stay light in the dark appearance, so their highlight does too. */
+    -ls-page-highlight: #F5D36E;
 }
 
-/* ---------------------------------------------------------------------------------------------------
- * Type roles (sizes and weights; families come from Typography)
- * ------------------------------------------------------------------------------------------------ */
+/* AtlantaFX base theme mapped onto the tokens (resolved per subtree, so scoped panels follow too). */
+.root, .theme-light, .theme-dark {
+    -color-bg-default: -ls-surface;
+    -color-bg-overlay: -ls-raised;
+    -color-bg-subtle: -ls-surface-sunken;
+    -color-bg-inset: -ls-surface-sunken;
+    -color-fg-default: -ls-text;
+    -color-fg-muted: -ls-text-muted;
+    -color-fg-subtle: -ls-text-faint;
+    -color-fg-emphasis: -ls-on-accent;
+    -color-border-default: -ls-border;
+    -color-border-muted: -ls-border;
+    -color-border-subtle: -ls-border;
+    -color-shadow-default: -ls-shadow;
+    -color-accent-fg: -ls-accent;
+    -color-accent-emphasis: -ls-accent;
+    -color-accent-muted: -ls-focus;
+    -color-accent-subtle: -ls-accent-soft;
+    -color-success-fg: -ls-success-text;
+    -color-success-emphasis: -ls-success;
+    -color-success-muted: -ls-success-soft;
+    -color-success-subtle: -ls-success-soft;
+    -color-warning-fg: -ls-warning-text;
+    -color-warning-emphasis: -ls-warning;
+    -color-warning-muted: -ls-warning-soft;
+    -color-warning-subtle: -ls-warning-soft;
+    -color-danger-fg: -ls-danger-text;
+    -color-danger-emphasis: -ls-danger;
+    -color-danger-muted: -ls-danger-soft;
+    -color-danger-subtle: -ls-danger-soft;
+    -color-base-0: -ls-surface;
+    -color-base-1: -ls-surface-sunken;
+    -color-neutral-muted: -ls-hover;
+    -color-neutral-subtle: -ls-surface-sunken;
+    -color-neutral-emphasis: -ls-text-muted;
+    -color-neutral-emphasis-plus: -ls-text;
+}
+
+.root {
+    -fx-background-color: -ls-bg;
+    -fx-font-size: 14px;
+    -fx-text-fill: -ls-text;
+}
+
+/* ===================================================================================================
+ * Type roles (sizes and colours; families come from Typography)
+ * ================================================================================================ */
+
+.label {
+    -fx-text-fill: -ls-text;
+}
 
 .text-display {
     -fx-font-size: 34px;
@@ -163,13 +247,29 @@
     -fx-text-fill: -ls-accent;
 }
 
-/* ---------------------------------------------------------------------------------------------------
- * Controls
- * ------------------------------------------------------------------------------------------------ */
+.text-success {
+    -fx-text-fill: -ls-success-text;
+}
+
+.text-warning {
+    -fx-text-fill: -ls-warning-text;
+}
+
+.text-danger {
+    -fx-text-fill: -ls-danger-text;
+}
+
+.ikonli-font-icon {
+    -fx-icon-color: -ls-text-muted;
+}
+
+/* ===================================================================================================
+ * Buttons
+ * ================================================================================================ */
 
 /* Secondary (the default): surface with a hairline border. */
 .button {
-    -fx-background-color: -ls-border, -ls-surface;
+    -fx-background-color: -ls-border-strong, -ls-surface;
     -fx-background-insets: 0, 1px;
     -fx-background-radius: 10px, 9px;
     -fx-text-fill: -ls-text;
@@ -179,20 +279,25 @@
     -fx-pref-height: 40px;
     -fx-graphic-text-gap: 8px;
     -fx-cursor: hand;
+    -fx-effect: null;
 }
 
 .button:hover {
-    -fx-background-color: -ls-border, derive(-ls-surface, -3%);
+    -fx-background-color: -ls-border-strong, derive(-ls-surface, -2.5%);
 }
 
 .button:armed {
-    -fx-background-color: -ls-border, derive(-ls-surface, -6%);
+    -fx-background-color: -ls-border-strong, derive(-ls-surface, -5%);
 }
 
-.button:focused {
-    -fx-background-color: -ls-focus, -ls-surface;
-    -fx-background-insets: -2px, 1px;
-    -fx-background-radius: 12px, 9px;
+.button:focus-visible {
+    -fx-background-color: -ls-focus, -ls-border-strong, -ls-surface;
+    -fx-background-insets: -3px, 0, 1px;
+    -fx-background-radius: 13px, 10px, 9px;
+}
+
+.button:disabled {
+    -fx-opacity: 0.45;
 }
 
 .button .ikonli-font-icon {
@@ -219,8 +324,8 @@
     -fx-background-color: -ls-accent-pressed;
 }
 
-.button.primary:focused,
-.button:default:focused {
+.button.primary:focus-visible,
+.button:default:focus-visible {
     -fx-background-color: -ls-focus, -ls-accent;
     -fx-background-insets: -3px, 0;
     -fx-background-radius: 13px, 10px;
@@ -231,39 +336,986 @@
     -fx-icon-color: -ls-on-accent;
 }
 
-/* Quiet: text only. */
+/* Danger: destructive confirmations only. */
+.button.danger {
+    -fx-background-color: -ls-danger;
+    -fx-background-insets: 0;
+    -fx-background-radius: 10px;
+    -fx-text-fill: -ls-on-danger;
+}
+
+.button.danger:hover {
+    -fx-background-color: -ls-danger-hover;
+}
+
+.button.danger:armed {
+    -fx-background-color: derive(-ls-danger, -12%);
+}
+
+.button.danger:focus-visible {
+    -fx-background-color: -ls-focus, -ls-danger;
+    -fx-background-insets: -3px, 0;
+    -fx-background-radius: 13px, 10px;
+}
+
+.button.danger .ikonli-font-icon {
+    -fx-icon-color: -ls-on-danger;
+}
+
+/* Positive: a tinted secondary that confirms something is right (Approve on each card of a list). */
+.button.positive {
+    -fx-background-color: -ls-success-soft;
+    -fx-background-insets: 0;
+    -fx-background-radius: 10px;
+    -fx-text-fill: -ls-success-text;
+}
+
+.button.positive:hover {
+    -fx-background-color: -ls-success-soft, -ls-hover;
+    -fx-background-insets: 0, 0;
+    -fx-background-radius: 10px, 10px;
+}
+
+.button.positive:armed {
+    -fx-background-color: -ls-success-soft, -ls-pressed;
+    -fx-background-insets: 0, 0;
+    -fx-background-radius: 10px, 10px;
+}
+
+.button.positive:focus-visible {
+    -fx-background-color: -ls-focus, -ls-success-soft;
+    -fx-background-insets: -3px, 0;
+    -fx-background-radius: 13px, 10px;
+}
+
+.button.positive .ikonli-font-icon {
+    -fx-icon-color: -ls-success-text;
+}
+
+/* Quiet: text only, in the accent (or neutral with .neutral). */
 .button.quiet {
     -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 10px;
     -fx-text-fill: -ls-accent;
-    -fx-padding: 0 8px 0 8px;
+    -fx-padding: 0 10px 0 10px;
 }
 
 .button.quiet:hover {
     -fx-background-color: -ls-hover;
 }
 
-.button.quiet:focused {
+.button.quiet:armed {
+    -fx-background-color: -ls-pressed;
+}
+
+.button.quiet:focus-visible {
     -fx-background-color: -ls-focus, -ls-bg;
-    -fx-background-insets: -2px, 0;
-    -fx-background-radius: 12px, 10px;
+    -fx-background-insets: -3px, 0;
+    -fx-background-radius: 13px, 10px;
 }
 
 .button.quiet .ikonli-font-icon {
     -fx-icon-color: -ls-accent;
 }
 
-.ikonli-font-icon {
+.button.quiet.neutral {
+    -fx-text-fill: -ls-text-muted;
+}
+
+.button.quiet.neutral:hover {
+    -fx-text-fill: -ls-text;
+}
+
+.button.quiet.neutral .ikonli-font-icon {
     -fx-icon-color: -ls-text-muted;
 }
 
-.separator .line {
-    -fx-border-color: -ls-border;
-    -fx-border-width: 1px 0 0 0;
+.button.quiet.danger-text {
+    -fx-text-fill: -ls-danger-text;
 }
 
-/* ---------------------------------------------------------------------------------------------------
- * Surfaces
- * ------------------------------------------------------------------------------------------------ */
+.button.quiet.danger-text .ikonli-font-icon {
+    -fx-icon-color: -ls-danger-text;
+}
+
+/* Sizes. */
+.button.small {
+    -fx-min-height: 32px;
+    -fx-pref-height: 32px;
+    -fx-padding: 0 12px 0 12px;
+    -fx-font-size: 13px;
+    -fx-graphic-text-gap: 6px;
+}
+
+.button.quiet.small {
+    -fx-padding: 0 8px 0 8px;
+}
+
+.button.small .ikonli-font-icon {
+    -fx-icon-size: 14px;
+}
+
+.button.large {
+    -fx-min-height: 48px;
+    -fx-pref-height: 48px;
+    -fx-padding: 0 24px 0 24px;
+    -fx-font-size: 15px;
+    -fx-background-radius: 12px, 11px;
+}
+
+.button.primary.large {
+    -fx-background-radius: 12px;
+}
+
+/* Square icon-only button. */
+.button.icon-button {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 10px;
+    -fx-padding: 0;
+    -fx-min-width: 36px;
+    -fx-pref-width: 36px;
+    -fx-max-width: 36px;
+    -fx-min-height: 36px;
+    -fx-pref-height: 36px;
+    -fx-max-height: 36px;
+    -fx-alignment: center;
+}
+
+.button.icon-button:hover {
+    -fx-background-color: -ls-hover;
+}
+
+.button.icon-button:armed {
+    -fx-background-color: -ls-pressed;
+}
+
+.button.icon-button:focus-visible {
+    -fx-background-color: -ls-focus, -ls-bg;
+    -fx-background-insets: -2px, 1px;
+    -fx-background-radius: 12px, 9px;
+}
+
+.button.icon-button .ikonli-font-icon {
+    -fx-icon-size: 18px;
+    -fx-icon-color: -ls-text-muted;
+}
+
+.button.icon-button:hover .ikonli-font-icon {
+    -fx-icon-color: -ls-text;
+}
+
+.button.icon-button.small {
+    -fx-min-width: 28px;
+    -fx-pref-width: 28px;
+    -fx-max-width: 28px;
+    -fx-min-height: 28px;
+    -fx-pref-height: 28px;
+    -fx-max-height: 28px;
+    -fx-background-radius: 8px;
+}
+
+.button.icon-button.small .ikonli-font-icon {
+    -fx-icon-size: 15px;
+}
+
+/* Stock toggle button: secondary look, accent tint when on. */
+.toggle-button {
+    -fx-background-color: -ls-border-strong, -ls-surface;
+    -fx-background-insets: 0, 1px;
+    -fx-background-radius: 10px, 9px;
+    -fx-text-fill: -ls-text;
+    -fx-font-size: 14px;
+    -fx-padding: 0 14px 0 14px;
+    -fx-min-height: 36px;
+    -fx-pref-height: 36px;
+    -fx-cursor: hand;
+}
+
+.toggle-button:hover {
+    -fx-background-color: -ls-border-strong, derive(-ls-surface, -2.5%);
+}
+
+.toggle-button:selected {
+    -fx-background-color: -ls-accent-muted, -ls-accent-soft;
+    -fx-text-fill: -ls-text;
+}
+
+.toggle-button:focus-visible {
+    -fx-background-color: -ls-focus, -ls-border-strong, -ls-surface;
+    -fx-background-insets: -3px, 0, 1px;
+    -fx-background-radius: 13px, 10px, 9px;
+}
+
+.toggle-button:selected:focus-visible {
+    -fx-background-color: -ls-focus, -ls-accent-muted, -ls-accent-soft;
+}
+
+.toggle-button:disabled {
+    -fx-opacity: 0.45;
+}
+
+.hyperlink {
+    -fx-text-fill: -ls-accent;
+    -fx-padding: 0 2px 0 2px;
+    -fx-border-width: 0;
+    -fx-background-radius: 4px;
+    -fx-underline: false;
+    -fx-cursor: hand;
+}
+
+.hyperlink:hover {
+    -fx-underline: true;
+}
+
+.hyperlink:visited {
+    -fx-text-fill: -ls-accent;
+}
+
+.hyperlink:focus-visible {
+    -fx-background-color: -ls-focus;
+}
+
+/* Segmented control: a sunken track with the chosen option raised. */
+.segmented {
+    -fx-background-color: -ls-surface-sunken;
+    -fx-background-radius: 10px;
+    -fx-padding: 3px;
+    -fx-spacing: 2px;
+    -fx-alignment: center-left;
+}
+
+.segmented > .segment {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 8px;
+    -fx-text-fill: -ls-text-muted;
+    -fx-padding: 0 16px 0 16px;
+    -fx-min-height: 32px;
+    -fx-pref-height: 32px;
+    -fx-font-size: 14px;
+    -fx-effect: null;
+}
+
+.segmented > .segment:hover {
+    -fx-text-fill: -ls-text;
+}
+
+.segmented > .segment:selected {
+    -fx-background-color: -ls-border-strong, -ls-raised;
+    -fx-background-insets: 0, 0.5px;
+    -fx-background-radius: 8px, 7.5px;
+    -fx-text-fill: -ls-text;
+    -fx-effect: dropshadow(gaussian, -ls-shadow, 6, 0, 0, 1);
+}
+
+.segmented > .segment:focus-visible {
+    -fx-background-color: -ls-focus, -ls-surface-sunken;
+    -fx-background-insets: 0, 2px;
+    -fx-background-radius: 8px, 6px;
+}
+
+.segmented > .segment:selected:focus-visible {
+    -fx-background-color: -ls-focus, -ls-raised;
+    -fx-background-insets: 0, 2px;
+}
+
+/* ===================================================================================================
+ * Text inputs, pickers and check controls
+ * ================================================================================================ */
+
+.text-input {
+    -fx-background-color: -ls-input-border, -ls-surface-sunken;
+    -fx-background-insets: 0, 1px;
+    -fx-background-radius: 6px, 5px;
+    -fx-text-fill: -ls-text;
+    -fx-prompt-text-fill: -ls-text-faint;
+    -fx-highlight-fill: -ls-selection;
+    -fx-highlight-text-fill: -ls-text;
+    -fx-font-size: 14px;
+}
+
+.text-field {
+    -fx-padding: 0 12px 0 12px;
+    -fx-min-height: 40px;
+    -fx-pref-height: 40px;
+}
+
+.text-input:hover {
+    -fx-background-color: -ls-border-strong, -ls-surface-sunken;
+}
+
+.text-input:focused {
+    -fx-background-color: -ls-focus, -ls-accent, -ls-surface;
+    -fx-background-insets: -3px, 0, 1.5px;
+    -fx-background-radius: 9px, 6px, 4.5px;
+    -fx-prompt-text-fill: -ls-text-faint;
+}
+
+.text-input:disabled {
+    -fx-opacity: 0.5;
+}
+
+.text-input:readonly {
+    -fx-background-color: -ls-border, -ls-surface-sunken;
+}
+
+.text-area {
+    -fx-padding: 0;
+}
+
+.text-area > .scroll-pane,
+.text-area > .scroll-pane > .viewport {
+    -fx-background-color: transparent;
+}
+
+.text-area .content {
+    -fx-background-color: transparent;
+    -fx-padding: 10px 12px 10px 12px;
+    -fx-cursor: text;
+}
+
+.text-area.text-reading .content {
+    -fx-padding: 14px 16px 14px 16px;
+}
+
+/* Combo and choice boxes look like inputs with a chevron. */
+.combo-box-base,
+.choice-box {
+    -fx-background-color: -ls-input-border, -ls-surface-sunken;
+    -fx-background-insets: 0, 1px;
+    -fx-background-radius: 6px, 5px;
+    -fx-min-height: 40px;
+    -fx-pref-height: 40px;
+    -fx-padding: 0;
+    -fx-cursor: hand;
+}
+
+.combo-box-base:hover,
+.choice-box:hover {
+    -fx-background-color: -ls-border-strong, -ls-surface-sunken;
+}
+
+.combo-box-base:focused,
+.choice-box:focused,
+.combo-box-base:showing,
+.choice-box:showing {
+    -fx-background-color: -ls-focus, -ls-accent, -ls-surface;
+    -fx-background-insets: -3px, 0, 1.5px;
+    -fx-background-radius: 9px, 6px, 4.5px;
+}
+
+.combo-box > .list-cell,
+.choice-box > .label {
+    -fx-background-color: transparent;
+    -fx-text-fill: -ls-text;
+    -fx-padding: 0 4px 0 12px;
+}
+
+.combo-box-base > .arrow-button,
+.choice-box > .open-button {
+    -fx-background-color: transparent;
+    -fx-padding: 0 14px 0 8px;
+}
+
+.combo-box-base > .arrow-button > .arrow,
+.choice-box > .open-button > .arrow {
+    -fx-background-color: -ls-text-muted;
+    -fx-shape: "M1.4 0 6 4.6 10.6 0 12 1.4 6 7.4 0 1.4z";
+    -fx-scale-shape: true;
+    -fx-padding: 3.5px 6px 3.5px 6px;
+}
+
+.combo-box-popup > .list-view {
+    -fx-background-color: -ls-border-strong, -ls-raised;
+    -fx-background-insets: 0, 1px;
+    -fx-background-radius: 10px, 9px;
+    -fx-border-width: 0;
+    -fx-padding: 4px;
+    -fx-effect: dropshadow(gaussian, -ls-shadow-pop, 24, 0, 0, 8);
+}
+
+.combo-box-popup > .list-view > .virtual-flow > .clipped-container > .sheet > .list-cell {
+    -fx-background-color: transparent;
+    -fx-background-radius: 6px;
+    -fx-padding: 8px 12px 8px 12px;
+    -fx-text-fill: -ls-text;
+}
+
+.combo-box-popup > .list-view > .virtual-flow > .clipped-container > .sheet > .list-cell:filled:hover {
+    -fx-background-color: -ls-hover;
+    -fx-text-fill: -ls-text;
+}
+
+.combo-box-popup > .list-view > .virtual-flow > .clipped-container > .sheet > .list-cell:filled:selected {
+    -fx-background-color: -ls-accent-soft;
+    -fx-text-fill: -ls-text;
+}
+
+/* Check boxes: 18 px, 5 px corners, accent when on. */
+.check-box {
+    -fx-text-fill: -ls-text;
+    -fx-label-padding: 0 0 0 10px;
+    -fx-cursor: hand;
+}
+
+.check-box > .box {
+    -fx-background-color: -ls-control-border, -ls-surface;
+    -fx-background-insets: 0, 1.5px;
+    -fx-background-radius: 5px, 3.5px;
+    -fx-padding: 4px;
+}
+
+.check-box > .box > .mark {
+    -fx-background-color: transparent;
+    -fx-shape: "M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z";
+    -fx-scale-shape: true;
+    -fx-min-width: 10px;
+    -fx-min-height: 10px;
+    -fx-max-width: 10px;
+    -fx-max-height: 10px;
+    -fx-padding: 0;
+}
+
+.check-box:hover > .box {
+    -fx-background-color: -ls-text-muted, -ls-surface;
+}
+
+.check-box:selected > .box,
+.check-box:indeterminate > .box {
+    -fx-background-color: -ls-accent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 5px;
+}
+
+.check-box:selected > .box > .mark,
+.check-box:indeterminate > .box > .mark {
+    -fx-background-color: -ls-on-accent;
+}
+
+.check-box:indeterminate > .box > .mark {
+    -fx-shape: "M0 0h10v2H0z";
+    -fx-max-height: 2px;
+    -fx-min-height: 2px;
+}
+
+.check-box:focus-visible > .box {
+    -fx-background-color: -ls-focus, -ls-control-border, -ls-surface;
+    -fx-background-insets: -3px, 0, 1.5px;
+    -fx-background-radius: 8px, 5px, 3.5px;
+}
+
+.check-box:selected:focus-visible > .box,
+.check-box:indeterminate:focus-visible > .box {
+    -fx-background-color: -ls-focus, -ls-accent;
+    -fx-background-insets: -3px, 0;
+    -fx-background-radius: 8px, 5px;
+}
+
+.check-box:disabled {
+    -fx-opacity: 0.45;
+}
+
+.radio-button {
+    -fx-background-color: transparent;
+    -fx-text-fill: -ls-text;
+    -fx-label-padding: 0 0 0 10px;
+    -fx-cursor: hand;
+}
+
+.radio-button > .radio {
+    -fx-background-color: -ls-control-border, -ls-surface;
+    -fx-background-insets: 0, 1.5px;
+    -fx-background-radius: 999px;
+    -fx-padding: 4px;
+}
+
+.radio-button > .radio > .dot {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 999px;
+    -fx-min-width: 10px;
+    -fx-min-height: 10px;
+    -fx-max-width: 10px;
+    -fx-max-height: 10px;
+    -fx-padding: 0;
+}
+
+.radio-button:selected > .radio {
+    -fx-background-color: -ls-accent, -ls-surface;
+    -fx-background-insets: 0, 1.5px;
+}
+
+.radio-button:selected > .radio > .dot {
+    -fx-background-color: -ls-accent;
+    -fx-background-insets: 1px;
+}
+
+.radio-button:focus-visible > .radio {
+    -fx-background-color: -ls-focus, -ls-control-border, -ls-surface;
+    -fx-background-insets: -3px, 0, 1.5px;
+}
+
+.radio-button:selected:focus-visible > .radio {
+    -fx-background-color: -ls-focus, -ls-accent, -ls-surface;
+}
+
+/* AtlantaFX toggle switch: 36 x 20 track, 16 px thumb. */
+.toggle-switch {
+    -fx-thumb-move-animation-time: 160;
+    -fx-cursor: hand;
+}
+
+.toggle-switch > .label-container > .label {
+    -fx-font-size: 14px;
+    -fx-text-fill: -ls-text;
+    -fx-padding: 0 10px 0 0;
+}
+
+.toggle-switch > .thumb-area {
+    -fx-background-color: -ls-toggle-off;
+    -fx-background-insets: 0;
+    -fx-background-radius: 999px;
+    -fx-padding: 10px 18px 10px 18px;
+}
+
+.toggle-switch > .thumb {
+    -fx-background-color: -ls-thumb;
+    -fx-background-insets: 2px;
+    -fx-background-radius: 999px;
+    -fx-padding: 10px;
+    -fx-opacity: 1;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.18), 3, 0, 0, 1);
+}
+
+.toggle-switch:selected > .thumb-area {
+    -fx-background-color: -ls-accent;
+}
+
+.toggle-switch:focus-visible > .thumb-area {
+    -fx-background-color: -ls-focus, -ls-toggle-off;
+    -fx-background-insets: -3px, 0;
+}
+
+.toggle-switch:selected:focus-visible > .thumb-area {
+    -fx-background-color: -ls-focus, -ls-accent;
+}
+
+.toggle-switch:disabled {
+    -fx-opacity: 0.45;
+}
+
+.slider {
+    -color-slider-thumb: -ls-thumb;
+    -color-slider-thumb-border: -ls-accent;
+    -color-slider-track: -ls-toggle-off;
+    -color-slider-track-progress: -ls-accent;
+    -color-slider-tick: -ls-text-faint;
+}
+
+/* The slider skin widens its track by the track's corner radius, so the radius matches the 4 px height. */
+.slider > .track {
+    -fx-background-color: -ls-toggle-off;
+    -fx-background-radius: 2px;
+    -fx-padding: 2px;
+}
+
+.slider > .thumb {
+    -fx-background-color: -ls-accent, -ls-thumb;
+    -fx-background-insets: 0, 2px;
+    -fx-background-radius: 999px;
+    -fx-padding: 8px;
+    -fx-effect: dropshadow(gaussian, -ls-shadow-hover, 4, 0, 0, 1);
+}
+
+.slider:focus-visible > .thumb {
+    -fx-background-color: -ls-focus, -ls-accent, -ls-thumb;
+    -fx-background-insets: -3px, 0, 2px;
+}
+
+.progress-bar {
+    -color-progress-bar-track: -ls-track;
+    -color-progress-bar-fill: -ls-accent;
+}
+
+.progress-bar > .track {
+    -fx-background-color: -ls-track;
+    -fx-background-radius: 999px;
+}
+
+.progress-bar > .bar {
+    -fx-background-color: -ls-accent;
+    -fx-background-radius: 999px;
+    -fx-background-insets: 0;
+    -fx-padding: 3px;
+}
+
+/* ===================================================================================================
+ * Scrolling, lists and tables
+ * ================================================================================================ */
+
+.scroll-pane {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-border-width: 0;
+    -fx-padding: 0;
+}
+
+.scroll-pane > .viewport,
+.scroll-pane > .corner {
+    -fx-background-color: transparent;
+}
+
+.scroll-bar {
+    -fx-background-color: transparent;
+    -fx-opacity: 1;
+    -fx-padding: 2px;
+}
+
+.scroll-bar:vertical {
+    -fx-pref-width: 12px;
+}
+
+.scroll-bar:horizontal {
+    -fx-pref-height: 12px;
+}
+
+.scroll-bar > .thumb {
+    -fx-background-color: -ls-scroll-thumb;
+    -fx-background-insets: 1px;
+    -fx-background-radius: 999px;
+}
+
+.scroll-bar > .thumb:hover,
+.scroll-bar > .thumb:pressed {
+    -fx-background-color: -ls-scroll-thumb-hover;
+}
+
+.scroll-bar > .track,
+.scroll-bar > .track-background {
+    -fx-background-color: transparent;
+    -fx-border-width: 0;
+}
+
+.scroll-bar > .increment-button,
+.scroll-bar > .decrement-button {
+    -fx-background-color: transparent;
+    -fx-padding: 0;
+    -fx-pref-width: 0;
+    -fx-pref-height: 0;
+}
+
+.scroll-bar > .increment-button > .increment-arrow,
+.scroll-bar > .decrement-button > .decrement-arrow {
+    -fx-shape: null;
+    -fx-padding: 0;
+    -fx-background-color: transparent;
+}
+
+.list-view,
+.tree-view,
+.table-view {
+    -fx-background-color: -ls-border, -ls-surface;
+    -fx-background-insets: 0, 1px;
+    -fx-background-radius: 10px, 9px;
+    -fx-border-width: 0;
+    -fx-padding: 4px;
+}
+
+.list-view:focused,
+.tree-view:focused,
+.table-view:focused {
+    -fx-background-color: -ls-border, -ls-surface;
+}
+
+.list-view.plain {
+    -fx-background-color: transparent;
+    -fx-padding: 0;
+}
+
+.list-cell,
+.tree-cell {
+    -fx-background-color: transparent;
+    -fx-background-radius: 8px;
+    -fx-padding: 10px 12px 10px 12px;
+    -fx-text-fill: -ls-text;
+    -fx-cell-size: 40px;
+}
+
+.list-cell:filled:hover,
+.tree-cell:filled:hover {
+    -fx-background-color: -ls-hover;
+}
+
+.list-cell:filled:selected,
+.tree-cell:filled:selected {
+    -fx-background-color: -ls-accent-soft;
+    -fx-text-fill: -ls-text;
+}
+
+.list-view:focused > .virtual-flow > .clipped-container > .sheet > .list-cell:focused {
+    -fx-background-color: -ls-focus, -ls-surface;
+    -fx-background-insets: 0, 2px;
+    -fx-background-radius: 8px, 6px;
+}
+
+.list-view:focused > .virtual-flow > .clipped-container > .sheet > .list-cell:filled:selected:focused {
+    -fx-background-color: -ls-accent-muted, -ls-accent-soft;
+    -fx-background-insets: 0, 1.5px;
+}
+
+.tree-cell > .tree-disclosure-node > .arrow {
+    -fx-background-color: -ls-text-muted;
+}
+
+.table-view > .column-header-background {
+    -fx-background-color: -ls-border, -ls-surface;
+    -fx-background-insets: 0, 0 0 1px 0;
+    -fx-background-radius: 9px 9px 0 0, 9px 9px 0 0;
+}
+
+.table-view .column-header,
+.table-view .filler {
+    -fx-background-color: transparent;
+    -fx-border-width: 0;
+    -fx-padding: 0;
+}
+
+.table-view .column-header .label {
+    -fx-text-fill: -ls-text-muted;
+    -fx-font-size: 12px;
+    -fx-alignment: center-left;
+    -fx-padding: 10px 12px 10px 12px;
+}
+
+.table-row-cell {
+    -fx-background-color: -ls-border, -ls-surface;
+    -fx-background-insets: 0, 0 0 1px 0;
+    -fx-cell-size: 44px;
+    -fx-text-fill: -ls-text;
+}
+
+.table-row-cell:filled:hover {
+    -fx-background-color: -ls-border, derive(-ls-surface, -2%);
+}
+
+.table-row-cell:filled:selected {
+    -fx-background-color: -ls-border, -ls-accent-soft;
+}
+
+.table-cell {
+    -fx-padding: 0 12px 0 12px;
+    -fx-border-width: 0;
+    -fx-text-fill: -ls-text;
+    -fx-alignment: center-left;
+}
+
+.table-view .placeholder .label,
+.list-view .placeholder .label {
+    -fx-text-fill: -ls-text-muted;
+}
+
+/* ===================================================================================================
+ * Popups: tooltips, menus, dialogs, tabs
+ * ================================================================================================ */
+
+.tooltip {
+    -fx-background-color: -ls-tooltip-bg;
+    -fx-background-insets: 0;
+    -fx-background-radius: 6px;
+    -fx-text-fill: -ls-tooltip-text;
+    -fx-font-size: 12px;
+    -fx-padding: 6px 10px 6px 10px;
+    -fx-opacity: 1;
+    -fx-effect: dropshadow(gaussian, -ls-shadow-pop, 14, 0, 0, 4);
+}
+
+.context-menu {
+    -fx-background-color: -ls-border-strong, -ls-raised;
+    -fx-background-insets: 0, 1px;
+    -fx-background-radius: 10px, 9px;
+    -fx-padding: 4px;
+    -fx-effect: dropshadow(gaussian, -ls-shadow-pop, 24, 0, 0, 8);
+}
+
+.menu-item {
+    -fx-background-color: transparent;
+    -fx-background-radius: 6px;
+    -fx-padding: 7px 12px 7px 12px;
+}
+
+.menu-item > .label {
+    -fx-text-fill: -ls-text;
+    -fx-font-size: 14px;
+    -fx-padding: 0 16px 0 0;
+}
+
+.menu-item .accelerator-text {
+    -fx-text-fill: -ls-text-muted;
+}
+
+.menu-item:focused {
+    -fx-background-color: -ls-accent-soft;
+}
+
+.menu-item:focused > .label {
+    -fx-text-fill: -ls-text;
+}
+
+.menu-item:disabled > .label {
+    -fx-text-fill: -ls-text-faint;
+}
+
+.menu-item > .right-container > .arrow,
+.menu > .right-container > .arrow {
+    -fx-background-color: -ls-text-muted;
+}
+
+.check-menu-item:checked > .left-container > .check,
+.radio-menu-item:checked > .left-container > .radio {
+    -fx-background-color: -ls-accent;
+}
+
+.context-menu .separator:horizontal .line {
+    -fx-border-color: -ls-border;
+    -fx-border-width: 1px 0 0 0;
+    -fx-border-insets: 0;
+}
+
+.context-menu .separator:horizontal {
+    -fx-padding: 4px 6px 4px 6px;
+}
+
+.menu-bar {
+    -fx-background-color: -ls-border, -ls-surface-sunken;
+    -fx-background-insets: 0, 0 0 1px 0;
+    -fx-padding: 2px 8px 2px 8px;
+}
+
+.menu-bar > .container > .menu-button {
+    -fx-background-color: transparent;
+    -fx-background-radius: 6px;
+    -fx-padding: 5px 10px 5px 10px;
+}
+
+.menu-bar > .container > .menu-button > .label {
+    -fx-text-fill: -ls-text;
+    -fx-font-size: 13px;
+}
+
+.menu-bar > .container > .menu-button:hover,
+.menu-bar > .container > .menu-button:showing,
+.menu-bar > .container > .menu-button:focused {
+    -fx-background-color: -ls-hover;
+}
+
+/* Stock dialogs styled through Theme.style(dialog). */
+.ls-dialog {
+    -fx-background-color: -ls-surface;
+    -fx-padding: 0;
+}
+
+.ls-dialog > .header-panel {
+    -fx-background-color: transparent;
+    -fx-padding: 24px 24px 4px 24px;
+}
+
+.ls-dialog > .header-panel > .label {
+    -fx-font-size: 24px;
+    -fx-text-fill: -ls-text;
+}
+
+.ls-dialog > .content {
+    -fx-padding: 8px 24px 16px 24px;
+}
+
+.ls-dialog > .content.label {
+    -fx-text-fill: -ls-text-muted;
+    -fx-line-spacing: 4px;
+}
+
+.ls-dialog > .button-bar > .container {
+    -fx-padding: 8px 24px 24px 24px;
+}
+
+/* Underlined tabs on the window background. */
+.tab-pane > .tab-header-area {
+    -fx-padding: 0;
+    -fx-background-color: transparent;
+}
+
+.tab-pane > .tab-header-area > .tab-header-background {
+    -fx-background-color: -ls-border, -ls-bg;
+    -fx-background-insets: 0, 0 0 1px 0;
+}
+
+.tab-pane > .tab-header-area > .headers-region > .tab {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 0;
+    -fx-padding: 10px 14px 10px 14px;
+    -fx-cursor: hand;
+}
+
+.tab-pane > .tab-header-area > .headers-region > .tab .tab-label {
+    -fx-text-fill: -ls-text-muted;
+    -fx-font-size: 14px;
+}
+
+.tab-pane > .tab-header-area > .headers-region > .tab:hover .tab-label {
+    -fx-text-fill: -ls-text;
+}
+
+.tab-pane > .tab-header-area > .headers-region > .tab:selected {
+    -fx-background-color: -ls-accent, -ls-bg;
+    -fx-background-insets: 0, 0 0 2px 0;
+}
+
+.tab-pane > .tab-header-area > .headers-region > .tab:selected .tab-label {
+    -fx-text-fill: -ls-text;
+}
+
+.tab-pane > .tab-header-area > .headers-region > .tab .focus-indicator {
+    -fx-border-color: transparent;
+}
+
+.tab-pane > .tab-header-area > .headers-region > .tab:focus-visible {
+    -fx-background-color: -ls-focus, -ls-bg;
+    -fx-background-insets: 2px, 4px;
+    -fx-background-radius: 8px, 6px;
+}
+
+.tab-pane > .tab-content-area {
+    -fx-background-color: transparent;
+    -fx-padding: 0;
+}
+
+.separator:horizontal .line {
+    -fx-border-color: -ls-border;
+    -fx-border-width: 1px 0 0 0;
+    -fx-border-insets: 0;
+}
+
+.separator:vertical .line {
+    -fx-border-color: -ls-border;
+    -fx-border-width: 0 0 0 1px;
+    -fx-border-insets: 0;
+}
+
+.split-pane {
+    -fx-background-color: transparent;
+    -fx-padding: 0;
+}
+
+.split-pane > .split-pane-divider {
+    -fx-background-color: -ls-border;
+    -fx-padding: 0 0.5px 0 0.5px;
+}
+
+/* ===================================================================================================
+ * Surfaces: cards, chips and pills
+ * ================================================================================================ */
 
 .card {
     -fx-background-color: -ls-border, -ls-surface;
@@ -281,17 +1333,216 @@
     -fx-effect: dropshadow(gaussian, -ls-shadow, 24, 0, 0, 8);
 }
 
+.card:focus-visible {
+    -fx-background-color: -ls-focus, -ls-accent, -ls-surface;
+    -fx-background-insets: -4px, 0, 1.5px;
+    -fx-background-radius: 18px, 14px, 12.5px;
+}
+
+.card.well {
+    -fx-background-color: -ls-surface-sunken;
+    -fx-background-insets: 0;
+    -fx-background-radius: 14px;
+    -fx-effect: null;
+}
+
 .chip {
     -fx-background-color: -ls-surface-sunken;
     -fx-background-radius: 999px;
     -fx-padding: 4px 10px 4px 10px;
     -fx-font-size: 12px;
     -fx-text-fill: -ls-text-muted;
+    -fx-graphic-text-gap: 6px;
+    -fx-alignment: center;
 }
 
-.chip.accent {
+.chip .ikonli-font-icon {
+    -fx-icon-color: -ls-text-muted;
+    -fx-icon-size: 12px;
+}
+
+.chip.tone-accent {
     -fx-background-color: -ls-accent-soft;
     -fx-text-fill: -ls-accent;
+}
+
+.chip.tone-accent .ikonli-font-icon {
+    -fx-icon-color: -ls-accent;
+}
+
+.chip.tone-success {
+    -fx-background-color: -ls-success-soft;
+    -fx-text-fill: -ls-success-text;
+}
+
+.chip.tone-success .ikonli-font-icon {
+    -fx-icon-color: -ls-success-text;
+}
+
+.chip.tone-warning {
+    -fx-background-color: -ls-warning-soft;
+    -fx-text-fill: -ls-warning-text;
+}
+
+.chip.tone-warning .ikonli-font-icon {
+    -fx-icon-color: -ls-warning-text;
+}
+
+.chip.tone-danger {
+    -fx-background-color: -ls-danger-soft;
+    -fx-text-fill: -ls-danger-text;
+}
+
+.chip.tone-danger .ikonli-font-icon {
+    -fx-icon-color: -ls-danger-text;
+}
+
+/* Selectable chips (filters, confidence). */
+.toggle-chip {
+    -fx-background-color: -ls-border-strong, -ls-surface;
+    -fx-background-insets: 0, 1px;
+    -fx-background-radius: 999px;
+    -fx-text-fill: -ls-text;
+    -fx-font-size: 13px;
+    -fx-padding: 0 14px 0 14px;
+    -fx-min-height: 34px;
+    -fx-pref-height: 34px;
+    -fx-cursor: hand;
+}
+
+.toggle-chip:hover {
+    -fx-background-color: -ls-text-faint, -ls-surface;
+}
+
+.toggle-chip:selected {
+    -fx-background-color: -ls-accent, -ls-accent-soft;
+    -fx-background-insets: 0, 1.5px;
+    -fx-text-fill: -ls-text;
+}
+
+.toggle-chip:focus-visible {
+    -fx-background-color: -ls-focus, -ls-border-strong, -ls-surface;
+    -fx-background-insets: -3px, 0, 1px;
+}
+
+.toggle-chip:selected:focus-visible {
+    -fx-background-color: -ls-focus, -ls-accent, -ls-accent-soft;
+    -fx-background-insets: -3px, 0, 1.5px;
+}
+
+.toggle-chip:disabled {
+    -fx-opacity: 0.45;
+}
+
+.confidence-chip {
+    -fx-min-height: 40px;
+    -fx-pref-height: 40px;
+    -fx-padding: 0 16px 0 14px;
+    -fx-font-size: 14px;
+    -fx-graphic-text-gap: 10px;
+}
+
+.confidence-bars .bar-on {
+    -fx-fill: -ls-accent;
+}
+
+.confidence-bars .bar-off {
+    -fx-fill: -ls-toggle-off;
+}
+
+/* Status pill: dot + label, tinted by tone. */
+.status-pill {
+    -fx-background-color: -ls-surface-sunken;
+    -fx-background-radius: 6px;
+    -fx-padding: 3px 9px 3px 8px;
+    -fx-spacing: 6px;
+    -fx-alignment: center-left;
+}
+
+.status-pill-label {
+    -fx-font-size: 12px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.status-dot {
+    -fx-fill: -ls-text-faint;
+}
+
+.status-pill.tone-accent {
+    -fx-background-color: -ls-accent-soft;
+}
+
+.status-pill.tone-accent .status-pill-label {
+    -fx-text-fill: -ls-accent;
+}
+
+.status-pill.tone-accent .status-dot {
+    -fx-fill: -ls-accent;
+}
+
+.status-pill.tone-success {
+    -fx-background-color: -ls-success-soft;
+}
+
+.status-pill.tone-success .status-pill-label {
+    -fx-text-fill: -ls-success-text;
+}
+
+.status-pill.tone-success .status-dot {
+    -fx-fill: -ls-success;
+}
+
+.status-pill.tone-warning {
+    -fx-background-color: -ls-warning-soft;
+}
+
+.status-pill.tone-warning .status-pill-label {
+    -fx-text-fill: -ls-warning-text;
+}
+
+.status-pill.tone-warning .status-dot {
+    -fx-fill: -ls-warning;
+}
+
+.status-pill.tone-danger {
+    -fx-background-color: -ls-danger-soft;
+}
+
+.status-pill.tone-danger .status-pill-label {
+    -fx-text-fill: -ls-danger-text;
+}
+
+.status-pill.tone-danger .status-dot {
+    -fx-fill: -ls-danger;
+}
+
+/* Citation chip: "p. 12", a small accent link that opens the page. */
+.citation-chip {
+    -fx-background-color: -ls-accent-soft;
+    -fx-background-insets: 0;
+    -fx-background-radius: 6px;
+    -fx-text-fill: -ls-accent;
+    -fx-font-size: 12px;
+    -fx-padding: 2px 7px 2px 7px;
+    -fx-min-height: 22px;
+    -fx-pref-height: 22px;
+    -fx-cursor: hand;
+}
+
+.citation-chip:hover {
+    -fx-background-color: -ls-accent-muted;
+    -fx-text-fill: -ls-text;
+}
+
+.citation-chip:armed {
+    -fx-background-color: -ls-accent;
+    -fx-text-fill: -ls-on-accent;
+}
+
+.citation-chip:focus-visible {
+    -fx-background-color: -ls-focus, -ls-accent-soft;
+    -fx-background-insets: -2px, 0;
+    -fx-background-radius: 8px, 6px;
 }
 
 .icon-badge {
@@ -309,11 +1560,518 @@
     -fx-icon-size: 20px;
 }
 
+.icon-badge.tone-success {
+    -fx-background-color: -ls-success-soft;
+}
+
+.icon-badge.tone-success .ikonli-font-icon {
+    -fx-icon-color: -ls-success;
+}
+
+.icon-badge.tone-warning {
+    -fx-background-color: -ls-warning-soft;
+}
+
+.icon-badge.tone-warning .ikonli-font-icon {
+    -fx-icon-color: -ls-warning;
+}
+
+.icon-badge.tone-danger {
+    -fx-background-color: -ls-danger-soft;
+}
+
+.icon-badge.tone-danger .ikonli-font-icon {
+    -fx-icon-color: -ls-danger;
+}
+
 .avatar-initials {
     -fx-font-size: 12px;
 }
 
-/* Scrolling page: a centred column on the window background. */
+/* ===================================================================================================
+ * Headers, stats and progress
+ * ================================================================================================ */
+
+.page-header {
+    -fx-spacing: 24px;
+    -fx-alignment: bottom-left;
+}
+
+.page-overline {
+    -fx-padding: 0 0 6px 0;
+}
+
+.page-title {
+    -fx-line-spacing: 2px;
+}
+
+.page-subtitle {
+    -fx-font-size: 15px;
+    -fx-line-spacing: 4px;
+    -fx-text-fill: -ls-text-muted;
+    -fx-padding: 6px 0 0 0;
+}
+
+.page-actions {
+    -fx-spacing: 12px;
+    -fx-alignment: center-right;
+}
+
+.section-header {
+    -fx-spacing: 12px;
+    -fx-alignment: center-left;
+    -fx-min-height: 32px;
+}
+
+.section-subtitle {
+    -fx-font-size: 13px;
+}
+
+.section-trailing {
+    -fx-spacing: 8px;
+    -fx-alignment: center-right;
+}
+
+.stat-tile {
+    -fx-spacing: 8px;
+}
+
+.stat-tile.framed {
+    -fx-background-color: -ls-border, -ls-surface;
+    -fx-background-insets: 0, 1px;
+    -fx-background-radius: 14px, 13px;
+    -fx-padding: 20px 22px 20px 22px;
+}
+
+.stat-label {
+    -fx-font-size: 12px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.stat-value {
+    -fx-font-size: 40px;
+    -fx-text-fill: -ls-text;
+}
+
+.stat-unit {
+    -fx-font-size: 14px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.stat-detail {
+    -fx-font-size: 12px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.stat-detail.tone-success {
+    -fx-text-fill: -ls-success-text;
+}
+
+.stat-detail.tone-warning {
+    -fx-text-fill: -ls-warning-text;
+}
+
+.stat-detail.tone-danger {
+    -fx-text-fill: -ls-danger-text;
+}
+
+.stat-detail.tone-accent {
+    -fx-text-fill: -ls-accent;
+}
+
+.ring-track {
+    -fx-fill: transparent;
+    -fx-stroke: -ls-track;
+}
+
+.ring-fill {
+    -fx-fill: transparent;
+    -fx-stroke: -ls-accent;
+}
+
+.ring-moon {
+    -fx-fill: -ls-accent;
+    -fx-stroke: -ls-surface;
+}
+
+.progress-ring:complete .ring-fill {
+    -fx-stroke: -ls-success;
+}
+
+.progress-ring:complete .ring-moon {
+    -fx-fill: -ls-success;
+}
+
+.ring-label {
+    -fx-font-size: 13px;
+    -fx-text-fill: -ls-text;
+}
+
+.ring-label.large {
+    -fx-font-size: 28px;
+}
+
+.progress-slim {
+    -fx-background-color: -ls-track;
+    -fx-background-radius: 999px;
+}
+
+.progress-slim-fill {
+    -fx-background-color: -ls-accent;
+    -fx-background-radius: 999px;
+}
+
+.progress-slim.tone-success .progress-slim-fill {
+    -fx-background-color: -ls-success;
+}
+
+.progress-slim.tone-warning .progress-slim-fill {
+    -fx-background-color: -ls-warning;
+}
+
+.progress-slim.tone-danger .progress-slim-fill {
+    -fx-background-color: -ls-danger;
+}
+
+.activity-indicator .track {
+    -fx-fill: transparent;
+    -fx-stroke: -ls-accent-muted;
+}
+
+.activity-indicator .arc {
+    -fx-fill: transparent;
+    -fx-stroke: -ls-accent;
+}
+
+/* Charts: canvas colours from the tokens. */
+.chart {
+    -chart-accent: -ls-accent;
+    -chart-accent-soft: -ls-accent-muted;
+    -chart-track: -ls-track;
+    -chart-text: -ls-text;
+    -chart-text-muted: -ls-text-muted;
+    -chart-grid: -ls-border;
+    -chart-warning: -ls-warning;
+    -chart-surface: -ls-surface;
+}
+
+/* ===================================================================================================
+ * Course covers and cards
+ * ================================================================================================ */
+
+.course-cover {
+    -fx-background-color: transparent;
+}
+
+.course-card {
+    -fx-padding: 0;
+    -fx-spacing: 0;
+    -fx-cursor: hand;
+}
+
+.course-card-body {
+    -fx-padding: 18px 20px 14px 20px;
+    -fx-spacing: 4px;
+}
+
+.course-card-meta {
+    -fx-text-fill: -ls-text-muted;
+}
+
+.course-card-title {
+    -fx-font-size: 20px;
+    -fx-line-spacing: 1px;
+    -fx-text-fill: -ls-text;
+}
+
+.course-card-subtitle {
+    -fx-font-size: 13px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.course-card-footer {
+    -fx-padding: 12px 20px 18px 20px;
+    -fx-spacing: 10px;
+    -fx-alignment: center-left;
+}
+
+.course-card-percent {
+    -fx-font-size: 14px;
+    -fx-text-fill: -ls-text;
+}
+
+.course-card-caught-up {
+    -fx-text-fill: -ls-success-text;
+}
+
+.course-card-contents {
+    -fx-text-fill: -ls-text-muted;
+}
+
+/* ===================================================================================================
+ * Empty states and illustrations
+ * ================================================================================================ */
+
+.empty-state {
+    -fx-spacing: 12px;
+    -fx-alignment: center;
+    -fx-padding: 40px 24px 40px 24px;
+}
+
+.empty-state-title {
+    -fx-text-alignment: center;
+    -fx-padding: 12px 0 0 0;
+}
+
+.empty-state-message {
+    -fx-font-size: 15px;
+    -fx-line-spacing: 4px;
+    -fx-text-fill: -ls-text-muted;
+    -fx-text-alignment: center;
+}
+
+.empty-state-actions {
+    -fx-spacing: 12px;
+    -fx-alignment: center;
+    -fx-padding: 12px 0 0 0;
+}
+
+.illo-shadow {
+    -fx-fill: -ls-shadow-hover;
+}
+
+.illo-glow {
+    -fx-fill: -ls-illo-glow;
+}
+
+.illo-sphere {
+    -fx-fill: linear-gradient(from 20% 10% to 80% 95%, -ls-illo-sphere-a, -ls-illo-sphere-b);
+    -fx-stroke: -ls-accent;
+    -fx-stroke-width: 1.5;
+}
+
+.illo-sphere-line {
+    -fx-fill: transparent;
+    -fx-stroke: -ls-accent;
+    -fx-stroke-width: 1;
+    -fx-opacity: 0.45;
+}
+
+.illo-orbit-back {
+    -fx-fill: transparent;
+    -fx-stroke: -ls-illo-line;
+    -fx-stroke-width: 1.5;
+    -fx-opacity: 0.6;
+}
+
+.illo-orbit {
+    -fx-fill: transparent;
+    -fx-stroke: -ls-illo-line;
+    -fx-stroke-width: 1.5;
+}
+
+.illo-moon {
+    -fx-fill: -ls-warning;
+    -fx-stroke: -ls-surface;
+    -fx-stroke-width: 2;
+}
+
+.illo-paper {
+    -fx-fill: -ls-surface;
+    -fx-stroke: -ls-illo-line;
+    -fx-stroke-width: 1.5;
+}
+
+.illo-fold {
+    -fx-fill: -ls-surface-sunken;
+    -fx-stroke: -ls-illo-line;
+    -fx-stroke-width: 1.5;
+}
+
+.illo-tint-accent {
+    -fx-fill: -ls-accent;
+}
+
+.illo-tint-warning {
+    -fx-fill: -ls-warning;
+}
+
+.illo-tint-success {
+    -fx-fill: -ls-success;
+}
+
+.illo-badge {
+    -fx-fill: -ls-success;
+}
+
+.illo-check {
+    -fx-fill: transparent;
+    -fx-stroke: -ls-surface;
+    -fx-stroke-width: 2.5;
+}
+
+.illo-spark {
+    -fx-fill: -ls-accent;
+    -fx-opacity: 0.55;
+}
+
+.illo-ink {
+    -fx-stroke: -ls-illo-line;
+    -fx-stroke-width: 3;
+    -fx-stroke-line-cap: round;
+}
+
+.illo-ink-accent {
+    -fx-stroke: -ls-accent;
+    -fx-stroke-width: 3;
+    -fx-stroke-line-cap: round;
+}
+
+.illo-lens {
+    -fx-fill: -ls-accent-muted;
+    -fx-stroke: -ls-text-muted;
+    -fx-stroke-width: 3;
+}
+
+.illo-handle {
+    -fx-stroke: -ls-text-muted;
+    -fx-stroke-width: 5;
+}
+
+.illo-bar {
+    -fx-fill: -ls-accent-muted;
+}
+
+.illo-bar-accent {
+    -fx-fill: -ls-accent;
+}
+
+/* ===================================================================================================
+ * Skeletons
+ * ================================================================================================ */
+
+.skeleton {
+    -fx-background-color: -ls-skeleton;
+    -fx-background-radius: 8px;
+}
+
+.skeleton.line {
+    -fx-background-radius: 999px;
+}
+
+.skeleton.circle {
+    -fx-background-radius: 999px;
+}
+
+.skeleton.cover {
+    -fx-background-radius: 13px 13px 0 0;
+}
+
+.skeleton-card {
+    -fx-effect: null;
+}
+
+/* ===================================================================================================
+ * Toasts and modal dialogs
+ * ================================================================================================ */
+
+.toast-layer {
+    -fx-padding: 24px;
+    -fx-spacing: 10px;
+    -fx-alignment: bottom-right;
+}
+
+.toast {
+    -fx-background-color: -ls-toast-bg;
+    -fx-background-radius: 12px;
+    -fx-padding: 10px 8px 10px 14px;
+    -fx-min-height: 48px;
+    -fx-alignment: center-left;
+    -fx-effect: dropshadow(gaussian, -ls-shadow-pop, 24, 0, 0, 8);
+}
+
+.toast-icon {
+    -fx-icon-color: -ls-toast-accent;
+}
+
+.toast-success .toast-icon {
+    -fx-icon-color: -ls-toast-success;
+}
+
+.toast-error .toast-icon {
+    -fx-icon-color: -ls-toast-danger;
+}
+
+.toast-message {
+    -fx-text-fill: -ls-toast-text;
+    -fx-font-size: 14px;
+    -fx-line-spacing: 2px;
+}
+
+.toast .button.toast-action {
+    -fx-background-color: transparent;
+    -fx-background-radius: 8px;
+    -fx-text-fill: -ls-toast-accent;
+    -fx-padding: 0 10px 0 10px;
+    -fx-min-height: 32px;
+    -fx-pref-height: 32px;
+    -fx-font-size: 13px;
+}
+
+.toast .button.toast-action:hover {
+    -fx-background-color: rgba(255, 255, 255, 0.08);
+}
+
+.toast .button.icon-button.toast-close .ikonli-font-icon {
+    -fx-icon-color: -ls-toast-muted;
+}
+
+.toast .button.icon-button.toast-close:hover {
+    -fx-background-color: rgba(255, 255, 255, 0.08);
+}
+
+.toast .button.icon-button.toast-close:hover .ikonli-font-icon {
+    -fx-icon-color: -ls-toast-text;
+}
+
+.toast .button:focus-visible {
+    -fx-background-color: rgba(157, 176, 255, 0.45);
+}
+
+.modal-scrim {
+    -fx-background-color: -ls-scrim;
+}
+
+.modal-card {
+    -fx-background-color: -ls-border, -ls-raised;
+    -fx-background-insets: 0, 1px;
+    -fx-background-radius: 16px, 15px;
+    -fx-padding: 28px 28px 24px 28px;
+    -fx-spacing: 10px;
+    -fx-pref-width: 440px;
+    -fx-max-width: 440px;
+    -fx-effect: dropshadow(gaussian, -ls-shadow-pop, 48, 0, 0, 16);
+}
+
+.modal-title {
+    -fx-font-size: 24px;
+    -fx-text-fill: -ls-text;
+}
+
+.modal-message {
+    -fx-font-size: 14px;
+    -fx-line-spacing: 4px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.modal-buttons {
+    -fx-padding: 18px 0 0 0;
+}
+
+/* ===================================================================================================
+ * Page and app shell
+ * ================================================================================================ */
+
 .page,
 .page > .viewport,
 .page > .corner {
@@ -324,41 +2082,11 @@
 }
 
 .page-column {
-    -fx-padding: 40px 40px 48px 40px;
-    -fx-spacing: 24px;
+    -fx-padding: 8px 40px 56px 40px;
+    -fx-spacing: 32px;
 }
 
-.page .scroll-bar:vertical {
-    -fx-background-color: transparent;
-    -fx-pref-width: 12px;
-    -fx-padding: 2px;
-}
-
-.page .scroll-bar .thumb {
-    -fx-background-color: -ls-border;
-    -fx-background-radius: 999px;
-}
-
-.page .scroll-bar .increment-button,
-.page .scroll-bar .decrement-button {
-    -fx-padding: 0;
-    -fx-pref-height: 0;
-}
-
-.page .scroll-bar .increment-arrow,
-.page .scroll-bar .decrement-arrow {
-    -fx-shape: null;
-    -fx-padding: 0;
-}
-
-/* ---------------------------------------------------------------------------------------------------
- * App shell
- * ------------------------------------------------------------------------------------------------ */
-
-.app-shell {
-    -fx-background-color: -ls-bg;
-}
-
+.app-shell,
 .content {
     -fx-background-color: -ls-bg;
 }
@@ -366,7 +2094,7 @@
 .sidebar {
     -fx-background-color: -ls-border, -ls-surface-sunken;
     -fx-background-insets: 0, 0 1px 0 0;
-    -fx-padding: 20px 12px 16px 12px;
+    -fx-padding: 20px 12px 14px 12px;
     -fx-min-width: 232px;
     -fx-pref-width: 232px;
     -fx-max-width: 232px;
@@ -386,8 +2114,9 @@
 
 .nav-item {
     -fx-background-color: transparent;
+    -fx-background-insets: 0;
     -fx-background-radius: 10px;
-    -fx-padding: 0 12px 0 12px;
+    -fx-padding: 0 10px 0 12px;
     -fx-min-height: 38px;
     -fx-pref-height: 38px;
     -fx-max-width: infinity;
@@ -412,23 +2141,41 @@
     -fx-background-color: -ls-pressed;
 }
 
-.nav-item:focused {
+.nav-item:focus-visible {
     -fx-background-color: -ls-focus, -ls-surface-sunken;
     -fx-background-insets: 0, 2px;
     -fx-background-radius: 10px, 8px;
 }
 
 .nav-item:selected,
-.nav-item:selected:hover,
-.nav-item:selected:focused {
+.nav-item:selected:hover {
     -fx-background-color: -ls-accent-soft;
     -fx-background-insets: 0;
     -fx-background-radius: 10px;
     -fx-text-fill: -ls-text;
 }
 
+.nav-item:selected:focus-visible {
+    -fx-background-color: -ls-focus, -ls-accent-soft;
+    -fx-background-insets: 0, 2px;
+    -fx-background-radius: 10px, 8px;
+}
+
 .nav-item:selected .ikonli-font-icon {
     -fx-icon-color: -ls-accent;
+}
+
+.nav-badge {
+    -fx-background-color: -ls-accent-soft;
+    -fx-background-radius: 999px;
+    -fx-text-fill: -ls-accent;
+    -fx-font-size: 11px;
+    -fx-padding: 1px 7px 1px 7px;
+    -fx-alignment: center;
+}
+
+.nav-item:selected .nav-badge {
+    -fx-background-color: -ls-surface;
 }
 
 .sidebar-section {
@@ -444,6 +2191,7 @@
 .sidebar-course {
     -fx-graphic-text-gap: 10px;
     -fx-text-overrun: ellipsis;
+    -fx-padding: 0 10px 0 10px;
 }
 
 .sidebar-divider {
@@ -465,6 +2213,12 @@
     -fx-background-color: -ls-hover;
 }
 
+.profile-chip:focus-visible {
+    -fx-background-color: -ls-focus, -ls-surface-sunken;
+    -fx-background-insets: 0, 2px;
+    -fx-background-radius: 12px, 10px;
+}
+
 .profile-chip-name {
     -fx-font-size: 14px;
     -fx-text-fill: -ls-text;
@@ -475,30 +2229,973 @@
     -fx-text-fill: -ls-text-muted;
 }
 
-/* ---------------------------------------------------------------------------------------------------
- * Welcome page
- * ------------------------------------------------------------------------------------------------ */
-
-.welcome-intro {
-    -fx-font-size: 16px;
-    -fx-line-spacing: 5px;
-    -fx-text-fill: -ls-text-muted;
+.top-bar {
+    -fx-padding: 14px 32px 10px 28px;
+    -fx-min-height: 60px;
+    -fx-background-color: -ls-bg;
 }
 
-.hero-card {
+.top-bar-trailing {
+    -fx-spacing: 12px;
+}
+
+.breadcrumbs {
+    -fx-spacing: 2px;
     -fx-padding: 0;
 }
 
-.hero-copy {
-    -fx-padding: 36px 8px 36px 36px;
-    -fx-spacing: 14px;
+.crumb {
+    -fx-font-size: 13px;
+    -fx-text-overrun: ellipsis;
 }
 
-.hero-art {
-    -fx-padding: 12px;
+.crumb.current {
+    -fx-text-fill: -ls-text;
+    -fx-padding: 0 6px 0 6px;
 }
 
-.feature-card {
-    -fx-spacing: 14px;
-    -fx-padding: 22px 22px 24px 22px;
+.crumb.inactive {
+    -fx-text-fill: -ls-text-muted;
+    -fx-padding: 0 6px 0 6px;
+}
+
+.crumb.crumb-link {
+    -fx-background-color: transparent;
+    -fx-background-radius: 6px;
+    -fx-text-fill: -ls-text-muted;
+    -fx-padding: 4px 6px 4px 6px;
+    -fx-cursor: hand;
+}
+
+.crumb.crumb-link:hover {
+    -fx-background-color: -ls-hover;
+    -fx-text-fill: -ls-text;
+}
+
+.crumb.crumb-link:focus-visible {
+    -fx-background-color: -ls-focus;
+}
+
+.crumb-separator {
+    -fx-icon-color: -ls-text-faint;
+}
+
+/* Study assistant readiness in the top bar. */
+.assistant-indicator {
+    -fx-background-color: transparent;
+    -fx-background-radius: 999px;
+    -fx-padding: 0 12px 0 10px;
+    -fx-min-height: 30px;
+    -fx-pref-height: 30px;
+    -fx-graphic-text-gap: 8px;
+    -fx-text-fill: -ls-text-muted;
+    -fx-font-size: 12px;
+    -fx-cursor: hand;
+}
+
+.assistant-indicator:hover {
+    -fx-background-color: -ls-hover;
+    -fx-text-fill: -ls-text;
+}
+
+.assistant-indicator:focus-visible {
+    -fx-background-color: -ls-focus;
+}
+
+.assistant-dot {
+    -fx-fill: -ls-text-faint;
+}
+
+.assistant-indicator.ready .assistant-dot {
+    -fx-fill: -ls-success;
+}
+
+.assistant-indicator.preparing .assistant-dot {
+    -fx-fill: -ls-accent;
+}
+
+.assistant-indicator.unavailable .assistant-dot {
+    -fx-fill: -ls-warning;
+}
+
+.menu-bar.in-window {
+    -fx-padding: 2px 12px 2px 12px;
+}
+
+/* ===================================================================================================
+ * Screens
+ * ================================================================================================ */
+
+.app-root,
+.main-column {
+    -fx-background-color: -ls-bg;
+}
+
+.sidebar-course-title {
+    -fx-font-size: 13px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.nav-item:hover .sidebar-course-title,
+.nav-item:selected .sidebar-course-title {
+    -fx-text-fill: -ls-text;
+}
+
+.hairline {
+    -fx-background-color: -ls-border;
+    -fx-min-height: 1px;
+    -fx-pref-height: 1px;
+    -fx-max-height: 1px;
+}
+
+.field-label {
+    -fx-font-size: 13px;
+    -fx-text-fill: -ls-text;
+}
+
+.panel {
+    -fx-padding: 24px 28px 24px 28px;
+}
+
+/* Scroll panes that sit directly on the paper. */
+.ask-scroller,
+.ask-scroller > .viewport,
+.study-scroller,
+.study-scroller > .viewport,
+.source-scroller,
+.source-scroller > .viewport,
+.gallery-scroller,
+.gallery-scroller > .viewport {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-border-width: 0;
+    -fx-padding: 0;
+}
+
+/* ---- Home ---------------------------------------------------------------------------------------- */
+
+.study-next {
+    -fx-background-color: -ls-border, linear-gradient(to right, -ls-surface 40%, -ls-accent-soft 140%);
+    -fx-padding: 28px 32px 28px 32px;
+}
+
+.study-next-overline {
+    -fx-text-fill: -ls-accent;
+}
+
+.study-next-numeral {
+    -fx-font-size: 56px;
+}
+
+.study-next-unit {
+    -fx-font-size: 17px;
+    -fx-text-fill: -ls-text;
+}
+
+.study-next-detail {
+    -fx-font-size: 14px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.ring-numeral {
+    -fx-font-size: 32px;
+}
+
+.week-card {
+    -fx-padding: 22px 24px 20px 24px;
+}
+
+.week-streak {
+    -fx-background-color: -ls-accent-soft;
+    -fx-background-radius: 999px;
+    -fx-padding: 3px 10px 3px 10px;
+    -fx-font-size: 12px;
+    -fx-text-fill: -ls-accent;
+}
+
+.recent-question {
+    -fx-padding: 20px 24px 20px 24px;
+    -fx-cursor: hand;
+}
+
+.recent-question-text {
+    -fx-font-size: 19px;
+    -fx-text-fill: -ls-text;
+}
+
+.recent-question-answer {
+    -fx-font-size: 14px;
+    -fx-line-spacing: 3px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+/* ---- Library and course ------------------------------------------------------------------------- */
+
+.library-controls {
+    -fx-spacing: 12px;
+    -fx-alignment: center-left;
+}
+
+.course-heading {
+    -fx-padding: 4px 0 0 0;
+}
+
+.course-meta {
+    -fx-text-fill: -ls-text-muted;
+}
+
+.course-title {
+    -fx-line-spacing: 2px;
+}
+
+.course-description {
+    -fx-font-size: 15px;
+    -fx-line-spacing: 4px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.module-path {
+    -fx-padding: 6px 0 0 0;
+}
+
+.module-step {
+    -fx-padding: 0 0 4px 0;
+}
+
+.module-text {
+    -fx-padding: 4px 0 22px 0;
+}
+
+.module-line {
+    -fx-background-color: -ls-border;
+    -fx-min-width: 2px;
+    -fx-pref-width: 2px;
+    -fx-max-width: 2px;
+    -fx-min-height: 8px;
+}
+
+.module-title {
+    -fx-font-size: 15px;
+    -fx-text-fill: -ls-text;
+}
+
+.module-summary {
+    -fx-font-size: 13px;
+    -fx-line-spacing: 2px;
+    -fx-text-fill: -ls-text-muted;
+    -fx-padding: 2px 0 4px 0;
+}
+
+/* ---- Ask ----------------------------------------------------------------------------------------- */
+
+.ask-page,
+.ask-conversation {
+    -fx-background-color: -ls-bg;
+}
+
+.ask-head {
+    -fx-padding: 4px 40px 18px 40px;
+    -fx-border-color: transparent transparent -ls-border transparent;
+    -fx-border-width: 0 0 1px 0;
+}
+
+.ask-messages {
+    -fx-padding: 28px 40px 32px 40px;
+    -fx-spacing: 28px;
+}
+
+.ask-question {
+    -fx-background-color: -ls-accent-soft;
+    -fx-background-radius: 16px 16px 4px 16px;
+    -fx-padding: 12px 16px 12px 16px;
+    -fx-font-size: 15px;
+    -fx-line-spacing: 3px;
+    -fx-text-fill: -ls-text;
+    -fx-max-width: 520px;
+}
+
+.ask-answer {
+    -fx-spacing: 10px;
+}
+
+.reading-flow {
+    -fx-line-spacing: 7px;
+}
+
+.reading-flow > .text-reading {
+    -fx-fill: -ls-text;
+    -fx-font-size: 17px;
+}
+
+.citation-chip.inline {
+    -fx-translate-y: -1px;
+}
+
+.ask-thinking .label {
+    -fx-font-size: 13px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.insufficient-card {
+    -fx-background-color: -ls-border-strong, -ls-surface-sunken;
+    -fx-background-insets: 0, 1px;
+    -fx-background-radius: 14px, 13px;
+    -fx-padding: 18px 22px 18px 20px;
+    -fx-alignment: top-left;
+}
+
+.insufficient-card > .ikonli-font-icon {
+    -fx-icon-color: -ls-warning;
+}
+
+.ask-composer {
+    -fx-padding: 14px 40px 22px 40px;
+    -fx-border-color: -ls-border transparent transparent transparent;
+    -fx-border-width: 1px 0 0 0;
+}
+
+.ask-input {
+    -fx-font-size: 15px;
+}
+
+.ask-composer .button.primary {
+    -fx-min-height: 44px;
+    -fx-pref-height: 44px;
+}
+
+.source-viewer {
+    -fx-background-color: -ls-border, -ls-surface;
+    -fx-background-insets: 0, 0 0 0 1px;
+    -fx-padding: 22px 24px 24px 24px;
+    -fx-spacing: 12px;
+}
+
+.source-page-placeholder {
+    -fx-background-color: -ls-border-strong, -ls-surface-sunken;
+    -fx-background-insets: 0, 1px;
+    -fx-background-radius: 12px, 11px;
+    -fx-min-height: 120px;
+}
+
+.source-page {
+    -fx-background-color: -ls-surface-sunken;
+    -fx-background-radius: 12px;
+    -fx-padding: 0;
+}
+
+.source-page-image {
+    -fx-effect: dropshadow(gaussian, -ls-shadow-hover, 16, 0, 0, 4);
+}
+
+.passage-highlight {
+    -fx-fill: -ls-page-highlight;
+    -fx-blend-mode: multiply;
+}
+
+/* ---- Study session ------------------------------------------------------------------------------- */
+
+.study-page {
+    -fx-background-color: -ls-bg;
+}
+
+.study-top {
+    -fx-padding: 14px 32px 0 24px;
+    -fx-min-height: 56px;
+}
+
+.study-centring {
+    -fx-padding: 40px 40px 72px 40px;
+}
+
+.study-stage {
+    -fx-spacing: 32px;
+}
+
+.study-overline {
+    -fx-text-fill: -ls-accent;
+}
+
+.study-prompt {
+    -fx-line-spacing: 4px;
+}
+
+.study-option {
+    -fx-background-color: -ls-border, -ls-surface;
+    -fx-background-insets: 0, 1px;
+    -fx-background-radius: 14px, 13px;
+    -fx-padding: 16px 20px 16px 16px;
+    -fx-min-height: 64px;
+    -fx-cursor: hand;
+    -fx-effect: dropshadow(gaussian, -ls-shadow, 12, 0, 0, 3);
+}
+
+.study-option:hover {
+    -fx-background-color: -ls-border-strong, -ls-surface;
+    -fx-effect: dropshadow(gaussian, -ls-shadow-hover, 16, 0, 0, 5);
+}
+
+.study-option:focus-visible {
+    -fx-background-color: -ls-focus, -ls-accent, -ls-surface;
+    -fx-background-insets: -4px, 0, 1.5px;
+    -fx-background-radius: 18px, 14px, 12.5px;
+}
+
+.study-option.selected {
+    -fx-background-color: -ls-accent, -ls-accent-soft;
+    -fx-background-insets: 0, 1.5px;
+    -fx-background-radius: 14px, 12.5px;
+}
+
+.study-option.correct {
+    -fx-background-color: -ls-success, -ls-success-soft;
+    -fx-background-insets: 0, 1.5px;
+    -fx-background-radius: 14px, 12.5px;
+    -fx-effect: null;
+}
+
+.study-option.wrong {
+    -fx-background-color: -ls-danger, -ls-danger-soft;
+    -fx-background-insets: 0, 1.5px;
+    -fx-background-radius: 14px, 12.5px;
+    -fx-effect: null;
+}
+
+.study-option.revealed {
+    -fx-background-color: -ls-success, -ls-surface;
+    -fx-background-insets: 0, 1.5px;
+    -fx-background-radius: 14px, 12.5px;
+    -fx-effect: null;
+}
+
+.study-option.dimmed {
+    -fx-opacity: 0.5;
+    -fx-effect: null;
+}
+
+.option-key {
+    -fx-background-color: -ls-surface-sunken;
+    -fx-background-radius: 8px;
+    -fx-min-width: 30px;
+    -fx-min-height: 30px;
+    -fx-alignment: center;
+    -fx-font-size: 13px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.study-option.selected .option-key {
+    -fx-background-color: -ls-accent;
+    -fx-text-fill: -ls-on-accent;
+}
+
+.study-option.correct .option-key,
+.study-option.revealed .option-key {
+    -fx-background-color: -ls-success;
+    -fx-text-fill: -ls-on-accent;
+}
+
+.study-option.wrong .option-key {
+    -fx-background-color: -ls-danger;
+    -fx-text-fill: -ls-on-danger;
+}
+
+.option-text {
+    -fx-font-size: 18px;
+    -fx-line-spacing: 3px;
+    -fx-text-fill: -ls-text;
+}
+
+.option-mark .ikonli-font-icon {
+    -fx-icon-color: -ls-success;
+}
+
+.study-option.wrong .option-mark .ikonli-font-icon {
+    -fx-icon-color: -ls-danger;
+}
+
+.check-mark {
+    -fx-fill: transparent;
+    -fx-stroke: -ls-success;
+    -fx-stroke-width: 2.5px;
+    -fx-stroke-line-cap: round;
+    -fx-stroke-line-join: round;
+}
+
+.text-input.study-input {
+    -fx-font-size: 18px;
+}
+
+.text-field.study-input {
+    -fx-padding: 0 16px 0 16px;
+    -fx-min-height: 56px;
+    -fx-pref-height: 56px;
+}
+
+.text-area.study-input .content {
+    -fx-padding: 14px 16px 14px 16px;
+}
+
+.text-input.study-input.correct {
+    -fx-background-color: -ls-success, -ls-success-soft;
+    -fx-background-insets: 0, 1.5px;
+    -fx-background-radius: 6px, 4.5px;
+}
+
+.text-input.study-input.wrong {
+    -fx-background-color: -ls-danger, -ls-danger-soft;
+    -fx-background-insets: 0, 1.5px;
+    -fx-background-radius: 6px, 4.5px;
+}
+
+.study-actions {
+    -fx-spacing: 16px;
+    -fx-alignment: center-left;
+}
+
+.flashcard {
+    -fx-padding: 40px 48px 40px 48px;
+    -fx-min-height: 220px;
+    -fx-alignment: center;
+}
+
+.flashcard-hint {
+    -fx-font-size: 15px;
+    -fx-text-alignment: center;
+}
+
+.flashcard-back {
+    -fx-font-size: 21px;
+    -fx-line-spacing: 6px;
+    -fx-text-alignment: center;
+}
+
+.rating-button {
+    -fx-min-width: 96px;
+}
+
+.feedback-panel {
+    -fx-background-color: -ls-border, -ls-surface;
+    -fx-background-insets: 0, 1px;
+    -fx-background-radius: 14px, 13px;
+    -fx-padding: 24px 28px 22px 28px;
+}
+
+.feedback-panel.correct {
+    -fx-background-color: -ls-success-soft;
+    -fx-background-insets: 0;
+    -fx-background-radius: 14px;
+}
+
+.feedback-panel.wrong {
+    -fx-background-color: -ls-danger-soft;
+    -fx-background-insets: 0;
+    -fx-background-radius: 14px;
+}
+
+.feedback-panel.correct .feedback-verdict {
+    -fx-text-fill: -ls-success-text;
+}
+
+.feedback-panel.wrong .feedback-verdict {
+    -fx-text-fill: -ls-danger-text;
+}
+
+.feedback-actions {
+    -fx-alignment: center-left;
+}
+
+.button.source-link {
+    -fx-text-fill: -ls-accent;
+    -fx-padding: 4px 8px 4px 0;
+}
+
+.button.source-link .ikonli-font-icon {
+    -fx-icon-color: -ls-accent;
+}
+
+.summary-card {
+    -fx-padding: 28px 36px 28px 32px;
+}
+
+/* ---- Progress ------------------------------------------------------------------------------------ */
+
+.stat-row {
+    -fx-spacing: 16px;
+}
+
+.module-progress-grid {
+    -fx-hgap: 24px;
+    -fx-vgap: 18px;
+}
+
+/* ---- Studio -------------------------------------------------------------------------------------- */
+
+.studio-top {
+    -fx-padding: 0 0 4px 0;
+}
+
+.tab-strip {
+    -fx-border-color: transparent transparent -ls-border transparent;
+    -fx-border-width: 0 0 1px 0;
+    -fx-spacing: 4px;
+}
+
+.tab-button {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 0;
+    -fx-padding: 10px 12px 12px 12px;
+    -fx-graphic-text-gap: 8px;
+    -fx-font-size: 14px;
+    -fx-text-fill: -ls-text-muted;
+    -fx-cursor: hand;
+}
+
+.tab-button:hover {
+    -fx-text-fill: -ls-text;
+}
+
+.tab-button:selected {
+    -fx-background-color: -ls-accent, -ls-bg;
+    -fx-background-insets: 0, 0 0 2px 0;
+    -fx-text-fill: -ls-text;
+}
+
+.tab-button:focus-visible {
+    -fx-background-color: -ls-focus, -ls-bg;
+    -fx-background-insets: 2px, 4px;
+    -fx-background-radius: 8px, 6px;
+}
+
+.tab-count {
+    -fx-background-color: -ls-surface-sunken;
+    -fx-background-radius: 999px;
+    -fx-padding: 1px 7px 1px 7px;
+    -fx-font-size: 11px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.tab-count.warning {
+    -fx-background-color: -ls-warning-soft;
+    -fx-text-fill: -ls-warning-text;
+}
+
+.tab-button:selected .tab-count {
+    -fx-background-color: -ls-accent-soft;
+    -fx-text-fill: -ls-accent;
+}
+
+.tab-button:selected .tab-count.warning {
+    -fx-background-color: -ls-warning-soft;
+    -fx-text-fill: -ls-warning-text;
+}
+
+.row-list {
+    -fx-spacing: 0;
+}
+
+.list-row {
+    -fx-padding: 14px 4px 14px 4px;
+    -fx-min-height: 64px;
+    -fx-border-color: -ls-border transparent transparent transparent;
+    -fx-border-width: 1px 0 0 0;
+}
+
+.list-row.first {
+    -fx-border-width: 0;
+}
+
+.drag-handle {
+    -fx-cursor: move;
+}
+
+.drag-handle .ikonli-font-icon {
+    -fx-icon-color: -ls-text-faint;
+}
+
+.module-number {
+    -fx-background-color: -ls-surface-sunken;
+    -fx-background-radius: 999px;
+    -fx-min-width: 28px;
+    -fx-min-height: 28px;
+    -fx-alignment: center;
+    -fx-font-size: 12px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.review-card {
+    -fx-padding: 24px 28px 20px 28px;
+}
+
+.review-prompt {
+    -fx-font-size: 19px;
+    -fx-line-spacing: 3px;
+    -fx-text-fill: -ls-text;
+}
+
+.review-option {
+    -fx-font-size: 14px;
+    -fx-graphic-text-gap: 10px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.review-option.correct {
+    -fx-text-fill: -ls-text;
+}
+
+.review-option.correct .ikonli-font-icon {
+    -fx-icon-color: -ls-success;
+}
+
+.review-option.distractor .ikonli-font-icon {
+    -fx-icon-color: -ls-text-faint;
+}
+
+.review-answer {
+    -fx-font-size: 14px;
+    -fx-line-spacing: 3px;
+    -fx-text-fill: -ls-text;
+}
+
+.review-source {
+    -fx-background-color: -ls-page-highlight, -ls-surface-sunken;
+    -fx-background-insets: 0, 0 0 0 3px;
+    -fx-background-radius: 10px, 0 10px 10px 0;
+    -fx-padding: 14px 18px 16px 20px;
+}
+
+.review-passage {
+    -fx-font-size: 15px;
+    -fx-line-spacing: 4px;
+}
+
+.scanned-page {
+    -fx-background-color: -ls-surface-sunken;
+    -fx-background-radius: 10px;
+    -fx-padding: 14px;
+    -fx-min-width: 448px;
+}
+
+.scanned-page > .image-view {
+    -fx-effect: dropshadow(gaussian, -ls-shadow-hover, 12, 0, 0, 3);
+}
+
+.text-area.page-text .content {
+    -fx-padding: 14px 16px 14px 16px;
+}
+
+.text-area.page-text {
+    -fx-font-size: 14px;
+}
+
+.version-row {
+    -fx-padding: 14px 0 14px 0;
+    -fx-border-color: -ls-border transparent transparent transparent;
+    -fx-border-width: 1px 0 0 0;
+}
+
+/* ---- Settings ------------------------------------------------------------------------------------ */
+
+.settings-section {
+    -fx-padding: 24px 28px 24px 28px;
+}
+
+.settings-row-title {
+    -fx-font-size: 14px;
+    -fx-text-fill: -ls-text;
+}
+
+.settings-row-detail {
+    -fx-font-size: 13px;
+    -fx-line-spacing: 2px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+/* ---- Profiles and onboarding (full screen) ------------------------------------------------------- */
+
+.full-screen {
+    -fx-background-color: -ls-bg;
+    -fx-padding: 48px;
+}
+
+.full-screen-column {
+    -fx-spacing: 12px;
+}
+
+.full-screen-title {
+    -fx-font-size: 40px;
+}
+
+.profile-tile {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 18px;
+    -fx-padding: 22px 16px 20px 16px;
+    -fx-min-width: 172px;
+    -fx-pref-width: 172px;
+    -fx-min-height: 196px;
+    -fx-alignment: top-center;
+    -fx-content-display: top;
+    -fx-graphic-text-gap: 12px;
+    -fx-font-size: 15px;
+    -fx-text-fill: -ls-text-muted;
+    -fx-cursor: hand;
+}
+
+.profile-tile:hover {
+    -fx-background-color: -ls-border, -ls-surface;
+    -fx-background-insets: 0, 1px;
+    -fx-background-radius: 18px, 17px;
+    -fx-effect: dropshadow(gaussian, -ls-shadow-hover, 24, 0, 0, 8);
+}
+
+.profile-tile:armed {
+    -fx-background-color: -ls-border-strong, -ls-surface-sunken;
+}
+
+.profile-tile:focus-visible {
+    -fx-background-color: -ls-focus, -ls-accent, -ls-surface;
+    -fx-background-insets: -4px, 0, 1.5px;
+    -fx-background-radius: 22px, 18px, 16.5px;
+}
+
+.profile-tile .ikonli-font-icon {
+    -fx-icon-color: -ls-text-faint;
+}
+
+.profile-tile-name {
+    -fx-font-size: 16px;
+    -fx-text-fill: -ls-text;
+}
+
+.profile-tile.current .text-caption {
+    -fx-text-fill: -ls-accent;
+}
+
+.profile-add-circle {
+    -fx-background-color: transparent;
+    -fx-background-radius: 999px;
+    -fx-border-color: -ls-border-strong;
+    -fx-border-width: 1.5px;
+    -fx-border-style: segments(5, 5);
+    -fx-border-radius: 999px;
+}
+
+.profile-tile.add .profile-tile-name {
+    -fx-text-fill: -ls-text-muted;
+}
+
+.profile-tile.add:hover .profile-tile-name {
+    -fx-text-fill: -ls-text;
+}
+
+.profile-tile.add:hover .profile-add-circle {
+    -fx-border-color: -ls-accent;
+}
+
+.profile-tile.add:hover .ikonli-font-icon {
+    -fx-icon-color: -ls-accent;
+}
+
+.onboarding-card {
+    -fx-padding: 32px 36px 32px 36px;
+}
+
+.onboarding-step-body {
+    -fx-spacing: 16px;
+}
+
+.onboarding-steps {
+    -fx-spacing: 8px;
+}
+
+.onboarding-step {
+    -fx-background-color: -ls-border-strong;
+    -fx-background-radius: 999px;
+    -fx-min-width: 8px;
+    -fx-pref-width: 8px;
+    -fx-max-width: 8px;
+    -fx-min-height: 8px;
+    -fx-max-height: 8px;
+}
+
+.onboarding-step.done {
+    -fx-background-color: -ls-accent-muted;
+}
+
+.onboarding-step.current {
+    -fx-background-color: -ls-accent;
+    -fx-min-width: 24px;
+    -fx-pref-width: 24px;
+    -fx-max-width: 24px;
+}
+
+.avatar-swatch {
+    -fx-background-color: transparent;
+    -fx-background-radius: 999px;
+    -fx-padding: 3px;
+    -fx-cursor: hand;
+}
+
+.avatar-swatch:hover {
+    -fx-background-color: -ls-border-strong, -ls-surface;
+    -fx-background-insets: 0, 1.5px;
+}
+
+.avatar-swatch:selected {
+    -fx-background-color: -ls-accent, -ls-surface;
+    -fx-background-insets: 0, 2px;
+}
+
+.avatar-swatch:focus-visible {
+    -fx-background-color: -ls-focus, -ls-accent, -ls-surface;
+    -fx-background-insets: -3px, 0, 2px;
+}
+
+.onboarding-status {
+    -fx-background-color: -ls-surface-sunken;
+    -fx-background-radius: 12px;
+    -fx-padding: 14px 16px 14px 14px;
+}
+
+.onboarding-ready-dot {
+    -fx-fill: -ls-success;
+}
+
+.onboarding-ready .ikonli-font-icon {
+    -fx-icon-color: -ls-on-accent;
+}
+
+.onboarding-unavailable .ikonli-font-icon {
+    -fx-icon-color: -ls-warning;
+}
+
+/* ---- Component gallery (demo only) --------------------------------------------------------------- */
+
+.gallery-column {
+    -fx-background-color: -ls-bg;
+    -fx-padding: 40px 40px 56px 40px;
+}
+
+.gallery-section-title {
+    -fx-padding: 0 0 8px 0;
+    -fx-border-color: transparent transparent -ls-border transparent;
+    -fx-border-width: 0 0 1px 0;
+    -fx-max-width: infinity;
+}
+
+.gallery-swatch {
+    -fx-background-radius: 10px;
+    -fx-background-insets: 0, 1px;
+    -fx-min-width: 64px;
+    -fx-min-height: 40px;
+}
+
+.gallery-well {
+    -fx-background-color: -ls-scrim;
+    -fx-background-radius: 14px;
+    -fx-padding: 28px;
+}
+
+.label.tooltip.gallery-tooltip {
+    -fx-max-width: 280px;
 }

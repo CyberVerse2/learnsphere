@@ -16,6 +16,7 @@ public sealed interface Destination {
     Settings SETTINGS = new Settings();
     Profiles PROFILES = new Profiles();
     Onboarding ONBOARDING = new Onboarding();
+    Gallery GALLERY = new Gallery();
 
     /** The screen this destination opens. */
     Route route();
@@ -142,6 +143,14 @@ public sealed interface Destination {
         @Override
         public Route route() {
             return Route.ONBOARDING;
+        }
+    }
+
+    /** Every component in both appearances (demo builds only). */
+    record Gallery() implements Destination {
+        @Override
+        public Route route() {
+            return Route.GALLERY;
         }
     }
 }

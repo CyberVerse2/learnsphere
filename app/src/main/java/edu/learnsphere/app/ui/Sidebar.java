@@ -2,9 +2,13 @@ package edu.learnsphere.app.ui;
 
 import edu.learnsphere.app.AppContext;
 import edu.learnsphere.app.ui.components.Avatar;
+import edu.learnsphere.app.ui.components.CourseCover;
+import edu.learnsphere.app.ui.components.Formats;
 import edu.learnsphere.app.ui.components.Icons;
 import edu.learnsphere.app.ui.components.SphereArt;
 import edu.learnsphere.core.events.CourseChanged;
+import edu.learnsphere.core.events.ItemsChanged;
+import edu.learnsphere.core.events.ProgressChanged;
 import edu.learnsphere.core.service.CourseFilter;
 import edu.learnsphere.core.service.CourseSummary;
 import edu.learnsphere.core.service.ProfileSummary;
@@ -17,6 +21,9 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import javafx.beans.value.ChangeListener;
 import javafx.geometry.Insets;
+import javafx.geometry.Pos;
+import javafx.scene.control.ContentDisplay;
+import javafx.scene.control.Tooltip;
 import javafx.scene.control.Label;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToggleGroup;
@@ -30,6 +37,8 @@ import org.kordamp.ikonli.feather.Feather;
 /**
  * App mark and name, primary navigation, the "Studying" list, then Settings and the profile chip at the
  * bottom. The selected item follows the navigator; the studying list and the chip follow the open profile.
+ * The studying list, with each course's due badge, reloads when a course, its items or the learner's
+ * progress change.
  */
 public final class Sidebar extends VBox {
 
@@ -67,6 +76,14 @@ public final class Sidebar extends VBox {
 
         chip.getStyleClass().add("profile-chip");
         chip.setOnMouseClicked(event -> navigator.navigate(Destination.PROFILES));
+        chip.setFocusTraversable(true);
+        chip.setAccessibleRole(javafx.scene.AccessibleRole.BUTTON);
+        chip.setOnKeyPressed(event -> {
+            if (event.getCode() == javafx.scene.input.KeyCode.ENTER || event.getCode() == javafx.scene.input.KeyCode.SPACE) {
+                event.consume();
+                navigator.navigate(Destination.PROFILES);
+            }
+        });
 
         getChildren().addAll(brand,
                 item(Route.HOME, Feather.HOME, Destination.HOME),
@@ -157,7 +174,10 @@ public final class Sidebar extends VBox {
             }
         };
         load.run();
+        // Titles and enrolment change with the course; due badges change with every answer and approval.
         scope.add(Fx.subscribe(workspace.events(), CourseChanged.class, event -> load.run()));
+        scope.add(Fx.subscribe(workspace.events(), ProgressChanged.class, event -> load.run()));
+        scope.add(Fx.subscribe(workspace.events(), ItemsChanged.class, event -> load.run()));
     }
 
     private void showCourses(List<CourseSummary> courses) {
@@ -175,20 +195,52 @@ public final class Sidebar extends VBox {
     }
 
     private ToggleButton courseItem(CourseSummary course) {
-        SphereArt cover = SphereArt.cover(course.coverHue());
-        cover.setCornerRadius(5);
-        cover.setMinSize(22, 22);
-        cover.setPrefSize(22, 22);
-        cover.setMaxSize(22, 22);
-        ToggleButton button = new ToggleButton(course.title(), cover);
+        CourseCover cover = new CourseCover(course.coverHue(), course.id(), CourseCover.Size.TINY);
+        Label title = new Label(course.title());
+        title.getStyleClass().add("sidebar-course-title");
+        title.setMnemonicParsing(false);
+        title.setMinWidth(0);
+        title.setMaxWidth(Double.MAX_VALUE);
+        HBox.setHgrow(title, Priority.ALWAYS);
+        HBox row = new HBox(10, cover, title);
+        row.setAlignment(Pos.CENTER_LEFT);
+        if (course.dueCount() > 0) {
+            Label badge = new Label(Integer.toString(course.dueCount()));
+            badge.getStyleClass().add("nav-badge");
+            badge.setMinWidth(Region.USE_PREF_SIZE);
+            Tooltip.install(badge, new Tooltip(Formats.count(course.dueCount(), "review", "reviews") + " due"));
+            row.getChildren().add(badge);
+        }
+        ToggleButton button = new ToggleButton(null, row);
+        button.setContentDisplay(ContentDisplay.GRAPHIC_ONLY);
         button.getStyleClass().setAll("nav-item", "sidebar-course");
+        button.setAccessibleText(course.title());
         button.setToggleGroup(group);
         button.setMaxWidth(Double.MAX_VALUE);
-        button.setMnemonicParsing(false);
+        row.prefWidthProperty().bind(button.widthProperty().subtract(20));
+        row.maxWidthProperty().bind(row.prefWidthProperty());
         Destination destination = new Destination.Course(course.id());
         button.setOnAction(event -> open(button, destination));
         courseItems.put(course.id(), button);
         return button;
+    }
+
+    /** The due count on each course's badge in the "Studying" list, by course id (0 without a badge; tests). */
+    public Map<String, Integer> studyingDueCounts() {
+        Map<String, Integer> counts = new java.util.LinkedHashMap<>();
+        courseItems.forEach((courseId, button) -> {
+            Label badge = (Label) button.getGraphic().lookup(".nav-badge");
+            counts.put(courseId, badge == null ? 0 : Integer.parseInt(badge.getText()));
+        });
+        return counts;
+    }
+
+    /** The titles in the "Studying" list, in order (tests). */
+    public List<String> studyingTitles() {
+        return studying.getChildren().stream()
+                .filter(node -> node instanceof ToggleButton)
+                .map(node -> ((ToggleButton) node).getAccessibleText())
+                .toList();
     }
 
     private void showChip(ProfileSummary profile, boolean several) {
