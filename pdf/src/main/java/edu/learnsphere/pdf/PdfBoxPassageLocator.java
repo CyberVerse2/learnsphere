@@ -18,7 +18,8 @@ import org.apache.pdfbox.pdmodel.PDDocument;
  * {@linkplain TextNormalizer#matchForm match form} with {@link PassageMatcher}: differences in whitespace,
  * case, punctuation, accents and line-end hyphenation never matter, small differences in wording are
  * tolerated, and a passage that continues on the next or previous page is found by the part on this page.
- * The result is one rectangle per matched line, in reading order. Stateless and thread-safe.
+ * The result is one rectangle per matched line, in reading order; lines between matched ones that share no
+ * text with the passage (a running footer between two columns) are left out. Stateless and thread-safe.
  */
 public final class PdfBoxPassageLocator implements PassageLocator {
 
@@ -81,6 +82,14 @@ public final class PdfBoxPassageLocator implements PassageLocator {
         if (match == null) {
             return List.of();
         }
+        // Lines inside the region without any matching text, such as a running footer read between the two
+        // columns, are not part of the passage.
+        boolean[] lineMatched = new boolean[line];
+        for (int s = 0; s < match.segmentCount(); s++) {
+            for (int c = match.segmentStart(s); c < match.segmentEnd(s); c++) {
+                lineMatched[lineOfGlyph.get(glyphOfChar[c])] = true;
+            }
+        }
         int firstGlyph = glyphOfChar[match.start()];
         int lastGlyph = glyphOfChar[match.end() - 1];
         List<NormalizedRect> rects = new ArrayList<>();
@@ -92,6 +101,9 @@ public final class PdfBoxPassageLocator implements PassageLocator {
         for (int g = firstGlyph; g <= lastGlyph; g++) {
             Glyph glyph = glyphs.get(g);
             int glyphLine = lineOfGlyph.get(g);
+            if (!lineMatched[glyphLine]) {
+                continue;
+            }
             if (glyphLine != currentLine) {
                 addRect(layout.geometry(), currentLine, left, top, right, bottom, rects);
                 currentLine = glyphLine;

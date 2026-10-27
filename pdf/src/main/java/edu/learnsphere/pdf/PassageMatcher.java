@@ -28,8 +28,26 @@ final class PassageMatcher {
     /** Runs kept for chaining; more only happens with highly repetitive text. */
     private static final int MAX_RUNS = 2_000;
 
-    /** A matched region of the page, {@code [start, end)}, and how many passage characters it accounts for. */
-    record Match(int start, int end, int covered) {
+    /**
+     * A matched region of the page, {@code [start, end)}, and how many passage characters it accounts for.
+     * {@code segments} holds the page ranges that actually match, as {@code [from0, to0, from1, to1, ...]} in
+     * page order; text between them (a footer between two columns, a changed word) belongs to the region but
+     * not to the passage.
+     */
+    record Match(int start, int end, int covered, int[] segments) {
+
+        /** Number of matching page ranges. */
+        int segmentCount() {
+            return segments.length / 2;
+        }
+
+        int segmentStart(int index) {
+            return segments[2 * index];
+        }
+
+        int segmentEnd(int index) {
+            return segments[2 * index + 1];
+        }
     }
 
     private PassageMatcher() {
@@ -42,7 +60,7 @@ final class PassageMatcher {
         }
         int exact = page.indexOf(passage);
         if (exact >= 0) {
-            return new Match(exact, exact + passage.length(), passage.length());
+            return new Match(exact, exact + passage.length(), passage.length(), new int[] {exact, exact + passage.length()});
         }
         if (passage.length() < MIN_FUZZY_LENGTH) {
             return null;
@@ -124,8 +142,10 @@ final class PassageMatcher {
         int covered = 0;
         Run first = null;
         Run last = runs.get(best);
+        List<Run> chain = new ArrayList<>();
         for (int k = best; k >= 0; k = previous[k]) {
             first = runs.get(k);
+            chain.add(first);
             covered += first.length(q);
         }
         int start = first.jFrom;
@@ -137,7 +157,13 @@ final class PassageMatcher {
         if (covered < Math.min(passageLength, 16) || !enough || !dense) {
             return null;
         }
-        return new Match(start, end, covered);
+        int[] segments = new int[2 * chain.size()];
+        for (int k = 0; k < chain.size(); k++) {
+            Run run = chain.get(chain.size() - 1 - k);
+            segments[2 * k] = run.jFrom;
+            segments[2 * k + 1] = run.jTo(q);
+        }
+        return new Match(start, end, covered, segments);
     }
 
     private static long hash(String text, int from, int length) {
