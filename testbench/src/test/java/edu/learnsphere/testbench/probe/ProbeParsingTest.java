@@ -18,6 +18,15 @@ class ProbeParsingTest {
     }
 
     @Test
+    void aCommandThatHangsIsEndedAtItsTimeLimit() throws Exception {
+        long start = System.nanoTime();
+        assertThat(MemorySampler.run(List.of("sleep", "30"), 1)).isEmpty();
+        assertThat((System.nanoTime() - start) / 1_000_000).isLessThan(10_000);
+        assertThat(MemorySampler.run(List.of("echo", "  4211 1048576"), 5)).contains("4211 1048576");
+        assertThat(MemorySampler.run(List.of("/no/such/tool"), 5)).isEmpty();
+    }
+
+    @Test
     void footprintHeaderIsReadInItsUnit() {
         assertThat(MemorySampler.parseFootprint("zsh [74250]: 64-bit    Footprint: 2336 KB (16384 bytes per page)"))
                 .hasValue(2336L * 1024);

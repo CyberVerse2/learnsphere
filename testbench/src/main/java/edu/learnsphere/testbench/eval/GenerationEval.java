@@ -9,7 +9,6 @@ import edu.learnsphere.core.service.GenerationService;
 import edu.learnsphere.core.service.ItemFilter;
 import edu.learnsphere.core.service.ItemSummary;
 import edu.learnsphere.core.service.JobUpdate;
-import edu.learnsphere.core.service.impl.pipeline.GenerationServiceImpl.GenerationOutcome;
 import edu.learnsphere.core.spi.Passage;
 import edu.learnsphere.core.spi.SupportVerdict;
 import edu.learnsphere.core.util.CancellationToken;
@@ -49,6 +48,14 @@ public final class GenerationEval {
     private static final Duration JOB_TIMEOUT = Duration.ofMinutes(40);
     /** Items asked for per module (operating systems, research methods). */
     static final Map<String, Integer> REQUESTED = Map.of(Material.OS, 22, Material.RESEARCH_METHODS, 14);
+    /**
+     * The counts a finished generation job stores as its result, read through the public {@code JobQueue.result}.
+     * The field names match the job's stored result (core's {@code GenerationServiceImpl.GenerationOutcome}); a
+     * renamed field reads as 0, which shows in the report as no near-duplicates dropped.
+     */
+    record JobCounts(int created, int duplicates, int unsupported) {
+    }
+
     /** Word overlap (Jaccard) at or above which two stored items count as near-duplicates here. */
     public static final double DUPLICATE_OVERLAP = 0.7;
 
@@ -174,8 +181,8 @@ public final class GenerationEval {
             requested += count;
             JobUpdate job = generation.generate(GenerationRequest.forModule(course, session.moduleId(key), count));
             session.awaitJob(job.jobId(), JOB_TIMEOUT);
-            GenerationOutcome outcome = session.workspace().jobs().result(job.jobId(), GenerationOutcome.class)
-                    .orElse(new GenerationOutcome(0, 0, 0));
+            JobCounts outcome = session.workspace().jobs().result(job.jobId(), JobCounts.class)
+                    .orElse(new JobCounts(0, 0, 0));
             duplicates += outcome.duplicates();
             LOG.info("Module {}: {} of {} items stored, {} near-duplicates dropped", key, outcome.created(), count,
                     outcome.duplicates());

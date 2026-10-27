@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.within;
 
 import edu.learnsphere.core.model.ItemType;
 import edu.learnsphere.core.model.SupportStatus;
+import edu.learnsphere.core.service.impl.pipeline.GenerationServiceImpl;
+import edu.learnsphere.core.util.Json;
 import edu.learnsphere.core.spi.GradeResult.Verdict;
 import java.util.List;
 import java.util.Map;
@@ -19,6 +21,13 @@ class EvaluationScoringTest {
 
     private static RetrievalEval.QuestionRow uncovered(String id, double top) {
         return new RetrievalEval.QuestionRow(id, "", List.of(), false, Map.of(), top, -1);
+    }
+
+    @Test
+    void generationJobCountsReadTheStoredJobResult() {
+        // Guards the field names GenerationEval relies on when it reads a job's result.
+        String stored = Json.write(new GenerationServiceImpl.GenerationOutcome(18, 3, 2));
+        assertThat(Json.read(stored, GenerationEval.JobCounts.class)).isEqualTo(new GenerationEval.JobCounts(18, 3, 2));
     }
 
     @Test

@@ -5,6 +5,7 @@ import edu.learnsphere.core.model.Citation;
 import edu.learnsphere.core.service.Answer;
 import edu.learnsphere.core.service.AnswerListener;
 import edu.learnsphere.core.service.AskService;
+import edu.learnsphere.core.util.Cancellable;
 import edu.learnsphere.testbench.material.Material;
 import edu.learnsphere.testbench.metrics.Citations;
 import edu.learnsphere.testbench.metrics.KeyTerms;
@@ -34,6 +35,10 @@ public final class AnswerEval {
     private static final Logger LOG = LoggerFactory.getLogger(AnswerEval.class);
     static final String PHASE = "answers";
     private static final long ANSWER_TIMEOUT_SECONDS = 300;
+    /** How long a timed-out answer may take to stop before the next question is asked. */
+    private static final long CANCEL_WAIT_SECONDS = 30;
+    /** Recorded as the reply of a question that got no answer within {@link #ANSWER_TIMEOUT_SECONDS}. */
+    static final String TIMED_OUT = "No answer within " + ANSWER_TIMEOUT_SECONDS + " s";
 
     /** What the learner saw. */
     public enum Outcome {
@@ -177,7 +182,7 @@ public final class AnswerEval {
         AtomicLong firstToken = new AtomicLong(-1);
         int earlierCalls = session.recorder().answerCalls().size();
         long start = System.nanoTime();
-        ask.ask(thread, question, new AnswerListener() {
+        Cancellable handle = ask.ask(thread, question, new AnswerListener() {
             @Override
             public void onToken(String token) {
                 firstToken.compareAndSet(-1, (System.nanoTime() - start) / 1_000_000);
@@ -204,12 +209,24 @@ public final class AnswerEval {
             }
         });
         Object reply;
+        long total;
         try {
             reply = done.get(ANSWER_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-        } catch (ExecutionException | TimeoutException e) {
+            total = (System.nanoTime() - start) / 1_000_000;
+        } catch (ExecutionException e) {
             reply = UserMessage.SOMETHING_WENT_WRONG;
+            total = (System.nanoTime() - start) / 1_000_000;
+        } catch (TimeoutException e) {
+            total = (System.nanoTime() - start) / 1_000_000;
+            reply = TIMED_OUT;
+            // Stop the answer, so the next question does not wait behind it on the chat server.
+            handle.cancel();
+            try {
+                done.get(CANCEL_WAIT_SECONDS, TimeUnit.SECONDS);
+            } catch (ExecutionException | TimeoutException ignored) {
+                LOG.warn("{} was not stopped within {} s after it timed out", id, CANCEL_WAIT_SECONDS);
+            }
         }
-        long total = (System.nanoTime() - start) / 1_000_000;
         List<Recorder.AnswerCall> calls = session.recorder().answerCalls();
         Optional<Recorder.AnswerCall> call = calls.subList(earlierCalls, calls.size()).stream()
                 .filter(c -> c.question().strip().equals(question.strip())).reduce((first, last) -> last);

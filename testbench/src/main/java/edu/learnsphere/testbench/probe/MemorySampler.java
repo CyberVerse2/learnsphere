@@ -11,7 +11,10 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.OptionalLong;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -37,6 +40,7 @@ public final class MemorySampler implements AutoCloseable {
     private static final Logger LOG = LoggerFactory.getLogger(MemorySampler.class);
     static final long RSS_INTERVAL_MS = 500;
     static final long FOOTPRINT_INTERVAL_MS = 2_000;
+    static final long COMMAND_TIMEOUT_SECONDS = 10;
     private static final Pattern FOOTPRINT = Pattern.compile("Footprint:\\s*([\\d.]+)\\s*(B|KB|MB|GB)");
 
     /**
@@ -261,19 +265,40 @@ public final class MemorySampler implements AutoCloseable {
         return OptionalLong.of(Math.round(value * unit));
     }
 
-    private static String run(List<String> command) throws InterruptedException {
+    /**
+     * Runs a short command and returns its output, or "" when it fails or takes longer than
+     * {@value #COMMAND_TIMEOUT_SECONDS} s (it is then ended, so one hanging tool cannot stop the sampling).
+     */
+    static String run(List<String> command) throws InterruptedException {
+        return run(command, COMMAND_TIMEOUT_SECONDS);
+    }
+
+    /** {@link #run(List)} with another time limit. */
+    static String run(List<String> command, long timeoutSeconds) throws InterruptedException {
+        Process process;
         try {
-            Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
+            process = new ProcessBuilder(command).redirectErrorStream(true).start();
             process.getOutputStream().close();
-            String output;
-            try (InputStream in = process.getInputStream()) {
-                output = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-            }
-            if (!process.waitFor(10, TimeUnit.SECONDS)) {
-                process.destroyForcibly();
-            }
-            return output;
         } catch (IOException e) {
+            return "";
+        }
+        // Read on another thread: a read here would block past the timeout if the tool hung with its output open.
+        CompletableFuture<String> output = new CompletableFuture<>();
+        Thread.ofVirtual().name("testbench-memory-read").start(() -> {
+            try (InputStream in = process.getInputStream()) {
+                output.complete(new String(in.readAllBytes(), StandardCharsets.UTF_8));
+            } catch (IOException e) {
+                output.complete("");
+            }
+        });
+        if (!process.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
+            LOG.debug("{} took longer than {} s; ended it", command.getFirst(), timeoutSeconds);
+            process.destroyForcibly();
+            return "";
+        }
+        try {
+            return output.get(timeoutSeconds, TimeUnit.SECONDS);
+        } catch (ExecutionException | TimeoutException e) {
             return "";
         }
     }

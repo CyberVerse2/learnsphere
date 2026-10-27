@@ -106,6 +106,7 @@ public final class ModelRun {
         Partial run = new Partial(model, ai.runtime(), recorder, chatLog);
         Workspace workspace = null;
         String failure = null;
+        List<Long> leftover = List.of();
         try {
             recorder.label("load");
             LOG.info("Starting the servers with {}", model.code());
@@ -138,6 +139,8 @@ public final class ModelRun {
             LOG.error("The {} run ended early", model.code(), e);
             failure = e.getClass().getSimpleName() + ": " + e.getMessage();
         } finally {
+            // Runs on every exit, also for an Error such as OutOfMemoryError: no server may outlive the run, and
+            // the log collector must not stay attached.
             recorder.label("closing");
             if (workspace != null) {
                 try {
@@ -146,12 +149,16 @@ public final class ModelRun {
                     LOG.warn("Closing the profile failed", e);
                 }
             }
-            ai.close();
+            try {
+                ai.close();
+            } catch (RuntimeException e) {
+                LOG.warn("Stopping the servers failed", e);
+            }
+            run.sampler.close();
+            chatLog.close();
+            leftover = stopLeftovers(run.seen);
         }
-        run.sampler.close();
         Result result = run.snapshot(failure);
-        chatLog.close();
-        List<Long> leftover = stopLeftovers(run.seen);
         return new Result(result.model(), result.totalMs(), result.load(), result.ingestion(), result.retrieval(),
                 result.answers(), result.generation(), result.grading(), result.memory(), result.buffers(),
                 result.completions(), result.failure(), leftover);
