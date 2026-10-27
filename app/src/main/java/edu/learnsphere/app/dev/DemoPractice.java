@@ -280,6 +280,8 @@ final class DemoPractice implements PracticeService {
 
     @Override
     public Feedback dispute(String attemptId) {
+        Feedback feedback;
+        String courseId;
         synchronized (store) {
             Attempt attempt = store.attempts.stream().filter(a -> a.id().equals(attemptId)).findFirst()
                     .orElseThrow(() -> new NotFoundException(UserMessage.NOT_AVAILABLE, "No attempt " + attemptId));
@@ -291,10 +293,14 @@ final class DemoPractice implements PracticeService {
             ReviewState next = schedule(item.id(), Rating.GOOD, store.now());
             store.reviews.put(item.id(), next);
             SourcePassage source = store.sourcePassage(item);
-            return new Feedback(attempt.id(), item.id(), true, 1, Rating.GOOD, attempt.gradedBy(), item.answer(),
+            courseId = item.courseId();
+            feedback = new Feedback(attempt.id(), item.id(), true, 1, Rating.GOOD, attempt.gradedBy(), item.answer(),
                     item.explanation(), accepted.feedback(), List.of(), source == null ? null : source.ref(),
                     next.dueAt(), next.scheduledDays(), false, true);
         }
+        // The item's next review moved: due counts and accuracy change.
+        store.events.publish(new ProgressChanged(courseId));
+        return feedback;
     }
 
     private Running running(String sessionId) {
