@@ -7,12 +7,14 @@
  *       the text layer and how much of it images cover.</li>
  *   <li>{@link edu.learnsphere.pdf.PdfBoxTextExtractor}: text blocks with font size, weight and position,
  *       streamed page by page. Pages are laid out from glyph positions ({@code LayoutAnalyzer}: lines, blocks,
- *       column gutters), put in reading order ({@code ReadingOrder}: two-column pages column by column), freed
+ *       column gutters; list items and table rows kept whole), put in reading order ({@code ReadingOrder}:
+ *       two-column pages column by column), freed
  *       of running headers, footers and page numbers ({@code MarginFilter}) and joined into block text with
  *       line-end hyphens mended ({@code PageTextBuilder}).</li>
  *   <li>{@link edu.learnsphere.pdf.SectionChunker}: section-aware passages of about 350 tokens with overlap,
  *       cut at sentence ends ({@code HeadingDetector}, {@code SentenceSplitter},
- *       {@link edu.learnsphere.pdf.TokenEstimator}).</li>
+ *       {@link edu.learnsphere.pdf.TokenEstimator}), and the plain text to store for each extracted page, with
+ *       its headings marked so that chunking the stored text finds the same sections.</li>
  *   <li>{@link edu.learnsphere.pdf.PdfBoxPageRenderer}: PNG page images with a bounded number of concurrent
  *       renders and a pixel cap.</li>
  *   <li>{@link edu.learnsphere.pdf.PdfBoxPassageLocator}: where a cited passage sits on its page, as one

@@ -146,6 +146,25 @@ class LayoutAnalyzerTest {
     }
 
     @Test
+    void readsColumnsColumnByColumnWhenSomeRowsHoldShortListItems() {
+        SyntheticPage page = new SyntheticPage();
+        for (int row = 0; row < 16; row++) {
+            float baseline = 150 + row * 14;
+            if (row < 12) {
+                page.text("left column line " + row + " goes on", 72, baseline, 11);
+            } else {
+                page.text("\u2022", 72, baseline, 11).text("item " + row, 90, baseline, 11);
+            }
+            page.text("right column line " + row + " goes on", 330, baseline, 11);
+        }
+        List<String> blocks = SyntheticPage.blockTexts(page.layout(1));
+        assertTrue(blocks.stream().noneMatch(b -> b.contains("left") && b.contains("right") || b.contains("item") && b.contains("right")),
+                blocks.toString());
+        assertEquals(List.of("\u2022 item 12", "\u2022 item 13", "\u2022 item 14", "\u2022 item 15"), blocks.subList(1, 5));
+        assertTrue(blocks.get(5).startsWith("right column line 0") && blocks.getLast().endsWith("right column line 15 goes on"));
+    }
+
+    @Test
     void separatesHeadingsFromParagraphs() {
         SyntheticPage page = new SyntheticPage().text("2.1 Diffusion", 72, 100, 14, true);
         for (int row = 0; row < 4; row++) {
