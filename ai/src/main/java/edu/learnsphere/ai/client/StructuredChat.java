@@ -9,6 +9,7 @@ import edu.learnsphere.core.util.CancellationToken;
 import edu.learnsphere.core.util.Json;
 import java.io.IOException;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,6 +21,10 @@ final class StructuredChat {
 
     private static final Logger LOG = LoggerFactory.getLogger(StructuredChat.class);
 
+    /** Structured replies received since start-up, and how many of them did not parse (diagnostics). */
+    static final AtomicLong REPLIES = new AtomicLong();
+    static final AtomicLong INVALID_REPLIES = new AtomicLong();
+
     private StructuredChat() {
     }
 
@@ -29,10 +34,12 @@ final class StructuredChat {
         for (int attempt = 0; attempt < 2; attempt++) {
             ChatRequest request = ChatRequest.json(messages, limit, temperature, name, schema);
             ChatResult result = chat.complete(priority, request, TokenSink.NONE, token);
+            REPLIES.incrementAndGet();
             JsonNode parsed = parse(result.text());
             if (parsed != null) {
                 return parsed;
             }
+            INVALID_REPLIES.incrementAndGet();
             LOG.warn("The {} reply was not complete JSON ({}, {} tokens); {}", name, result.finishReason(),
                     result.completionTokens(), attempt == 0 ? "trying again" : "giving up");
             limit = limit * 2;

@@ -17,6 +17,14 @@ public final class Prompts {
     public static final PromptTemplate ANSWER_SYSTEM = PromptTemplate.load("answer-system.txt");
     /** Grounded answers: {@code {{passages}}}, {@code {{question}}}. */
     public static final PromptTemplate ANSWER_USER = PromptTemplate.load("answer-user.txt");
+    /** Grounded answers, worked example: passages shared by both example questions. */
+    public static final PromptTemplate ANSWER_EXAMPLE_PASSAGES = PromptTemplate.load("answer-example-passages.txt");
+    /** Grounded answers, worked example: a question the example passages answer. */
+    public static final PromptTemplate ANSWER_EXAMPLE_QUESTION = PromptTemplate.load("answer-example-question.txt");
+    /** Grounded answers, worked example: the cited answer to {@link #ANSWER_EXAMPLE_QUESTION}. */
+    public static final PromptTemplate ANSWER_EXAMPLE_ANSWER = PromptTemplate.load("answer-example-answer.txt");
+    /** Grounded answers, worked example: a related question the passages don't answer (reply: the sentinel). */
+    public static final PromptTemplate ANSWER_EXAMPLE_REFUSAL = PromptTemplate.load("answer-example-refusal.txt");
 
     /** Concept extraction: {@code {{min}}}, {@code {{max}}}. */
     public static final PromptTemplate CONCEPTS_SYSTEM = PromptTemplate.load("concepts-system.txt");

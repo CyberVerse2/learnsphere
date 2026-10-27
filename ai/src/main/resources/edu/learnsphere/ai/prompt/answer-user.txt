@@ -3,3 +3,5 @@ Passages from the student's course material:
 {{passages}}
 
 Student's question: {{question}}
+
+(If these passages don't answer this exact question, reply NOT_IN_MATERIAL. Otherwise answer briefly and end every sentence with its [n] citation.)

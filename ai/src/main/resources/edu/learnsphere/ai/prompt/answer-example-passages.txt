@@ -1,0 +1,5 @@
+[1] Biology notes · p. 12 · Chloroplasts
+Photosynthesis takes place in the chloroplasts of plant cells. Chlorophyll, the green pigment in the thylakoid membranes, absorbs mostly red and blue light and reflects green light.
+
+[2] Biology notes · p. 13 · The light reactions
+In the light-dependent reactions, light energy splits water molecules, releasing oxygen as a by-product. The captured energy is stored in ATP and NADPH, which the Calvin cycle then uses to build sugar from carbon dioxide.
