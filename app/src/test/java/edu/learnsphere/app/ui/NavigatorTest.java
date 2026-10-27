@@ -67,6 +67,23 @@ class NavigatorTest {
     }
 
     @Test
+    void reportsANewViewEvenWhenTheDestinationStaysTheSame(FxRobot robot) {
+        List<View> views = new ArrayList<>();
+        List<Destination> destinations = new ArrayList<>();
+        robot.interact(() -> {
+            navigator.reset(Destination.HOME);
+            navigator.currentViewProperty().addListener((obs, old, view) -> views.add(view));
+            navigator.currentProperty().addListener((obs, old, destination) -> destinations.add(destination));
+            navigator.reset(Destination.HOME);
+        });
+
+        assertThat(destinations).as("still Home").isEmpty();
+        assertThat(views).containsExactly(built.get(1));
+        assertThat(navigator.currentView()).isSameAs(built.get(1));
+        assertThat(built.get(0).disposed).isEqualTo(1);
+    }
+
+    @Test
     void goesBackToTheSameDestinationAndDisposesEveryReplacedView(FxRobot robot) {
         robot.interact(() -> {
             navigator.reset(Destination.HOME);
