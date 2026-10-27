@@ -1,5 +1,6 @@
 package edu.learnsphere.core.service.impl;
 
+import static edu.learnsphere.core.learning.StudyData.DAY;
 import static edu.learnsphere.core.learning.StudyData.MINUTE;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -33,6 +34,7 @@ import edu.learnsphere.core.model.Rating;
 import edu.learnsphere.core.model.ReviewPhase;
 import edu.learnsphere.core.model.ReviewState;
 import edu.learnsphere.core.model.SessionKind;
+import edu.learnsphere.core.model.SessionRecord;
 import edu.learnsphere.core.model.Visibility;
 import edu.learnsphere.core.service.ConceptChange;
 import edu.learnsphere.core.service.Feedback;
@@ -51,6 +53,8 @@ import edu.learnsphere.core.testing.TestDb;
 import edu.learnsphere.core.util.Ids;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
@@ -453,6 +457,149 @@ class PracticeServiceImplTest {
         SessionSummary summary = practice.finish(quiz.id());
         assertThat(summary.kind()).isEqualTo(SessionKind.MODULE_QUIZ);
         assertThat(summary.improved()).isEmpty();
+    }
+
+    @Test
+    void moduleQuizzesAndFlashcardsKeepToTheDailyNewItemLimit() {
+        settings.set(SettingKeys.NEW_ITEMS_PER_DAY, 4);
+        CourseModule cells = t.module(course, "Cells");
+        for (int i = 0; i < 6; i++) {
+            t.item(course, cells, ItemType.CLOZE, ItemStatus.APPROVED, "cloze " + i);
+        }
+        for (int i = 0; i < 3; i++) {
+            t.item(course, null, ItemType.FLASHCARD, ItemStatus.APPROVED, "card " + i);
+        }
+
+        StudySession quiz = start(SessionRequest.moduleQuiz(course.id(), cells.id()));
+        assertThat(quiz.items()).hasSize(4).allMatch(SessionItem::isNew);
+        for (SessionItem shown : quiz.items().subList(0, 3)) {
+            practice.submit(quiz.id(), Response.answer(shown.itemId(), "answer", null, false, 1));
+        }
+        practice.finish(quiz.id());
+
+        StudySession cards = start(SessionRequest.flashcards(course.id(), null));
+        assertThat(cards.items()).as("one new item is left today").hasSize(1);
+        practice.submit(cards.id(), Response.flashcard(cards.items().getFirst().itemId(), Rating.GOOD, 1));
+        practice.finish(cards.id());
+
+        StudySession again = start(SessionRequest.moduleQuiz(course.id(), cells.id()));
+        assertThat(again.items()).as("only the items met before").hasSize(3).noneMatch(SessionItem::isNew);
+        assertThat(practice.studyNext(course.id()).newCount()).isZero();
+    }
+
+    @Test
+    void requestsOfTheDefaultSizeHoldTheLearnersSessionSize() {
+        for (int i = 0; i < 12; i++) {
+            item(ItemType.CLOZE, "item " + i);
+        }
+        settings.set(SettingKeys.SESSION_SIZE, 5);
+        assertThat(start(SessionRequest.studyNext(course.id())).items()).hasSize(5);
+        assertThat(start(SessionRequest.studyNext(course.id()).withSize(8)).items()).hasSize(8);
+        settings.set(SettingKeys.SESSION_SIZE, 10);
+        assertThat(start(SessionRequest.studyNext()).items()).hasSize(10);
+    }
+
+    @Test
+    void aConceptAnsweredOnlyWrongIsNotListedAsImproved() {
+        Concept osmosis = t.concept(course, null, "Osmosis");
+        LearningItem a = item(ItemType.CLOZE, "Water crosses membranes by ___.", "osmosis");
+        LearningItem b = item(ItemType.CLOZE, "Osmosis moves ___.", "water");
+        SessionRecord earlier = t.session(course);
+        for (LearningItem i : List.of(a, b)) {
+            data.tag(i, osmosis);
+            data.attempt(i, earlier, false, t.now() - 3 * DAY);
+            data.state(i, 10, 3, t.now() - MINUTE);
+        }
+        StudySession session = start(SessionRequest.studyNext(course.id()));
+        assertThat(session.items()).extracting(SessionItem::itemId).containsExactlyInAnyOrder(a.id(), b.id());
+
+        practice.submit(session.id(), Response.answer(a.id(), "diffusion", null, false, 1_000));
+        practice.submit(session.id(), Response.answer(b.id(), "salt", null, false, 1_000));
+        SessionSummary summary = practice.finish(session.id());
+
+        assertThat(summary.correct()).isZero();
+        assertThat(summary.improved()).isEmpty();
+    }
+
+    @Test
+    void aConceptJustAnsweredMostlyWrongIsWeakRightAway() {
+        Concept osmosis = t.concept(course, null, "Osmosis");
+        List<LearningItem> items = new ArrayList<>();
+        for (int i = 0; i < 10; i++) {
+            LearningItem item = item(ItemType.CLOZE, "Osmosis " + i, "water");
+            data.tag(item, osmosis);
+            data.state(item, 10, 3, t.now() - MINUTE);
+            items.add(item);
+        }
+        StudySession session = start(SessionRequest.studyNext(course.id()));
+        assertThat(session.items()).hasSize(10);
+        for (int i = 0; i < items.size(); i++) {
+            practice.submit(session.id(), Response.answer(items.get(i).id(), i < 3 ? "water" : "salt", null, false, 1_000));
+        }
+        SessionSummary summary = practice.finish(session.id());
+        assertThat(summary.accuracy()).isCloseTo(0.3, within(1e-9));
+
+        StudySession weak = start(SessionRequest.weakConcepts(course.id()));
+        assertThat(weak.items()).isNotEmpty().allMatch(shown -> shown.conceptNames().contains("Osmosis"));
+    }
+
+    @Test
+    void theSourceNamesTheItemsOwnPage() {
+        Document book = t.document(course, null, "Genetics");
+        Chunk spread = Chunk.create(book.id(), course.id(), null, 7, 4, 6, "Section 7", "Genes sit on chromosomes.", 6,
+                t.now());
+        t.repos.chunks().insert(spread);
+        LearningItem onPage5 = sourced(spread, "Genes sit on chromosomes.", 5);
+        LearningItem noPage = sourced(spread, "Chromosomes hold genes.", null);
+        LearningItem pageOutside = sourced(spread, "Genes are made of DNA.", 9);
+        StudySession session = start(SessionRequest.studyNext(course.id()));
+
+        assertThat(practice.hint(session.id(), onPage5.id()).text()).isEqualTo("Look back at page 5 of “Genetics”.");
+        assertThat(practice.hint(session.id(), noPage.id()).text()).isEqualTo("Look back at pages 4–6 of “Genetics”.");
+        assertThat(practice.hint(session.id(), pageOutside.id()).text()).isEqualTo("Look back at pages 4–6 of “Genetics”.");
+        Feedback feedback = practice.submit(session.id(), Response.answer(onPage5.id(), "true", null, false, 1));
+        assertThat(feedback.source()).isEqualTo(new SourceRef(book.id(), "Genetics", 5, 5, spread.id()));
+    }
+
+    private LearningItem sourced(Chunk chunk, String statement, Integer page) {
+        LearningItem item = LearningItem.draft(course.id(), null, ItemType.TRUE_FALSE, statement, "true", "", List.of(),
+                        Difficulty.MEDIUM, chunk.id(), page, ItemOrigin.AI, t.now())
+                .withStatus(ItemStatus.APPROVED, t.now());
+        t.repos.items().insert(item);
+        t.clock.advance(Duration.ofMillis(1));
+        return item;
+    }
+
+    @Test
+    void aLearningStepJustBeforeMidnightIsNotADayAway() {
+        LearningItem mcq = item(ItemType.MCQ, "Which part holds the DNA?");
+        t.clock.set(Instant.parse("2026-03-02T23:55:00Z"));
+        StudySession session = start(SessionRequest.studyNext(course.id()));
+
+        Feedback feedback = practice.submit(session.id(), Response.answer(mcq.id(), "nucleus", null, false, 1));
+        assertThat(feedback.nextDueAt()).isEqualTo(t.now() + 10 * MINUTE);
+        assertThat(feedback.intervalDays()).isZero();
+    }
+
+    @Test
+    void anIdleSessionIsLetGoBeforeOneInUse() {
+        LearningItem first = item(ItemType.CLOZE, "The ___ holds the DNA.");
+        LearningItem second = item(ItemType.CLOZE, "The DNA sits in the ___.");
+        StudySession inUse = start(SessionRequest.studyNext(course.id()));
+        t.clock.advance(Duration.ofSeconds(1));
+        StudySession idle = start(SessionRequest.studyNext(course.id()));
+        for (int i = 2; i < PracticeServiceImpl.MAX_OPEN_SESSIONS; i++) {
+            t.clock.advance(Duration.ofSeconds(1));
+            start(SessionRequest.studyNext(course.id()));
+        }
+        t.clock.advance(Duration.ofSeconds(1));
+        practice.submit(inUse.id(), Response.answer(first.id(), "nucleus", null, false, 1));
+        t.clock.advance(Duration.ofSeconds(1));
+        start(SessionRequest.studyNext(course.id()));
+
+        assertThat(practice.submit(inUse.id(), Response.answer(second.id(), "nucleus", null, false, 1)).correct()).isTrue();
+        assertThat(messageOf(() -> practice.submit(idle.id(), Response.answer(first.id(), "nucleus", null, false, 1))))
+                .isEqualTo(StudyMessages.SESSION_ENDED);
     }
 
     @Test

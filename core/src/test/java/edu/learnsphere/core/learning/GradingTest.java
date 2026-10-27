@@ -179,4 +179,15 @@ class GradingTest {
                 .extracting(e -> ((UnavailableException) e).userMessage())
                 .isEqualTo(UserMessage.ASSISTANT_STARTING);
     }
+
+    @Test
+    void aScoreThatIsNotANumberCannotBeUsed() {
+        AnswerGrader confused = new AnswerGrader((q, r, a, c, t) ->
+                new GradeResult(Double.NaN, GradeResult.Verdict.PARTIAL, "Hmm.", List.of()));
+        assertThatThrownBy(() -> confused.grade(item(ItemType.SHORT_ANSWER, "ref", List.of()),
+                Response.answer("x", "mine", null, false, 0), false, null, CancellationToken.NONE))
+                .isInstanceOf(UnavailableException.class)
+                .extracting(e -> ((UnavailableException) e).userMessage())
+                .isEqualTo(StudyMessages.GRADING_UNAVAILABLE);
+    }
 }

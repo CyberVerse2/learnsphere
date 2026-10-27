@@ -60,7 +60,8 @@ import org.slf4j.LoggerFactory;
  *       every attempt on the course's items.</li>
  *   <li>The forecast counts reviewed approved items falling due on each of the next 14 days (today includes
  *       overdue items). Retention is weekly (Monday to Sunday) over the last 12 weeks: reviews rated Hard or
- *       better out of reviews, leaving out each item's first attempt.</li>
+ *       better out of reviews, where a review is an item's first answer of a day after it was answered on an
+ *       earlier day ({@link StudyQueries#retentionPerDay}).</li>
  *   <li>Streak, the week strip and reviews today describe the learner's habit and count attempts in any
  *       course.</li>
  * </ul>
@@ -191,12 +192,18 @@ public final class ProgressServiceImpl implements ProgressService {
 
     private List<RetentionPoint> retention(StudyScope scope, LocalDate today) {
         List<DayRange> weeks = DayRange.weeksEndingWith(today, RETENTION_WEEKS, clock.getZone());
-        int[][] counts = queries.retentionPerRange(scope, weeks);
+        List<DayRange> days = DayRange.days(weeks.getFirst().first(), RETENTION_WEEKS * 7, clock.getZone());
+        int[][] perDay = queries.retentionPerDay(scope, days);
         List<RetentionPoint> points = new ArrayList<>();
-        for (int i = 0; i < weeks.size(); i++) {
-            int reviews = counts[i][0];
+        for (int w = 0; w < weeks.size(); w++) {
+            int reviews = 0;
+            int recalled = 0;
+            for (int d = w * 7; d < (w + 1) * 7; d++) {
+                reviews += perDay[d][0];
+                recalled += perDay[d][1];
+            }
             if (reviews > 0) {
-                points.add(new RetentionPoint(weeks.get(i).first(), (double) counts[i][1] / reviews, reviews));
+                points.add(new RetentionPoint(weeks.get(w).first(), (double) recalled / reviews, reviews));
             }
         }
         return points;

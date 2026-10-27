@@ -20,7 +20,17 @@ public interface PracticeService {
     /** What a "Study next" session would contain now (course may be null for every course being studied). */
     StudyNext studyNext(String courseId);
 
-    /** Starts a session. The session may be empty when there is nothing to study. */
+    /**
+     * Starts a session. The session may be empty when there is nothing to study. A request of
+     * {@link SessionRequest#DEFAULT_SIZE} items holds up to the learner's session size
+     * ({@link SettingKeys#SESSION_SIZE}).
+     *
+     * <p>Answers are recorded as they are given. The open workspace holds each unfinished session's plan;
+     * once it no longer does (the workspace was closed in between, or many newer sessions were started),
+     * {@link #submit} and {@link #hint} refuse with "This study session has ended. Start a new one." The
+     * study screen then offers a new session, which picks up the items still due; {@link #finish} still
+     * summarizes the answers given.
+     */
     StudySession start(SessionRequest request);
 
     /**

@@ -73,10 +73,15 @@ import java.util.concurrent.ConcurrentHashMap;
  * {@link AnswerGrader} (short answers by the study assistant), schedules with FSRS-6 at the learner's desired
  * retention, and records every attempt together with the item's new review state in one transaction.
  *
- * <p>A session is a {@code study_sessions} row plus its attempts. The items of a session, their hints and
- * the mastery of their concepts at the start live in memory while the workspace is open; a session started
- * before the workspace was last closed has ended (answers to it are refused, finishing it still summarizes
- * its attempts).
+ * <p>A session is a {@code study_sessions} row plus its attempts, both written as they happen, so no answer
+ * is lost. The plan of a session (its items, their hints and the mastery of their concepts at the start) lives
+ * in memory while the workspace is open, for up to {@value #MAX_OPEN_SESSIONS} unfinished sessions (the one
+ * used least recently is let go beyond that). Answers to a session that is no longer held (started before the
+ * workspace was last closed, or let go) are refused with {@link StudyMessages#SESSION_ENDED}; finishing it
+ * still summarizes its attempts, and a new session picks up the same due items.
+ *
+ * <p>A request of {@link SessionRequest#DEFAULT_SIZE} items gets the learner's session size
+ * ({@link SettingKeys#SESSION_SIZE}); any other size is used as given.
  *
  * <p>Within a session an item can be answered once, except that an item rated Again comes back: it may be
  * answered again, up to {@value #MAX_TRIES_PER_SESSION} times in all ({@link Feedback#rating()} is
@@ -92,7 +97,7 @@ public final class PracticeServiceImpl implements PracticeService {
 
     /** Attempts one item may get in one session (the first answer plus comebacks after Again). */
     public static final int MAX_TRIES_PER_SESSION = 3;
-    /** Open sessions kept in memory; the oldest is dropped beyond this. */
+    /** Unfinished sessions held in memory; the one used least recently is let go beyond this. */
     static final int MAX_OPEN_SESSIONS = 32;
 
     private final Repositories repos;
@@ -137,7 +142,7 @@ public final class PracticeServiceImpl implements PracticeService {
         Objects.requireNonNull(request, "request");
         Target target = resolve(request);
         long now = clock.millis();
-        List<PlannedItem> plan = planner.plan(request.kind(), target.scope(), request.size(),
+        List<PlannedItem> plan = planner.plan(request.kind(), target.scope(), sessionSize(request),
                 settings.get(SettingKeys.NEW_ITEMS_PER_DAY));
 
         Map<String, Double> masteryBefore = masteryOf(plan, conceptIdsOf(plan), now);
@@ -165,6 +170,11 @@ public final class PracticeServiceImpl implements PracticeService {
         keep(session);
         return new StudySession(sessionId, request.kind(), target.courseId(), target.courseTitle(), target.moduleId(),
                 target.moduleTitle(), items, now);
+    }
+
+    /** The learner's session size for a request of the default size, otherwise the size asked for. */
+    private int sessionSize(SessionRequest request) {
+        return request.size() == SessionRequest.DEFAULT_SIZE ? settings.get(SettingKeys.SESSION_SIZE) : request.size();
     }
 
     /** Which courses a request covers and what to call them. */
@@ -211,8 +221,9 @@ public final class PracticeServiceImpl implements PracticeService {
     private void keep(LiveSession session) {
         live.put(session.id, session);
         while (live.size() > MAX_OPEN_SESSIONS) {
-            live.values().stream().min(Comparator.comparingLong((LiveSession s) -> s.startedAt).thenComparing(s -> s.id))
-                    .ifPresent(oldest -> live.remove(oldest.id));
+            live.values().stream()
+                    .min(Comparator.comparingLong((LiveSession s) -> s.lastUsedAt).thenComparing(s -> s.id))
+                    .ifPresent(idle -> live.remove(idle.id));
         }
     }
 
@@ -222,6 +233,7 @@ public final class PracticeServiceImpl implements PracticeService {
     public Feedback submit(String sessionId, Response response) {
         Objects.requireNonNull(response, "response");
         LiveSession session = requireLive(sessionId);
+        session.lastUsedAt = clock.millis();
         Entry entry = session.entries.get(response.itemId());
         if (entry == null) {
             throw new InvalidInputException(StudyMessages.NOT_IN_SESSION, "item " + response.itemId() + " not in session " + sessionId);
@@ -260,7 +272,7 @@ public final class PracticeServiceImpl implements PracticeService {
                 entry.record(attemptId, outcome.rating());
             }
             events.publish(new ProgressChanged(item.courseId()));
-            return feedback(attempt, item, outcome.missingPoints(), source.map(PracticeServiceImpl::sourceRef).orElse(null),
+            return feedback(attempt, item, outcome.missingPoints(), source.map(c -> sourceRef(item, c)).orElse(null),
                     next, now);
         } finally {
             synchronized (session) {
@@ -288,6 +300,7 @@ public final class PracticeServiceImpl implements PracticeService {
     @Override
     public Hint hint(String sessionId, String itemId) {
         LiveSession session = requireLive(sessionId);
+        session.lastUsedAt = clock.millis();
         Entry entry = session.entries.get(itemId);
         if (entry == null) {
             throw new InvalidInputException(StudyMessages.NOT_IN_SESSION, "item " + itemId + " not in session " + sessionId);
@@ -298,7 +311,7 @@ public final class PracticeServiceImpl implements PracticeService {
             }
         }
         LearningItem item = repos.items().get(itemId);
-        SourceRef source = sourceChunk(item).map(PracticeServiceImpl::sourceRef).orElse(null);
+        SourceRef source = sourceChunk(item).map(c -> sourceRef(item, c)).orElse(null);
         if (!entry.hintAvailable || !Hints.available(item, source)) {
             throw new InvalidInputException(StudyMessages.NO_HINT, "no hint for item " + itemId);
         }
@@ -344,9 +357,9 @@ public final class PracticeServiceImpl implements PracticeService {
                         """)
                 .bind("s", sessionId).mapTo(Integer.class).one());
 
-        List<ConceptChange> improved = session == null || answered == 0
+        List<ConceptChange> improved = session == null || correct == 0
                 ? List.of()
-                : improvedConcepts(session, firstByItem.keySet(), now);
+                : improvedConcepts(session, firstByItem, now);
         Long nextReviewAt = repos.reviews().nextDueAfter(scopeOf(record), now).orElse(null);
         if (endedNow && answered > 0) {
             events.publish(new ProgressChanged(record.courseId()));
@@ -364,14 +377,25 @@ public final class PracticeServiceImpl implements PracticeService {
                 : StudyScope.module(record.courseId(), record.moduleId());
     }
 
-    /** Concepts of the answered items whose mastery rose during the session, biggest gain first. */
-    private List<ConceptChange> improvedConcepts(LiveSession session, Set<String> answeredItems, long now) {
-        Set<String> conceptIds = new LinkedHashSet<>(queries.conceptIdsByItem(answeredItems).values().stream()
+    /**
+     * Concepts whose mastery rose during the session and that have at least one item answered right the first
+     * time in it, biggest gain first.
+     *
+     * @param firstByItem whether each answered item's first answer in the session was right
+     */
+    private List<ConceptChange> improvedConcepts(LiveSession session, Map<String, Boolean> firstByItem, long now) {
+        Set<String> rightItems = new LinkedHashSet<>();
+        firstByItem.forEach((itemId, right) -> {
+            if (right) {
+                rightItems.add(itemId);
+            }
+        });
+        Set<String> conceptIds = new LinkedHashSet<>(queries.conceptIdsByItem(rightItems).values().stream()
                 .flatMap(Set::stream).toList());
         if (conceptIds.isEmpty()) {
             return List.of();
         }
-        List<LearningItem> items = repos.items().listByIds(answeredItems);
+        List<LearningItem> items = repos.items().listByIds(rightItems);
         Set<String> courseIds = new HashSet<>();
         items.forEach(i -> courseIds.add(i.courseId()));
         List<ConceptChange> changes = new ArrayList<>();
@@ -405,7 +429,7 @@ public final class PracticeServiceImpl implements PracticeService {
         long now = clock.millis();
         if (attempt.disputed()) {
             ReviewState state = repos.reviews().find(item.id()).orElse(ReviewState.newItem(item.id(), now));
-            return feedback(attempt, item, List.of(), source.map(PracticeServiceImpl::sourceRef).orElse(null), state, now);
+            return feedback(attempt, item, List.of(), source.map(c -> sourceRef(item, c)).orElse(null), state, now);
         }
         FsrsScheduler scheduler = scheduler();
         ReviewState next = repos.database().inTransaction(h -> {
@@ -429,7 +453,7 @@ public final class PracticeServiceImpl implements PracticeService {
         }
         events.publish(new ProgressChanged(item.courseId()));
         Attempt disputed = repos.sessions().findAttempt(attemptId).orElse(attempt);
-        return feedback(disputed, item, List.of(), source.map(PracticeServiceImpl::sourceRef).orElse(null), next, now);
+        return feedback(disputed, item, List.of(), source.map(c -> sourceRef(item, c)).orElse(null), next, now);
     }
 
     /**
@@ -466,8 +490,14 @@ public final class PracticeServiceImpl implements PracticeService {
                 next.dueAt(), intervalDays(now, next.dueAt()), ai && !attempt.disputed(), attempt.disputed());
     }
 
-    /** Calendar days from today to the due date in the learner's time zone (0 = later today). */
+    /**
+     * Days until the item comes back: 0 when that is less than a day away (a learning or relearning step),
+     * otherwise calendar days from today to the due date in the learner's time zone.
+     */
     int intervalDays(long now, long dueAt) {
+        if (dueAt - now < ChronoUnit.DAYS.getDuration().toMillis()) {
+            return 0;
+        }
         LocalDate today = LocalDate.ofInstant(Instant.ofEpochMilli(now), clock.getZone());
         LocalDate due = LocalDate.ofInstant(Instant.ofEpochMilli(dueAt), clock.getZone());
         return (int) Math.max(0, ChronoUnit.DAYS.between(today, due));
@@ -489,20 +519,28 @@ public final class PracticeServiceImpl implements PracticeService {
                 chunkIds.add(i.sourceChunkId());
             }
         });
-        Map<String, SourceRef> byChunk = new HashMap<>();
-        repos.chunks().listWithTitles(chunkIds).forEach(c -> byChunk.put(c.chunk().id(), sourceRef(c)));
+        Map<String, ChunkWithTitle> byChunk = new HashMap<>();
+        repos.chunks().listWithTitles(chunkIds).forEach(c -> byChunk.put(c.chunk().id(), c));
         Map<String, SourceRef> result = new HashMap<>();
         items.forEach(i -> {
-            SourceRef ref = i.sourceChunkId() == null ? null : byChunk.get(i.sourceChunkId());
-            if (ref != null) {
-                result.put(i.id(), ref);
+            ChunkWithTitle chunk = i.sourceChunkId() == null ? null : byChunk.get(i.sourceChunkId());
+            if (chunk != null) {
+                result.put(i.id(), sourceRef(i, chunk));
             }
         });
         return result;
     }
 
-    private static SourceRef sourceRef(ChunkWithTitle row) {
+    /**
+     * Where {@code item} comes from: the item's own page when it has one inside its passage, otherwise the
+     * passage's pages.
+     */
+    private static SourceRef sourceRef(LearningItem item, ChunkWithTitle row) {
         Chunk c = row.chunk();
+        Integer page = item.sourcePage();
+        if (page != null && page >= c.pageStart() && page <= c.pageEnd()) {
+            return new SourceRef(c.documentId(), row.documentTitle(), page, page, c.id());
+        }
         return new SourceRef(c.documentId(), row.documentTitle(), c.pageStart(), c.pageEnd(), c.id());
     }
 
@@ -557,13 +595,14 @@ public final class PracticeServiceImpl implements PracticeService {
     /** An open session's items and what has happened to them. Guarded by the session's monitor. */
     private static final class LiveSession {
         final String id;
-        final long startedAt;
         final Map<String, Double> masteryBefore;
         final Map<String, Entry> entries = new LinkedHashMap<>();
+        /** When the session started or the learner last answered or asked for a hint (to let idle ones go). */
+        volatile long lastUsedAt;
 
         LiveSession(String id, long startedAt, Map<String, Double> masteryBefore) {
             this.id = id;
-            this.startedAt = startedAt;
+            this.lastUsedAt = startedAt;
             this.masteryBefore = Map.copyOf(masteryBefore);
         }
     }

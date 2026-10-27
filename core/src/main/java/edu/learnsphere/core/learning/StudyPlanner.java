@@ -32,15 +32,16 @@ import java.util.Set;
  *       {@link #WEAK_COOLDOWN}), then new items in module order up to what is left of the daily new-item
  *       limit.</li>
  *   <li><b>Module quiz</b> and <b>flashcards</b> (practice the learner picked): due items, then new items in
- *       module order, then the rest by lowest retrievability. The daily new-item limit does not hold back
- *       items the learner chose to practise, but they count towards it once answered.</li>
+ *       module order up to what is left of the daily new-item limit, then the rest of the reviewed items by
+ *       lowest retrievability.</li>
  *   <li><b>Weak concepts</b>: reviewed items of weak concepts (weakest concept first, then lowest
  *       retrievability), then their new items within the daily limit. Empty when no concept is weak.</li>
  * </ul>
  *
- * Every kind stops at the session size. The chosen reviews are then interleaved across concepts and the new
- * items spread evenly between them ({@link Interleaving}). The daily limit counts items whose first attempt
- * ever was made since the start of the learner's day (the clock's time zone), across every course.
+ * Every kind stops at the session size, and no kind brings in more new items than the daily limit leaves for
+ * today. The chosen reviews are then interleaved across concepts and the new items spread evenly between them
+ * ({@link Interleaving}). The daily limit counts items whose first attempt ever was made since the start of the
+ * learner's day (the clock's time zone), across every course.
  */
 public final class StudyPlanner {
 
@@ -124,8 +125,8 @@ public final class StudyPlanner {
         long now = clock.millis();
         return switch (kind) {
             case STUDY_NEXT -> studyNextPlan(scope, size, newItemsPerDay, now);
-            case MODULE_QUIZ -> practicePlan(scope, Set.of(), size, now);
-            case FLASHCARDS -> practicePlan(scope, Set.of(ItemType.FLASHCARD), size, now);
+            case MODULE_QUIZ -> practicePlan(scope, Set.of(), size, newItemsPerDay, now);
+            case FLASHCARDS -> practicePlan(scope, Set.of(ItemType.FLASHCARD), size, newItemsPerDay, now);
             case WEAK_CONCEPTS -> weakConceptPlan(scope, size, newItemsPerDay, now);
         };
     }
@@ -173,7 +174,8 @@ public final class StudyPlanner {
 
     // ---- module quiz and flashcards -----------------------------------------------------------
 
-    private List<PlannedItem> practicePlan(StudyScope scope, Set<ItemType> types, int size, long now) {
+    private List<PlannedItem> practicePlan(StudyScope scope, Set<ItemType> types, int size, int newItemsPerDay,
+                                           long now) {
         List<String> ids = queries.approvedItemIds(scope, types);
         List<Candidate> all = candidates(ids, repos.reviews().findAll(ids), now);
         List<Candidate> due = new ArrayList<>();
@@ -193,7 +195,9 @@ public final class StudyPlanner {
         due.sort(BY_RETRIEVABILITY);
         rest.sort(BY_RETRIEVABILITY);
         List<Candidate> reviews = new ArrayList<>(due.subList(0, Math.min(size, due.size())));
-        List<LearningItem> chosenNew = fresh.subList(0, Math.min(size - reviews.size(), fresh.size()));
+        int newSlots = fresh.isEmpty() ? 0 : Math.min(size - reviews.size(), newItemsLeftToday(newItemsPerDay));
+        List<LearningItem> chosenNew = fresh.subList(0, Math.min(newSlots, fresh.size()));
+        // Slots the daily limit keeps from new items go to reviewed items that are not due yet.
         int slots = size - reviews.size() - chosenNew.size();
         reviews.addAll(rest.subList(0, Math.min(slots, rest.size())));
         return finish(reviews, chosenNew);

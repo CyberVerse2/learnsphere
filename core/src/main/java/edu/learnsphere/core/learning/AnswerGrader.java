@@ -81,6 +81,11 @@ public final class AnswerGrader {
             throw new UnavailableException(StudyMessages.GRADING_UNAVAILABLE, "grader returned nothing for item " + item.id());
         }
         double score = result.score();
+        if (!(score >= 0 && score <= 1)) {
+            // Not a number (or out of range): the grade is unusable.
+            throw new UnavailableException(StudyMessages.GRADING_UNAVAILABLE,
+                    "grader returned score " + score + " for item " + item.id());
+        }
         return new GradeOutcome(RatingRules.shortAnswerCorrect(score), score,
                 RatingRules.shortAnswer(score, response.confidence(), hintUsed), GradedBy.AI,
                 result.feedback().isBlank() ? null : result.feedback(), result.missingPoints());

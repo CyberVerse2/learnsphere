@@ -17,9 +17,15 @@ import java.util.Objects;
  *
  * <p>Mastery blends two signals with equal weight: the mean current retrievability (FSRS probability of
  * recall now) of the concept's reviewed approved items, and the share correct over its last
- * {@value #RECENT_ATTEMPTS} attempts. Retrievability says how fresh the memory is; recent accuracy keeps an
- * item that was just answered wrong (and so was just seen, with retrievability near 1) from counting as known.
- * A concept none of whose items has been reviewed has no mastery. Below
+ * {@value #RECENT_ATTEMPTS} attempts. Retrievability says how fresh the memory is; recent accuracy says how
+ * the latest answers went.
+ *
+ * <p>An item whose latest answer was rated Again counts with retrievability 0 until it is answered right
+ * again. FSRS puts its retrievability near 1 right after the failed review (the learner has just seen the
+ * answer), which would make a concept the learner just failed look well known: higher mastery after a
+ * session of wrong answers, and no weak concepts to practise right after a bad session.
+ *
+ * <p>A concept none of whose items has been reviewed has no mastery. Below
  * {@link ConceptMastery#WEAK_THRESHOLD} a concept is weak.
  *
  * <p>Thread-safe.
@@ -62,7 +68,7 @@ public final class MasteryCalculator {
             acc.items++;
             if (row.reviewed()) {
                 acc.reviewed++;
-                acc.retrievabilitySum += retrievability(row, now);
+                acc.retrievabilitySum += row.lastFailed() ? 0 : retrievability(row, now);
             }
         }
         List<ConceptMastery> result = new ArrayList<>(byConcept.size());

@@ -3,6 +3,7 @@ package edu.learnsphere.core.learning;
 import edu.learnsphere.core.db.Database;
 import edu.learnsphere.core.db.StudyScope;
 import edu.learnsphere.core.model.ItemType;
+import edu.learnsphere.core.model.Rating;
 import edu.learnsphere.core.model.ReviewPhase;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -39,9 +40,10 @@ public final class StudyQueries {
      *
      * @param phase        its phase, or null when it has no review state yet
      * @param lastReviewAt last review, or null
+     * @param lastFailed   true when the item's latest attempt was rated Again
      */
     public record ConceptItem(String conceptId, String conceptName, String moduleId, String itemId, ReviewPhase phase,
-                              double stability, Long lastReviewAt) {
+                              double stability, Long lastReviewAt, boolean lastFailed) {
 
         /** True when the item has been reviewed at least once. */
         public boolean reviewed() {
@@ -51,7 +53,9 @@ public final class StudyQueries {
 
     /** Every (concept, approved item) pair in {@code scope} with the item's memory state. */
     public List<ConceptItem> conceptItems(StudyScope scope) {
-        String sql = "SELECT ic.concept_id, c.name, c.module_id, i.id AS item_id, r.state, r.stability, r.last_review_at"
+        String sql = "SELECT ic.concept_id, c.name, c.module_id, i.id AS item_id, r.state, r.stability, r.last_review_at,"
+                + " (SELECT a.rating FROM attempts a WHERE a.item_id = i.id"
+                + "  ORDER BY a.created_at DESC, a.rowid DESC LIMIT 1) AS last_rating"
                 + " FROM item_concepts ic JOIN concepts c ON c.id = ic.concept_id"
                 + " JOIN learning_items i ON i.id = ic.item_id" + scope.joins()
                 + " LEFT JOIN review_states r ON r.item_id = i.id"
@@ -61,9 +65,11 @@ public final class StudyQueries {
                     String state = rs.getString("state");
                     long last = rs.getLong("last_review_at");
                     Long lastReviewAt = rs.wasNull() ? null : last;
+                    int lastRating = rs.getInt("last_rating");
+                    boolean lastFailed = !rs.wasNull() && lastRating == Rating.AGAIN.value();
                     return new ConceptItem(rs.getString("concept_id"), rs.getString("name"), rs.getString("module_id"),
                             rs.getString("item_id"), state == null ? null : ReviewPhase.fromCode(state),
-                            rs.getDouble("stability"), lastReviewAt);
+                            rs.getDouble("stability"), lastReviewAt, lastFailed);
                 })
                 .list());
     }
@@ -249,24 +255,31 @@ public final class StudyQueries {
     }
 
     /**
-     * Reviews and recalled reviews (rated Hard or better) in each range on items of {@code scope}. An item's
-     * very first attempt is not a review of something learned, so it is left out.
+     * Reviews and recalled reviews (rated Hard or better) on each day on items of {@code scope}.
      *
-     * @return per range, {@code [reviews, recalled]}
+     * <p>A review is an item's first answer of the day when the item had been answered on an earlier day: a
+     * recall of something learned before. An item's very first answer and its later answers the same day
+     * (another try after Again, learning steps minutes apart) are left out, so each item counts at most once a
+     * day.
+     *
+     * @param days whole days in the learner's time zone ({@link DayRange#days})
+     * @return per day, {@code [reviews, recalled]}
      */
-    public int[][] retentionPerRange(StudyScope scope, List<DayRange> ranges) {
-        int[][] result = new int[ranges.size()][2];
-        if (ranges.isEmpty()) {
+    public int[][] retentionPerDay(StudyScope scope, List<DayRange> days) {
+        int[][] result = new int[days.size()][2];
+        if (days.isEmpty()) {
             return result;
         }
-        String sql = valuesCte(ranges.size())
+        String sql = valuesCte(days.size())
                 + " SELECT d.idx, COUNT(*) AS reviews, SUM(CASE WHEN a.rating >= 2 THEN 1 ELSE 0 END) AS recalled"
                 + " FROM days d JOIN attempts a ON a.created_at >= d.lo AND a.created_at < d.hi"
                 + " JOIN learning_items i ON i.id = a.item_id" + scope.joins()
                 + " WHERE " + scope.condition()
-                + " AND EXISTS (SELECT 1 FROM attempts b WHERE b.item_id = a.item_id AND b.created_at < a.created_at)"
+                + " AND EXISTS (SELECT 1 FROM attempts b WHERE b.item_id = a.item_id AND b.created_at < d.lo)"
+                + " AND NOT EXISTS (SELECT 1 FROM attempts b WHERE b.item_id = a.item_id AND b.created_at >= d.lo"
+                + "   AND (b.created_at < a.created_at OR (b.created_at = a.created_at AND b.rowid < a.rowid)))"
                 + " GROUP BY d.idx";
-        db.withHandle(h -> scope.bind(bindRanges(h.createQuery(sql), ranges))
+        db.withHandle(h -> scope.bind(bindRanges(h.createQuery(sql), days))
                 .map((rs, ctx) -> new int[] {rs.getInt("idx"), rs.getInt("reviews"), rs.getInt("recalled")})
                 .list())
                 .forEach(row -> {

@@ -17,7 +17,8 @@ import java.util.Objects;
  * @param missingPoints  key points the learner left out (AI-graded only)
  * @param source         "From your material" link, or null
  * @param nextDueAt      when the item comes back
- * @param intervalDays   days until it comes back (0 = later today), for "You'll see this again in 4 days"
+ * @param intervalDays   days until it comes back (0 = less than a day away, such as a few minutes after a wrong
+ *                       answer), for "You'll see this again in 4 days"
  * @param disputable     true for an AI grade that can be disputed
  * @param disputed       true once disputed
  */

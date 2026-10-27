@@ -141,7 +141,9 @@ class ProgressServiceImplTest {
         int attempts;
         int correct;
         long durationMs;
-        int firstCorrect;
+        int reviews;
+        int recalled;
+        final Map<String, LocalDate> lastDayByItem = new HashMap<>();
         final Map<String, Integer> attemptsByItem = new HashMap<>();
         final Map<String, Integer> correctByItem = new HashMap<>();
         final Map<LocalDate, Integer> attemptsByDay = new TreeMap<>();
@@ -265,6 +267,7 @@ class ProgressServiceImplTest {
         ConceptMastery weakest = concepts.getFirst();
         assertThat(weakest.name()).isEqualTo("Inheritance");
         assertThat(weakest.accuracy()).isLessThan(0.5);
+        assertThat(weakest.isWeak()).as("a concept just answered mostly wrong is weak right away").isTrue();
         for (ConceptMastery concept : concepts.subList(1, concepts.size())) {
             assertThat(concept.mastery()).isBetween(weakest.mastery() + 0.15, 1.0);
             assertThat(concept.isWeak()).as(concept.name()).isFalse();
@@ -285,7 +288,8 @@ class ProgressServiceImplTest {
         }
         assertThat(forecast.stream().mapToInt(ForecastDay::dueCount).sum()).isPositive();
 
-        // Retention: answers rated Hard or better, leaving out each item's first answer, per week.
+        // Retention: per week, reviews rated Hard or better, where a review is an item's first answer of a day
+        // after it was answered on an earlier day.
         List<RetentionPoint> retention = progress.retention();
         assertThat(retention).isNotEmpty();
         assertThat(retention.getLast().weekStart()).isEqualTo(today);
@@ -296,8 +300,10 @@ class ProgressServiceImplTest {
         });
         int reviews = retention.stream().mapToInt(RetentionPoint::reviews).sum();
         double recalled = retention.stream().mapToDouble(p -> p.retention() * p.reviews()).sum();
-        assertThat(reviews).isEqualTo(tally.attempts - seen.size());
-        assertThat(recalled).isCloseTo(tally.correct - tally.firstCorrect, within(1e-6));
+        assertThat(reviews).isEqualTo(tally.reviews);
+        assertThat(recalled).isCloseTo(tally.recalled, within(1e-6));
+        assertThat(tally.reviews).as("tries after Again and learning steps the same day are left out")
+                .isPositive().isLessThan(tally.attempts - seen.size());
 
         // ---- Creator statistics ----
         List<ItemStats> stats = service.itemStats(course.id());
@@ -330,13 +336,15 @@ class ProgressServiceImplTest {
         assertThat(overview.modules()).isEmpty();
         assertThat(overview.forecast()).isEqualTo(forecast);
 
-        // Just after a session even a poorly known concept is fresh in memory; by the next morning it has faded
-        // and counts as weak.
+        // By the next morning what was recalled has faded a little: the weak concept is no stronger, and the
+        // others have lost some mastery too.
         t.clock.advance(Duration.ofHours(20));
-        ConceptMastery nextMorning = service.conceptMastery(course.id()).getFirst();
-        assertThat(nextMorning.name()).isEqualTo("Inheritance");
-        assertThat(nextMorning.mastery()).isLessThan(weakest.mastery());
-        assertThat(nextMorning.isWeak()).isTrue();
+        List<ConceptMastery> nextMorning = service.conceptMastery(course.id());
+        assertThat(nextMorning.getFirst().name()).isEqualTo("Inheritance");
+        assertThat(nextMorning.getFirst().mastery()).isLessThanOrEqualTo(weakest.mastery());
+        assertThat(nextMorning.getFirst().isWeak()).isTrue();
+        assertThat(nextMorning.stream().mapToDouble(ConceptMastery::mastery).sum())
+                .isLessThan(concepts.stream().mapToDouble(ConceptMastery::mastery).sum());
     }
 
     private void studyDay(PracticeServiceImpl practice, Course course, int day, Map<String, Integer> errorRate, Tally tally) {
@@ -351,11 +359,14 @@ class ProgressServiceImplTest {
                 Feedback feedback = practice.submit(session.id(), response(item, right));
                 t.clock.advance(Duration.ofMillis(ANSWER_MS));
 
-                boolean first = !tally.attemptsByItem.containsKey(item.id());
-                if (first) {
+                LocalDate lastDay = tally.lastDayByItem.put(item.id(), date);
+                if (lastDay == null) {
                     tally.introducedByDay.computeIfAbsent(date, d -> new HashSet<>()).add(item.id());
-                    if (feedback.correct()) {
-                        tally.firstCorrect++;
+                } else if (!lastDay.equals(date)) {
+                    // The item's first answer of the day, after it was answered on an earlier day: a review.
+                    tally.reviews++;
+                    if (feedback.rating() != Rating.AGAIN) {
+                        tally.recalled++;
                     }
                 }
                 tally.attempts++;

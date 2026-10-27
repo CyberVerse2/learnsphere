@@ -198,10 +198,44 @@ class StudyPlannerTest {
         data.item(course, module, ItemType.TRUE_FALSE, "new");
         data.item(course, other, ItemType.MCQ, "elsewhere");
 
-        assertThat(plan(SessionKind.MODULE_QUIZ, StudyScope.module(course.id(), module.id()), 20, 0))
+        assertThat(plan(SessionKind.MODULE_QUIZ, StudyScope.module(course.id(), module.id()), 20, 15))
                 .containsExactlyInAnyOrder("due", "new", "practised");
-        assertThat(plan(SessionKind.MODULE_QUIZ, StudyScope.module(course.id(), module.id()), 2, 0))
+        assertThat(plan(SessionKind.MODULE_QUIZ, StudyScope.module(course.id(), module.id()), 2, 15))
                 .containsExactlyInAnyOrder("due", "new");
+        assertThat(plan(SessionKind.MODULE_QUIZ, StudyScope.module(course.id(), module.id()), 2, 0))
+                .as("without new items left today, the rest fills the session")
+                .containsExactlyInAnyOrder("due", "practised");
+    }
+
+    @Test
+    void practiceSessionsKeepToTheDailyNewItemLimit() {
+        long now = t.now();
+        CourseModule module = t.module(course, "Cells");
+        for (int i = 0; i < 30; i++) {
+            data.item(course, module, i % 2 == 0 ? ItemType.MCQ : ItemType.FLASHCARD, "new " + i);
+        }
+        for (int i = 0; i < 3; i++) {
+            data.state(data.item(course, module, ItemType.FLASHCARD, "practised " + i), 10, 1, now + 9 * DAY);
+        }
+        StudyScope cells = StudyScope.module(course.id(), module.id());
+
+        List<PlannedItem> quiz = planner.plan(SessionKind.MODULE_QUIZ, cells, 20, 15);
+        assertThat(quiz).hasSize(18);
+        assertThat(quiz).filteredOn(PlannedItem::isNew).hasSize(15);
+        List<PlannedItem> cards = planner.plan(SessionKind.FLASHCARDS, cells, 20, 15);
+        assertThat(cards).filteredOn(PlannedItem::isNew).hasSize(15);
+        assertThat(cards).filteredOn(p -> !p.isNew()).hasSize(3);
+
+        // Ten items met for the first time today, in any kind of session, leave five.
+        SessionRecord session = t.session(course);
+        t.repos.items().listUnseen(StudyScope.enrolled(), 10).forEach(item -> data.attempt(item, session, true, t.now()));
+        assertThat(planner.plan(SessionKind.MODULE_QUIZ, cells, 20, 15)).filteredOn(PlannedItem::isNew).hasSize(5);
+        assertThat(planner.plan(SessionKind.FLASHCARDS, cells, 20, 15)).filteredOn(PlannedItem::isNew).hasSize(5);
+
+        // With the day's allowance used up, only items met before are offered.
+        assertThat(planner.plan(SessionKind.MODULE_QUIZ, cells, 20, 10)).noneMatch(PlannedItem::isNew).isNotEmpty();
+        assertThat(planner.plan(SessionKind.FLASHCARDS, cells, 20, 10)).noneMatch(PlannedItem::isNew)
+                .extracting(p -> p.item().prompt()).containsExactlyInAnyOrder("practised 0", "practised 1", "practised 2");
     }
 
     @Test
@@ -209,7 +243,7 @@ class StudyPlannerTest {
         data.item(course, null, ItemType.FLASHCARD, "card 1");
         data.item(course, null, ItemType.MCQ, "question");
         data.item(course, null, ItemType.FLASHCARD, "card 2");
-        assertThat(plan(SessionKind.FLASHCARDS, StudyScope.course(course.id()), 20, 0)).containsExactly("card 1", "card 2");
+        assertThat(plan(SessionKind.FLASHCARDS, StudyScope.course(course.id()), 20, 15)).containsExactly("card 1", "card 2");
     }
 
     @Test
