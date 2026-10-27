@@ -106,6 +106,7 @@ public final class MainWindow extends StackPane {
         getChildren().add(shell);
         overlays = Overlays.install(this);
 
+        navigator.currentViewProperty().addListener((obs, old, view) -> viewChanged(view));
         navigator.currentProperty().addListener((obs, old, destination) -> routeChanged(old, destination));
         context.workspaceProperty().addListener(workspaceListener);
         followCourseTitles(context.workspace());
@@ -188,6 +189,13 @@ public final class MainWindow extends StackPane {
         return targetWidth > 0;
     }
 
+    /** The top bar lines up with the new view's content column. */
+    private void viewChanged(View view) {
+        topBar.setColumnMaxWidth(view instanceof PageView ? Page.MAX_WIDTH : Double.POSITIVE_INFINITY);
+        // A scrolling page narrows its column by the scroll bar's width; the crumbs follow the column.
+        topBar.alignWith(view != null && view.root() instanceof ScrollPane page ? page : null);
+    }
+
     private void routeChanged(Destination old, Destination destination) {
         if (destination == null) {
             return;
@@ -196,10 +204,6 @@ public final class MainWindow extends StackPane {
         boolean full = route.isFullScreen();
         topBar.setVisible(!full);
         topBar.setManaged(!full);
-        topBar.setColumnMaxWidth(navigator.currentView() instanceof PageView ? Page.MAX_WIDTH : Double.POSITIVE_INFINITY);
-        // A scrolling page narrows its column by the scroll bar's width; the crumbs follow the column.
-        topBar.alignWith(navigator.currentView() != null && navigator.currentView().root() instanceof ScrollPane page
-                ? page : null);
         boolean animate = route.isFocusMode() || (old != null && old.route().isFocusMode());
         showSidebar(!full, animate);
         updateCrumbs(destination);

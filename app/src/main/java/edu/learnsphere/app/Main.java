@@ -2,6 +2,7 @@ package edu.learnsphere.app;
 
 import edu.learnsphere.core.AppPaths;
 import javafx.application.Application;
+import org.slf4j.LoggerFactory;
 
 /**
  * Launcher. JavaFX runs from the class path only when the main class does not extend
@@ -18,10 +19,17 @@ public final class Main {
 
     public static void main(String[] args) {
         configureLogging();
+        logUncaughtExceptions();
         Application.launch(LearnSphereApp.class, args);
         // launch returns after LearnSphereApp.stop() closed the profile and stopped the study assistant;
         // exiting here also ends any library thread that would otherwise keep the process alive.
         System.exit(0);
+    }
+
+    /** Sends exceptions nobody caught, including those thrown by event handlers on the FX thread, to the app log. */
+    public static void logUncaughtExceptions() {
+        Thread.setDefaultUncaughtExceptionHandler((thread, error) ->
+                LoggerFactory.getLogger(Main.class).error("Uncaught exception on thread {}", thread.getName(), error));
     }
 
     /** Sets {@value #LOGS_PROPERTY} to {@code <app home>/logs} unless it is already set. Call before the first log. */

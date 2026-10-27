@@ -32,7 +32,7 @@ public final class Navigator {
     private final ReadOnlyObjectWrapper<Destination> current = new ReadOnlyObjectWrapper<>(this, "current");
     private final Deque<Destination> history = new ArrayDeque<>();
     private final ReadOnlyBooleanWrapper canGoBack = new ReadOnlyBooleanWrapper(this, "canGoBack", false);
-    private View currentView;
+    private final ReadOnlyObjectWrapper<View> currentView = new ReadOnlyObjectWrapper<>(this, "currentView");
 
     /**
      * @param host     the content area
@@ -67,7 +67,15 @@ public final class Navigator {
 
     /** The view on screen, or null before the first navigation. */
     public View currentView() {
-        return currentView;
+        return currentView.get();
+    }
+
+    /**
+     * The view on screen. It changes before {@link #currentProperty()} does, and also when a destination is
+     * shown again with a new view ({@link #reset} to the same place, say) while the destination stays equal.
+     */
+    public ReadOnlyObjectProperty<View> currentViewProperty() {
+        return currentView.getReadOnlyProperty();
     }
 
     /**
@@ -137,8 +145,8 @@ public final class Navigator {
     /** Disposes the view on screen and empties the content area (window closing). */
     public void dispose() {
         Fx.requireFxThread();
-        View old = currentView;
-        currentView = null;
+        View old = currentView.get();
+        currentView.set(null);
         host.getChildren().clear();
         history.clear();
         canGoBack.set(false);
@@ -153,9 +161,9 @@ public final class Navigator {
         Function<Destination, ? extends View> factory = views.getOrDefault(destination.getClass(), fallback);
         View view = Objects.requireNonNull(factory.apply(destination), "view");
         Region root = view.root();
-        View old = currentView;
+        View old = currentView.get();
         host.getChildren().setAll(root);
-        currentView = view;
+        currentView.set(view);
         current.set(destination);
         if (old != null) {
             dispose(old);
