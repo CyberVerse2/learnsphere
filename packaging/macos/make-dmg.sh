@@ -14,7 +14,16 @@ icon=$4
 name=$(basename "$app" .app)
 
 staging=$(mktemp -d "$(dirname "$dmg")/dmg.XXXXXX")
-trap 'rm -rf "$staging"' EXIT
+rw="$staging.rw.dmg"
+mount=""
+cleanup() {
+    if [ -n "$mount" ]; then
+        hdiutil detach -quiet -force "$mount" 2>/dev/null || true
+        rmdir "$mount" 2>/dev/null || true
+    fi
+    rm -rf "$staging" "$rw"
+}
+trap cleanup EXIT
 
 # Clone on APFS (no extra space for the models); copy elsewhere. Both keep symbolic links.
 cp -c -R "$app" "$staging/" 2>/dev/null || { rm -rf "$staging/$(basename "$app")"; cp -R "$app" "$staging/"; }
@@ -23,7 +32,6 @@ cp "$icon" "$staging/.VolumeIcon.icns"
 
 rm -f "$dmg"
 # A read-write image first, so the volume can be marked as having a custom icon.
-rw="$staging.rw.dmg"
 hdiutil create -quiet -volname "$name" -srcfolder "$staging" -fs HFS+ -format UDRW -ov "$rw"
 mount=$(mktemp -d)
 hdiutil attach -quiet -nobrowse -noautoopen -mountpoint "$mount" "$rw"
@@ -31,8 +39,8 @@ SetFile -a C "$mount" 2>/dev/null || xattr -wx com.apple.FinderInfo \
     "0000000000000000040000000000000000000000000000000000000000000000" "$mount" 2>/dev/null || true
 hdiutil detach -quiet "$mount"
 rmdir "$mount"
+mount=""
 hdiutil convert -quiet "$rw" -format ULFO -o "$dmg"
-rm -f "$rw"
 
 if [ "$identity" = "-" ]; then
     codesign --force --timestamp=none --sign "$identity" "$dmg"

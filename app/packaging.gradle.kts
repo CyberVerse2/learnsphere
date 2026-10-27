@@ -131,10 +131,10 @@ abstract class StageJars : DefaultTask() {
                         removed += entry.name
                         continue
                     }
-                    codesign(identity, file)
                     replaced[entry.name] = file
                 }
             }
+            if (replaced.isNotEmpty()) codesign(identity!!, replaced.values.toList())
             val keptFiles = entries.filter { !it.isDirectory && it.name !in removed }.map { it.name }
             ZipOutputStream(dest.outputStream().buffered()).use { out ->
                 for (entry in entries) {
@@ -166,9 +166,9 @@ abstract class StageJars : DefaultTask() {
         return true
     }
 
-    private fun codesign(identity: String, file: File) {
+    private fun codesign(identity: String, files: List<File>) {
         val timestamp = if (identity == "-") "--timestamp=none" else "--timestamp"
-        run("codesign", "--force", "--options", "runtime", timestamp, "--sign", identity, file.absolutePath)
+        run("codesign", "--force", "--options", "runtime", timestamp, "--sign", identity, *files.map { it.absolutePath }.toTypedArray())
     }
 
     private fun run(vararg command: String): String {
@@ -356,8 +356,8 @@ abstract class CollectNotices : DefaultTask() {
 
 /**
  * Builds LearnSphere.app: jpackage makes the app image, the staged runtime files go into
- * Contents/app/runtime (cloned on APFS, so the models take no extra space), then
- * packaging/macos/sign-app.sh signs everything inside it.
+ * Contents/app/runtime (cloned on APFS, so the models take no extra space), packaging/macos/info-plist.sh
+ * adjusts Info.plist, then packaging/macos/sign-app.sh signs everything inside it.
  */
 @DisableCachingByDefault(because = "Signing is not reproducible")
 abstract class MacApp : DefaultTask() {
@@ -373,6 +373,10 @@ abstract class MacApp : DefaultTask() {
     @get:InputFile
     @get:PathSensitive(PathSensitivity.NONE)
     abstract val identityFile: RegularFileProperty
+
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val infoPlistScript: RegularFileProperty
 
     @get:InputFile
     @get:PathSensitive(PathSensitivity.NONE)
@@ -405,6 +409,7 @@ abstract class MacApp : DefaultTask() {
             runtime.deleteRecursively()
             execOps.exec { commandLine("cp", "-R", source, runtime.absolutePath) }
         }
+        execOps.exec { commandLine("sh", infoPlistScript.get().asFile.absolutePath, app.absolutePath) }
         val identity = identityFile.get().asFile.readText().trim()
         execOps.exec {
             commandLine("sh", signScript.get().asFile.absolutePath, identity, entitlements.get().asFile.absolutePath, app.absolutePath)
@@ -606,6 +611,7 @@ val macApp = tasks.register<MacApp>("macApp") {
     )
     runtimeFiles.set(File(macWork, "runtime"))
     identityFile.set(identityTxt)
+    infoPlistScript.set(File(packagingDir, "macos/info-plist.sh"))
     signScript.set(File(packagingDir, "macos/sign-app.sh"))
     entitlements.set(File(packagingDir, "macos/entitlements.plist"))
     outputDir.set(File(macWork, "app"))
