@@ -53,6 +53,11 @@ import org.junit.jupiter.api.io.TempDir;
 class LlamaServerManagerTest {
 
     private static final Duration WAIT = Duration.ofSeconds(60);
+    /**
+     * Start timeout for tests whose server never answers, so it is meant to run out. Short, but long enough for the
+     * test to see the server's process before the manager gives up on it.
+     */
+    private static final Duration GIVE_UP = Duration.ofMillis(1_500);
 
     @TempDir
     Path temp;
@@ -257,7 +262,7 @@ class LlamaServerManagerTest {
     @Test
     void aServerThatNeverAnswersIsGivenUpOnAndEnded() throws Exception {
         modes.put(ServerRole.RERANK, "hang");
-        LlamaServerManager manager = manager(Optional.of(runtime), options(0, Duration.ofSeconds(6)));
+        LlamaServerManager manager = manager(Optional.of(runtime), options(0, GIVE_UP));
         manager.start(ModelChoice.AUTO);
         waitUntil("rerank launched", () -> pids(manager).containsKey(ServerRole.RERANK));
         long hung = manager.processIds().get(ServerRole.RERANK);
@@ -329,9 +334,8 @@ class LlamaServerManagerTest {
     @Test
     void closeEndsAServerThatIsWaitingToBeRestarted() throws Exception {
         modes.put(ServerRole.RERANK, "hang");
-        ServerOptions slowRestart = options(1, Duration.ofSeconds(4))
-                .withTimings(Duration.ofSeconds(4), Duration.ofMillis(50), Duration.ofMinutes(10), WAIT,
-                        Duration.ofSeconds(3));
+        ServerOptions slowRestart = options(1, GIVE_UP)
+                .withTimings(GIVE_UP, Duration.ofMillis(50), Duration.ofMinutes(10), WAIT, Duration.ofSeconds(3));
         LlamaServerManager manager = manager(Optional.of(runtime), slowRestart);
         manager.start(ModelChoice.AUTO);
         waitUntil("rerank launched", () -> pids(manager).containsKey(ServerRole.RERANK));
