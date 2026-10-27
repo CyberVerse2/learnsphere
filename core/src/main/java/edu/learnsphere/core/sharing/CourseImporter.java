@@ -176,6 +176,11 @@ public final class CourseImporter {
         try (PackageReader reader = PackageReader.open(file)) {
             PackageManifest manifest = reader.manifest();
             if (manifest.isProtected() && key == null) {
+                // A run interrupted by closing LearnSphere may have stored the course but not finished
+                // indexing it; the stored passages are enough to finish that without the code.
+                repos.courses().findByPackageId(manifest.packageId())
+                        .filter(c -> !c.isCreatedHere())
+                        .ifPresent(c -> reindexCourse(c.id(), progress));
                 throw new InvalidInputException(SharingMessages.IMPORT_INTERRUPTED,
                         "No key in memory for protected package " + manifest.packageId());
             }
@@ -636,33 +641,43 @@ public final class CourseImporter {
      */
     private void updateIndex(Applied applied, PackageContent content, Map<String, List<Chunk>> passages, boolean full,
                              Progress progress) {
-        String courseId = applied.courseId();
-        List<IndexedChunk> upserts = new ArrayList<>();
         if (full) {
-            index.deleteByCourse(courseId);
-            Map<String, String> titles = repos.documents().listByCourse(courseId).stream()
-                    .filter(d -> d.status() == DocumentStatus.READY)
-                    .collect(Collectors.toMap(Document::id, Document::title));
-            repos.chunks().listByCourse(courseId).stream()
-                    .filter(c -> titles.containsKey(c.documentId()) && searchable(c))
-                    .forEach(c -> upserts.add(indexed(c, titles.get(c.documentId()))));
-        } else {
-            applied.removedDocuments().forEach(d -> index.deleteByDocument(d.id()));
-            for (String documentId : applied.changedDocuments()) {
-                index.deleteByDocument(documentId);
-                passages.getOrDefault(documentId, List.of()).stream()
-                        .filter(this::searchable)
-                        .forEach(c -> upserts.add(indexed(c, applied.documentTitles().get(documentId))));
-            }
+            reindexCourse(applied.courseId(), progress);
+            return;
         }
+        List<IndexedChunk> upserts = new ArrayList<>();
+        applied.removedDocuments().forEach(d -> index.deleteByDocument(d.id()));
+        for (String documentId : applied.changedDocuments()) {
+            index.deleteByDocument(documentId);
+            passages.getOrDefault(documentId, List.of()).stream()
+                    .filter(this::searchable)
+                    .forEach(c -> upserts.add(indexed(c, applied.documentTitles().get(documentId))));
+        }
+        upsert(upserts, progress);
+        if (!content.chunkIds.isEmpty() && upserts.isEmpty() && !applied.changedDocuments().isEmpty()) {
+            LOG.warn("No passages of course {} could be indexed", applied.courseId());
+        }
+    }
+
+    /** Replaces everything the index holds for a course with its stored, searchable passages. */
+    private void reindexCourse(String courseId, Progress progress) {
+        index.deleteByCourse(courseId);
+        Map<String, String> titles = repos.documents().listByCourse(courseId).stream()
+                .filter(d -> d.status() == DocumentStatus.READY)
+                .collect(Collectors.toMap(Document::id, Document::title));
+        List<IndexedChunk> upserts = new ArrayList<>();
+        repos.chunks().listByCourse(courseId).stream()
+                .filter(c -> titles.containsKey(c.documentId()) && searchable(c))
+                .forEach(c -> upserts.add(indexed(c, titles.get(c.documentId()))));
+        upsert(upserts, progress);
+    }
+
+    private void upsert(List<IndexedChunk> upserts, Progress progress) {
         for (int from = 0; from < upserts.size(); from += INDEX_BATCH) {
             progress.report(STORED + (1 - STORED) * from / upserts.size(), "Finishing up…");
             index.upsert(upserts.subList(from, Math.min(upserts.size(), from + INDEX_BATCH)));
         }
         index.commit();
-        if (content.chunkIds.size() > 0 && upserts.isEmpty() && !applied.changedDocuments().isEmpty()) {
-            LOG.warn("No passages of course {} could be indexed", courseId);
-        }
     }
 
     private boolean searchable(Chunk c) {
