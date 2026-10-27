@@ -126,7 +126,7 @@ final class DemoItems implements ItemService {
             long now = store.now();
             item = new LearningItem(DemoStore.newId(), courseId, moduleId, content.type(), content.prompt().strip(),
                     content.answer().strip(), content.explanation(), content.distractors(), content.difficulty(), null,
-                    null, ItemOrigin.MANUAL, ItemStatus.APPROVED, SupportStatus.UNCHECKED, null, now, now);
+                    null, ItemOrigin.MANUAL, ItemStatus.DRAFT, SupportStatus.UNCHECKED, null, now, now);
             store.items.put(item.id(), item);
             store.itemConcepts.put(item.id(), new LinkedHashSet<>(content.conceptIds()));
         }

@@ -9,8 +9,12 @@ import edu.learnsphere.app.ui.MainWindow;
 import edu.learnsphere.app.ui.StudioTab;
 import edu.learnsphere.app.ui.UiExecutors;
 import edu.learnsphere.app.ui.library.LibraryPage;
+import edu.learnsphere.app.ui.studio.review.ReviewQueueTab;
 import edu.learnsphere.app.ui.study.StudyPage;
 import edu.learnsphere.core.model.Citation;
+import edu.learnsphere.core.model.ItemStatus;
+import edu.learnsphere.core.model.SupportStatus;
+import edu.learnsphere.core.service.ItemFilter;
 import edu.learnsphere.core.service.SessionRequest;
 import edu.learnsphere.core.service.ThemePreference;
 import java.io.IOException;
@@ -22,6 +26,7 @@ import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import javafx.application.Platform;
 import javafx.embed.swing.SwingFXUtils;
@@ -102,6 +107,31 @@ public final class ScreenshotTour {
                 Shot.of("progress-course", new Destination.Progress(os)),
                 Shot.of("studio", Destination.Studio.courses()),
                 Shot.of("studio-review", new Destination.Studio(chemistry, StudioTab.REVIEW)),
+                reviewShot("studio-review-module", chemistry, (window, queue) -> queue.filterToModule(
+                        moduleId(window, chemistry, "Reactions"))),
+                reviewShot("studio-review-approved", chemistry, (window, queue) -> queue.showStatus(ItemStatus.APPROVED)),
+                reviewShot("studio-review-empty", chemistry, (window, queue) -> queue.showStatus(ItemStatus.RETIRED)),
+                reviewShot("studio-review-concepts", chemistry, (window, queue) -> queue.showConcepts(true)),
+                reviewShot("studio-review-flagged", chemistry, (window, queue) -> queue.showFlaggedOnly(true)),
+                reviewShot("studio-review-check", chemistry, (window, queue) -> {
+                    // Scrolling to a card needs the laid-out page, which an off-screen scene has only on request.
+                    window.getScene().getRoot().applyCss();
+                    window.getScene().getRoot().layout();
+                    queue.showItem(itemWithSupport(window, chemistry, SupportStatus.UNSUPPORTED));
+                }),
+                reviewShot("studio-review-selected", chemistry, (window, queue) ->
+                        queue.shownItemIds().stream().limit(3).forEach(id -> queue.selectItem(id, true))),
+                reviewShot("studio-review-approve-undo", chemistry, (window, queue) -> press(queue.root(), KeyCode.A, "a")),
+                reviewShot("studio-review-generate", chemistry, (window, queue) -> queue.openGenerateDialog()),
+                reviewShot("studio-review-editor", chemistry, (window, queue) ->
+                        queue.openEditor(queue.shownItemIds().getFirst())),
+                reviewShot("studio-review-new-question", chemistry, (window, queue) -> queue.openNewQuestion()),
+                reviewShot("studio-review-new-question-invalid", chemistry, (window, queue) -> {
+                    queue.openNewQuestion();
+                    ((javafx.scene.control.Button) window.lookup(".review-modal-footer .button.primary")).fire();
+                }),
+                reviewShot("studio-review-page", chemistry, (window, queue) ->
+                        queue.openSourcePage(queue.shownItemIds().getFirst())),
                 Shot.of("studio-documents", new Destination.Studio(chemistry, StudioTab.DOCUMENTS)),
                 Shot.of("studio-pages", new Destination.Studio(chemistry, StudioTab.PAGES)),
                 Shot.of("studio-details", new Destination.Studio(chemistry, StudioTab.DETAILS)),
@@ -112,7 +142,43 @@ public final class ScreenshotTour {
                 new Shot("onboarding-profile", window -> window.navigator().reset(Destination.ONBOARDING),
                         window -> ((javafx.scene.control.Button) window.navigator().currentView().root()
                                 .lookup(".button.primary")).fire()),
-                Shot.of("gallery", Destination.GALLERY));
+                Shot.of("gallery", Destination.GALLERY),
+                // Last: the questions it starts are still being written when the profile closes, and the
+                // profile picks them up again when it next opens.
+                new Shot("studio-review-generating", window -> {
+                    var jobs = window.context().workspace().jobs();
+                    jobs.active().forEach(job -> jobs.cancel(job.jobId()));
+                    window.navigator().reset(new Destination.Studio(chemistry, StudioTab.REVIEW));
+                }, window -> {
+                    ReviewQueueTab queue = ReviewQueueTab.find(window);
+                    if (queue != null) {
+                        queue.openGenerateDialog();
+                        ((javafx.scene.control.Button) window.lookup(".review-modal-footer .button.primary")).fire();
+                    }
+                }));
+    }
+
+    /** The Studio's review queue of {@code courseId}, then {@code action} on it once it has loaded. */
+    private static Shot reviewShot(String name, String courseId, BiConsumer<MainWindow, ReviewQueueTab> action) {
+        return new Shot(name, window -> window.navigator().reset(new Destination.Studio(courseId, StudioTab.REVIEW)),
+                window -> {
+                    ReviewQueueTab queue = ReviewQueueTab.find(window);
+                    if (queue != null) {
+                        action.accept(window, queue);
+                    }
+                });
+    }
+
+    /** The id of the first question in the review queue of {@code courseId} with this support verdict. */
+    private static String itemWithSupport(MainWindow window, String courseId, SupportStatus support) {
+        return window.context().workspace().items().list(ItemFilter.reviewQueue(courseId).withSupport(support))
+                .getFirst().id();
+    }
+
+    /** The id of the module of {@code courseId} titled {@code title}. */
+    private static String moduleId(MainWindow window, String courseId, String title) {
+        return window.context().workspace().courses().modules(courseId).stream()
+                .filter(m -> m.title().equals(title)).findFirst().orElseThrow().id();
     }
 
     /** The demo conversation about {@code courseId} with its first citation open in the source viewer. */
