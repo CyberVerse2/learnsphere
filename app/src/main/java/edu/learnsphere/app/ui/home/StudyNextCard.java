@@ -56,6 +56,8 @@ public final class StudyNextCard extends Card {
     private final Button library = new Button("Open Library");
     private final Label shortcut = new Label();
     private final HBox actions;
+    private final VBox work;
+    private final VBox footer;
     private State state = State.STUDY;
 
     /**
@@ -88,10 +90,13 @@ public final class StudyNextCard extends Card {
         actions.getStyleClass().add("study-hero-actions");
 
         VBox heading = new VBox(8, overline, headline, detail);
-        VBox work = new VBox(10, beads, beadsCaption, courses);
-        // Extra height (the week card beside it can be taller) goes under the beads: the button stays at the bottom.
+        work = new VBox(10, beads, beadsCaption, courses);
+        footer = new VBox(actions);
+        footer.setAlignment(Pos.BOTTOM_LEFT);
+        // The card matches the week card's height. Extra height opens up in the middle: the heading stays at
+        // the top, and the button (or, when caught up, today's beads) sits at the foot.
         VBox.setVgrow(work, Priority.ALWAYS);
-        getChildren().setAll(heading, work, actions);
+        getChildren().setAll(heading, work, footer);
         setSpacing(24);
     }
 
@@ -126,7 +131,10 @@ public final class StudyNextCard extends Card {
         visible(shortcut, state == State.STUDY && !shortcut.getText().isEmpty());
         visible(library, state == State.NOT_STUDYING);
         visible(actions, state == State.STUDY || state == State.NOT_STUDYING);
-        visible(beads.getParent(), beads.isVisible() || courses.isVisible());
+        visible(work, beads.isVisible() || courses.isVisible());
+        visible(footer, actions.isVisible());
+        work.setAlignment(state == State.CAUGHT_UP ? Pos.BOTTOM_LEFT : Pos.TOP_LEFT);
+        VBox.setVgrow(footer, work.isVisible() ? Priority.NEVER : Priority.ALWAYS);
         pseudoClassStateChanged(javafx.css.PseudoClass.getPseudoClass("caught-up"), state == State.CAUGHT_UP);
         setAccessibleText(headline.getText() + ". " + detail.getText());
     }

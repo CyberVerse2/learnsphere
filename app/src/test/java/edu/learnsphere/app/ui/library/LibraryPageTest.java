@@ -15,6 +15,7 @@ import edu.learnsphere.core.service.CourseSummary;
 import edu.learnsphere.core.service.ExportOptions;
 import edu.learnsphere.core.service.ProfileDraft;
 import edu.learnsphere.core.service.ProfileSummary;
+import edu.learnsphere.core.service.SessionRequest;
 import edu.learnsphere.core.service.Workspace;
 import edu.learnsphere.core.sharing.SharingMessages;
 import edu.learnsphere.core.testing.MutableClock;
@@ -23,6 +24,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import javafx.scene.Node;
+import javafx.scene.control.Button;
 import javafx.scene.control.Labeled;
 import javafx.stage.Stage;
 import org.junit.jupiter.api.AfterEach;
@@ -33,7 +35,10 @@ import org.testfx.api.FxRobot;
 import org.testfx.framework.junit5.ApplicationExtension;
 import org.testfx.framework.junit5.Start;
 
-/** The Library over the real services: importing a shared course, refusing the profile's own, and New course. */
+/**
+ * The Library over the real services: importing a shared course, refusing the profile's own, New course, search,
+ * one primary action per view, and cards that survive reloads.
+ */
 @ExtendWith(ApplicationExtension.class)
 class LibraryPageTest {
 
@@ -175,14 +180,64 @@ class LibraryPageTest {
         LibraryPage library = screen.view(LibraryPage.class);
         assertThat(library.cards()).hasSize(2);
 
+        LibraryCard chemistry = library.cards().stream()
+                .filter(card -> card.course().title().equals("Organic Chemistry")).findFirst().orElseThrow();
+
         robot.interact(() -> library.searchField().setText("chem"));
         assertThat(library.cards()).extracting(card -> card.course().title()).containsExactly("Organic Chemistry");
+        assertThat(library.cards().getFirst()).as("searching keeps the card").isSameAs(chemistry);
 
         robot.interact(() -> library.searchField().setText("linear algebra"));
         assertThat(library.cards()).isEmpty();
         assertThat(texts(robot, ".empty-state-title")).containsExactly("No courses match “linear algebra”");
         robot.clickOn("Clear search");
         assertThat(library.cards()).hasSize(2);
+    }
+
+    @Test
+    void eachViewHasOnePrimaryAction(FxRobot robot) {
+        real = RealWorkspaces.open(dir, FakeAi.create(), clock);
+        screen = new ScreenHarness(robot);
+        screen.show(stage, real.context(), Destination.LIBRARY);
+        LibraryPage library = screen.view(LibraryPage.class);
+
+        // An empty library: its empty state carries the actions, and there is nothing to search.
+        assertThat(primaryButtons(robot)).containsExactly("Import a course");
+        assertThat(library.newCourseButton().getScene()).isNull();
+        assertThat(shown(library.searchField())).isFalse();
+
+        // A course made here and not studied: Studying leads with Import, so New course in the header is quiet.
+        CourseFixtures.flashcardCourse(real.workspace(), "Cell Biology", false, 1);
+        ScreenHarness.until(() -> library.newCourseButton().getScene() != null);
+        assertThat(texts(robot, ".empty-state-title")).containsExactly("No courses to study yet");
+        assertThat(primaryButtons(robot)).containsExactly("Import a course");
+        assertThat(shown(library.searchField())).isTrue();
+
+        // Creating shows the card, and New course in the header is the one primary.
+        robot.interact(() -> library.shelf().setValue(LibraryPage.Shelf.CREATING));
+        assertThat(library.cards()).hasSize(1);
+        assertThat(primaryButtons(robot)).containsExactly("New course");
+    }
+
+    @Test
+    void aReloadKeepsTheCardsOfUnchangedCourses(FxRobot robot) {
+        real = RealWorkspaces.open(dir, FakeAi.create(), clock);
+        Workspace ws = real.workspace();
+        Built biology = CourseFixtures.flashcardCourse(ws, "Cell Biology", true, 2);
+        CourseFixtures.flashcardCourse(ws, "Organic Chemistry", true, 2);
+        screen = new ScreenHarness(robot);
+        screen.show(stage, real.context(), Destination.LIBRARY);
+        LibraryPage library = screen.view(LibraryPage.class);
+        LibraryCard chemistry = library.cards().stream()
+                .filter(card -> card.course().title().equals("Organic Chemistry")).findFirst().orElseThrow();
+        robot.interact(() -> chemistry.card().requestFocus());
+        int loads = library.loads();
+
+        CourseFixtures.study(ws, SessionRequest.studyNext(biology.id()));
+        ScreenHarness.until(() -> library.loads() > loads && library.cards().stream()
+                .anyMatch(card -> card.course().id().equals(biology.id()) && card.course().progress() > 0));
+        assertThat(library.cards()).contains(chemistry);
+        assertThat(chemistry.card().isFocused()).as("the focus stays on the card").isTrue();
     }
 
     /** A course made in the open profile with three approved cards, published and saved as a course file. */
@@ -195,6 +250,27 @@ class LibraryPageTest {
         ws.sharing().exportCourse(course.id(), file, visibility == Visibility.PROTECTED
                 ? ExportOptions.protectedWith(CODE.toCharArray()) : ExportOptions.standard());
         return file;
+    }
+
+    /** The labels of the primary buttons on screen. */
+    private static List<String> primaryButtons(FxRobot robot) {
+        return robot.lookup(".button.primary").queryAllAs(Button.class).stream()
+                .filter(LibraryPageTest::shown)
+                .map(Button::getText)
+                .toList();
+    }
+
+    /** True when {@code node} and every parent are visible in a window. */
+    private static boolean shown(Node node) {
+        if (node.getScene() == null) {
+            return false;
+        }
+        for (Node n = node; n != null; n = n.getParent()) {
+            if (!n.isVisible()) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static List<String> texts(FxRobot robot, String query) {

@@ -25,15 +25,19 @@ import edu.learnsphere.core.events.ProgressChanged;
 import edu.learnsphere.core.events.SettingChanged;
 import edu.learnsphere.core.model.Course;
 import edu.learnsphere.core.service.CourseFilter;
+import edu.learnsphere.core.service.CourseScope;
 import edu.learnsphere.core.service.CourseSummary;
 import edu.learnsphere.core.service.DashboardData;
+import edu.learnsphere.core.service.RecentQuestion;
 import edu.learnsphere.core.service.SessionRequest;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
@@ -50,7 +54,8 @@ import org.kordamp.ikonli.feather.Feather;
  * Home: a greeting with the date, the "Study next" hero across every course being studied, the last seven
  * days with the streak, courses to continue, and the questions asked most recently with their sources. A
  * profile without courses is invited to import or create one. Everything reloads as progress, courses,
- * questions or study settings change.
+ * questions or study settings change; a section whose content is unchanged keeps its nodes, so a reload
+ * keeps the keyboard focus and replays no entrance motion.
  */
 public final class HomePage extends PageView {
 
@@ -68,7 +73,12 @@ public final class HomePage extends PageView {
     private final WeekCard week = new WeekCard();
     private final RecentQuestions questions;
     private final LiveLoad<Data> load;
+    /** Continue courses whose card has been on screen, so a card enters with motion only once. */
+    private final Set<String> seenCards = new HashSet<>();
     private FilePicker files = FilePicker.system();
+    private List<CourseSummary> continueShown;
+    private Node continueSection;
+    private List<RecentQuestion> questionsShown;
 
     public HomePage(AppContext context, Navigator navigator) {
         super(context, navigator);
@@ -83,8 +93,10 @@ public final class HomePage extends PageView {
                 question -> navigator.navigate(new Destination.Ask(question.courseId(), question.threadId(), null)),
                 (question, citation) -> navigator.navigate(
                         new Destination.Ask(question.courseId(), question.threadId(), citation)));
+        // Archived courses count too: a profile whose courses are all archived is not new.
         load = new LiveLoad<>(() -> new Data(workspace().progress().dashboard(),
-                workspace().courses().list(CourseFilter.all()).size()), this::render, this::showError, disposer);
+                workspace().courses().list(new CourseFilter(CourseScope.ALL, null, true)).size()),
+                this::render, this::showError, disposer);
 
         HBox top = new HBox(24, Skeleton.block(-1, 248), Skeleton.block(340, 248));
         HBox.setHgrow(top.getChildren().getFirst(), Priority.ALWAYS);
@@ -186,24 +198,36 @@ public final class HomePage extends PageView {
         return empty;
     }
 
-    private Node continueSection(List<CourseSummary> courses) {
+    /** The Continue section; the one on screen while its courses are unchanged. */
+    private Node continueSection(List<CourseSummary> all) {
+        List<CourseSummary> courses = all.stream().limit(CONTINUE_LIMIT).toList();
+        if (continueSection != null && courses.equals(continueShown)) {
+            return continueSection;
+        }
         SectionHeader title = new SectionHeader("Continue")
                 .action("Library", () -> navigator.navigate(Destination.LIBRARY));
         ResponsiveGrid grid = ResponsiveGrid.forCards();
         grid.getStyleClass().add("home-continue");
-        for (CourseSummary course : courses.stream().limit(CONTINUE_LIMIT).toList()) {
+        for (CourseSummary course : courses) {
             CourseCard card = new CourseCard(course, CourseCard.Mode.STUDYING);
             card.setOnOpen(() -> navigator.navigate(new Destination.Course(course.id())));
             grid.getChildren().add(card);
-            card.animateIn();
+            if (seenCards.add(course.id())) {
+                card.animateIn();
+            }
         }
-        return new VBox(16, title, grid);
+        continueShown = courses;
+        continueSection = new VBox(16, title, grid);
+        return continueSection;
     }
 
     /** Recent questions, or an invitation to ask one when a course is being studied; null otherwise. */
     private Node recentSection(DashboardData d) {
         if (!d.recentQuestions().isEmpty()) {
-            questions.show(d.recentQuestions(), context.clock());
+            if (!d.recentQuestions().equals(questionsShown)) {
+                questions.show(d.recentQuestions(), context.clock());
+                questionsShown = d.recentQuestions();
+            }
             return new VBox(16, new SectionHeader("Recent questions"), questions);
         }
         if (d.continueCourses().isEmpty()) {

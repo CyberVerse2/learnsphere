@@ -74,7 +74,7 @@ public final class RecentQuestions extends Card {
         return List.copyOf(rows);
     }
 
-    /** One question: click, Enter or Space opens its conversation. */
+    /** One question: click, Enter or Space opens its conversation; Enter on a source chip opens that source. */
     public final class Row extends HBox {
 
         private final RecentQuestion question;
@@ -123,10 +123,19 @@ public final class RecentQuestions extends Card {
                 }
             });
             setOnKeyPressed(event -> {
-                if (event.getCode() == KeyCode.ENTER || event.getCode() == KeyCode.SPACE) {
-                    event.consume();
-                    onOpen.accept(question);
+                if (event.getCode() != KeyCode.ENTER && event.getCode() != KeyCode.SPACE) {
+                    return;
                 }
+                event.consume();
+                // A focused source chip answers Enter itself (it opens its page); Space it already handles.
+                if (event.getTarget() instanceof Node target && target != this && fromButton(target)) {
+                    if (event.getCode() == KeyCode.ENTER && buttonOf(target) instanceof ButtonBase chip
+                            && !chip.isDisabled()) {
+                        chip.fire();
+                    }
+                    return;
+                }
+                onOpen.accept(question);
             });
         }
 
@@ -139,12 +148,17 @@ public final class RecentQuestions extends Card {
         }
 
         private boolean fromButton(Node node) {
+            return buttonOf(node) != null;
+        }
+
+        /** The button inside this row that holds {@code node}, or null. */
+        private ButtonBase buttonOf(Node node) {
             for (Node n = node; n != null && n != this; n = n.getParent()) {
-                if (n instanceof ButtonBase) {
-                    return true;
+                if (n instanceof ButtonBase button) {
+                    return button;
                 }
             }
-            return false;
+            return null;
         }
     }
 }

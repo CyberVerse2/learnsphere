@@ -68,30 +68,51 @@ public final class SessionBeads extends FlowPane {
         return more;
     }
 
+    /**
+     * Draws {@code kinds}. Unchanged beads stay as they are; only beads that are new or changed kind fall into
+     * place, so reloading the same work replays nothing.
+     */
     private void fill(List<Kind> kinds) {
+        List<Kind> next = List.copyOf(kinds.subList(0, Math.min(MAX_BEADS, kinds.size())));
+        int nextMore = kinds.size() - next.size();
+        if (next.equals(shown) && nextMore == more) {
+            setVisible(!getChildren().isEmpty());
+            setManaged(!getChildren().isEmpty());
+            return;
+        }
+        List<Kind> before = List.copyOf(shown);
         shown.clear();
-        shown.addAll(kinds.subList(0, Math.min(MAX_BEADS, kinds.size())));
-        more = kinds.size() - shown.size();
+        shown.addAll(next);
+        boolean moreChanged = nextMore != more;
+        more = nextMore;
         List<Node> nodes = new ArrayList<>();
-        for (Kind kind : shown) {
+        List<Node> entering = new ArrayList<>();
+        for (int i = 0; i < shown.size(); i++) {
+            Kind kind = shown.get(i);
             Region bead = new Region();
             bead.getStyleClass().addAll("bead", kind.styleClass);
             bead.setMinSize(Region.USE_PREF_SIZE, Region.USE_PREF_SIZE);
             bead.setMaxSize(Region.USE_PREF_SIZE, Region.USE_PREF_SIZE);
             nodes.add(bead);
+            if (i >= before.size() || before.get(i) != kind) {
+                entering.add(bead);
+            }
         }
         if (more > 0) {
             Label rest = new Label("+" + more);
             rest.getStyleClass().addAll("text-caption", "bead-more");
             nodes.add(rest);
+            if (moreChanged) {
+                entering.add(rest);
+            }
         }
         getChildren().setAll(nodes);
         setVisible(!nodes.isEmpty());
         setManaged(!nodes.isEmpty());
-        animate(nodes);
+        animate(entering);
     }
 
-    /** The beads fall into place one after another; with reduced motion they simply appear. */
+    /** The given beads fall into place one after another; with reduced motion they simply appear. */
     private void animate(List<Node> nodes) {
         if (Motion.reduced()) {
             return;

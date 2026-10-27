@@ -97,10 +97,8 @@ public final class ImportCourseDialog {
         codeError.setVisible(false);
         codeError.setManaged(false);
         code.textProperty().addListener((obs, old, value) -> showCodeError(null));
-        disposer.onDispose(() -> {
-            sheet.close();
-            stopFollowing();
-        });
+        // The job subscription is the view's too (see importing), so the view's disposal also ends it.
+        sheet.closeWith(disposer);
     }
 
     /** Opens the sheet over the window of {@code anchor} and reads the file. */

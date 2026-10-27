@@ -29,10 +29,13 @@ import edu.learnsphere.core.model.Citation;
 import edu.learnsphere.core.model.CourseOrigin;
 import edu.learnsphere.core.model.CourseVersion;
 import edu.learnsphere.core.model.DocumentStatus;
+import edu.learnsphere.core.model.ItemStatus;
+import edu.learnsphere.core.model.ItemType;
 import edu.learnsphere.core.service.ConceptMastery;
 import edu.learnsphere.core.service.CourseDetail;
 import edu.learnsphere.core.service.CourseSummary;
 import edu.learnsphere.core.service.DocumentSummary;
+import edu.learnsphere.core.service.ItemFilter;
 import edu.learnsphere.core.service.ModuleSummary;
 import edu.learnsphere.core.service.SessionRequest;
 import edu.learnsphere.core.service.StudyNext;
@@ -77,8 +80,9 @@ public final class CoursePage extends PageView {
     /** Concept chips shown before the link to Progress. */
     static final int CONCEPT_LIMIT = 10;
 
+    /** One load of the page; {@code hasFlashcards} is true when the course has approved flashcards. */
     private record Data(CourseDetail detail, StudyNext next, List<DocumentSummary> documents,
-                        List<CourseVersion> versions) {
+                        List<CourseVersion> versions, boolean hasFlashcards) {
     }
 
     private final Destination.Course destination;
@@ -91,6 +95,7 @@ public final class CoursePage extends PageView {
     private ModulePath path;
     private Button primary;
     private Button ask;
+    private ActionRow flashcardsRow;
 
     public CoursePage(AppContext context, Navigator navigator, Destination.Course destination) {
         super(context, navigator);
@@ -105,8 +110,10 @@ public final class CoursePage extends PageView {
                 workspace().courses().markOpened(id);
             }
             CourseDetail detail = workspace().courses().get(id);
+            boolean flashcards = detail.summary().itemCount() > 0 && !workspace().items().list(ItemFilter.forCourse(id)
+                    .withStatuses(ItemStatus.APPROVED).withTypes(ItemType.FLASHCARD).withPage(1, 0)).isEmpty();
             return new Data(detail, workspace().practice().studyNext(id), workspace().documents().list(id),
-                    workspace().courses().versions(id));
+                    workspace().courses().versions(id), flashcards);
         }, this::render, this::failed, disposer);
 
         Region cover = Skeleton.block(300, 200);
@@ -119,6 +126,8 @@ public final class CoursePage extends PageView {
 
     @Override
     public void onShown() {
+        // Listen first, so a change published while the first load runs still reloads the page.
+        listen();
         load.request();
     }
 
@@ -136,6 +145,11 @@ public final class CoursePage extends PageView {
 
     public Button askButton() {
         return ask;
+    }
+
+    /** The Practise card's Flashcards row, or null while the course has no questions. */
+    public ActionRow flashcardsRow() {
+        return flashcardsRow;
     }
 
     /** The loaded course, or null. */
@@ -193,7 +207,7 @@ public final class CoursePage extends PageView {
     private void render(Data loaded) {
         opened = true;
         data = loaded;
-        listen();
+        flashcardsRow = null;
         loaded.documents().forEach(d -> documentStatus.put(d.id(), d.status()));
         CourseDetail detail = loaded.detail();
         CourseSummary course = detail.summary();
@@ -213,7 +227,7 @@ public final class CoursePage extends PageView {
         main.setMinWidth(0);
         VBox side = new VBox(20, todayCard(loaded));
         if (course.itemCount() > 0) {
-            side.getChildren().add(practiseCard(detail));
+            side.getChildren().add(practiseCard(detail, loaded.hasFlashcards()));
         }
         if (!detail.concepts().isEmpty()) {
             side.getChildren().add(conceptsCard(detail));
@@ -312,9 +326,20 @@ public final class CoursePage extends PageView {
         studio.setOnAction(event -> actions.openStudio(course));
 
         List<Node> row = new ArrayList<>();
-        if (!course.enrolled() && !archived) {
-            primary = new Button("Start studying", Icons.of(Feather.PLUS, 16));
-            primary.setOnAction(event -> actions.enrol(course));
+        if (course.createdHere() && course.itemCount() == 0) {
+            primary = studio;
+            row.add(studio);
+            row.add(ask);
+        } else if (!course.enrolled() && !archived) {
+            if (course.itemCount() > 0 && !next.caughtUp()) {
+                // Starts studying the course and opens the session straight away.
+                primary = new Button("Start studying", Icons.of(Feather.PLAY, 16));
+                primary.setOnAction(event -> actions.enrolAndStudy(course));
+            } else {
+                // Nothing to study today: the course joins Home and Study next, with the Library menu's words.
+                primary = new Button(CourseActions.enrolLabel(course), Icons.of(Feather.PLUS, 16));
+                primary.setOnAction(event -> actions.enrol(course));
+            }
             row.add(primary);
             row.add(ask);
         } else if (course.enrolled() && !next.caughtUp()) {
@@ -327,10 +352,6 @@ public final class CoursePage extends PageView {
             primary.setOnAction(event -> navigator.navigate(
                     new Destination.Study(SessionRequest.weakConcepts(course.id()))));
             row.add(primary);
-            row.add(ask);
-        } else if (course.createdHere() && course.itemCount() == 0) {
-            primary = studio;
-            row.add(studio);
             row.add(ask);
         } else {
             primary = ask;
@@ -368,17 +389,33 @@ public final class CoursePage extends PageView {
             restore.getStyleClass().add("small");
             restore.setOnAction(event -> actions.unarchive(course));
             return notice(Tone.WARNING, Feather.ARCHIVE, "This course is archived",
-                    "It's kept on this computer but hidden from your library.", restore);
+                    "It's kept on this computer. Find it in the Library under Creating with Show archived.", restore);
         }
-        CourseVersion latest = loaded.versions().isEmpty() ? null : loaded.versions().getFirst();
-        if (course.origin() == CourseOrigin.IMPORTED && loaded.versions().size() > 1 && latest != null
-                && context.clock().millis() - latest.createdAt() < UPDATE_NOTE_DAYS.toMillis()) {
-            String title = "Updated to version " + latest.number() + " · " + Formats.ago(latest.createdAt(), context.clock());
-            String notes = latest.notes().isBlank() ? "Your progress carried over to the new version."
-                    : Formats.shorten(latest.notes(), 220);
+        CourseVersion update = recentUpdate(course, loaded.versions(), context.clock().millis());
+        if (update != null) {
+            String title = "Updated to version " + update.number() + " · " + Formats.ago(update.createdAt(), context.clock());
+            String notes = update.notes().isBlank() ? "Your progress carried over to the new version."
+                    : Formats.shorten(update.notes(), 220);
             return notice(Tone.ACCENT, Feather.REFRESH_CW, title, notes, null);
         }
         return null;
+    }
+
+    /**
+     * The version an imported course was updated to in the last {@link #UPDATE_NOTE_DAYS}, or null: the
+     * course's own version, when it is the newest of several and arrived recently. Going back to an older
+     * version is not an update.
+     */
+    static CourseVersion recentUpdate(CourseSummary course, List<CourseVersion> versions, long now) {
+        if (course.origin() != CourseOrigin.IMPORTED || versions.size() < 2) {
+            return null;
+        }
+        CourseVersion current = versions.stream().filter(v -> v.number() == course.versionNumber())
+                .findFirst().orElse(null);
+        if (current == null || versions.stream().anyMatch(v -> v.number() > current.number())) {
+            return null;
+        }
+        return now - current.createdAt() < UPDATE_NOTE_DAYS.toMillis() ? current : null;
     }
 
     /** A tinted band under the header: an icon, a short title, a sentence and an optional button. */
@@ -491,7 +528,7 @@ public final class CoursePage extends PageView {
                     : "This course has nothing to study yet. You can still ask about its material."));
         } else if (!course.enrolled()) {
             card.getChildren().add(todayHeadline("You're not studying this course"));
-            card.getChildren().add(todayDetail("Start studying to see this course's reviews on Home and in Study next."));
+            card.getChildren().add(todayDetail("Once you study it, its reviews appear on Home and in Study next."));
         } else if (!next.caughtUp()) {
             boolean due = next.dueCount() > 0;
             Label numeral = new Label(Formats.number(due ? next.dueCount() : next.newCount()));
@@ -560,7 +597,7 @@ public final class CoursePage extends PageView {
         return label;
     }
 
-    private Node practiseCard(CourseDetail detail) {
+    private Node practiseCard(CourseDetail detail, boolean hasFlashcards) {
         CourseSummary course = detail.summary();
         Card card = new Card();
         card.setInteractive(false);
@@ -568,7 +605,10 @@ public final class CoursePage extends PageView {
         Label overline = new Label("PRACTISE");
         overline.getStyleClass().addAll("text-overline", "course-practise-overline");
 
-        ActionRow flashcards = option(Feather.LAYERS, "Flashcards", "Flip through the course's cards");
+        ActionRow flashcards = option(Feather.LAYERS, "Flashcards",
+                hasFlashcards ? "Flip through the course's cards" : "No flashcards in this course");
+        flashcards.setDisable(!hasFlashcards);
+        flashcardsRow = flashcards;
         flashcards.setOnAction(() -> navigator.navigate(
                 new Destination.Study(SessionRequest.flashcards(course.id(), null))));
 

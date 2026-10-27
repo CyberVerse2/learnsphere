@@ -110,7 +110,7 @@ public final class NewCourseDialog {
         author.textProperty().addListener((obs, old, value) -> updatePreview());
         picker.hueProperty().addListener((obs, old, value) -> previewCover.setHue(value.intValue()));
         updatePreview();
-        disposer.onDispose(sheet::close);
+        sheet.closeWith(disposer);
     }
 
     /** Opens the sheet over the window of {@code anchor}. */

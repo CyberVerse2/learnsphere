@@ -1,8 +1,13 @@
 package edu.learnsphere.app.ui.library;
 
 import edu.learnsphere.app.theme.Motion;
+import edu.learnsphere.app.ui.Disposer;
 import edu.learnsphere.app.ui.components.Overlays;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.WeakHashMap;
 import javafx.animation.FadeTransition;
 import javafx.animation.ParallelTransition;
 import javafx.animation.ScaleTransition;
@@ -45,6 +50,9 @@ public final class ModalSheet extends StackPane {
     /** Width of a sheet unless {@link #setCardWidth(double)} changes it. */
     public static final double DEFAULT_WIDTH = 520;
 
+    /** The sheets open per view, behind the one disposal hook each view gets (FX thread only). */
+    private static final Map<Disposer, List<ModalSheet>> OPEN_BY_VIEW = new WeakHashMap<>();
+
     private final VBox card = new VBox();
     private final Label title;
     private final VBox heading;
@@ -58,6 +66,7 @@ public final class ModalSheet extends StackPane {
     private ChangeListener<Node> focusTrap;
     private Node focusBefore;
     private boolean closing;
+    private List<ModalSheet> openInView;
 
     public ModalSheet(String title) {
         getStyleClass().add("modal");
@@ -186,13 +195,48 @@ public final class ModalSheet extends StackPane {
         onClose = Objects.requireNonNull(action, "action");
     }
 
+    /**
+     * Closes the sheet when the view that owns {@code disposer} goes away. However many sheets a view opens,
+     * it registers one hook, and a sheet that closes is forgotten, so closed sheets are not kept alive by a
+     * long-lived view. A view that is already gone closes the sheet at once. FX thread only.
+     */
+    public ModalSheet closeWith(Disposer disposer) {
+        Objects.requireNonNull(disposer, "disposer");
+        if (disposer.isDisposed()) {
+            close();
+            closing = true;
+            return this;
+        }
+        List<ModalSheet> open = OPEN_BY_VIEW.get(disposer);
+        if (open == null) {
+            List<ModalSheet> sheets = new ArrayList<>();
+            OPEN_BY_VIEW.put(disposer, sheets);
+            disposer.onDispose(() -> List.copyOf(sheets).forEach(ModalSheet::close));
+            open = sheets;
+        }
+        if (openInView != open) {
+            open.add(this);
+            openInView = open;
+        }
+        return this;
+    }
+
+    /** How many sheets opened with {@link #closeWith(Disposer)} are still open in that view (tests). */
+    static int openIn(Disposer disposer) {
+        List<ModalSheet> open = OPEN_BY_VIEW.get(disposer);
+        return open == null ? 0 : open.size();
+    }
+
     /** True while the sheet is in a window. */
     public boolean isShowing() {
         return getParent() != null && !closing;
     }
 
-    /** Opens the sheet in the window of {@code anchor}. */
+    /** Opens the sheet in the window of {@code anchor}. Does nothing once the sheet was closed. */
     public void show(Node anchor) {
+        if (closing) {
+            return;
+        }
         StackPane layer = Overlays.find(anchor).modals();
         layer.getChildren().add(this);
         Scene scene = getScene();
@@ -239,6 +283,10 @@ public final class ModalSheet extends StackPane {
 
     /** Closes the sheet. Idempotent. */
     public void close() {
+        if (openInView != null) {
+            openInView.remove(this);
+            openInView = null;
+        }
         if (closing || getParent() == null) {
             return;
         }

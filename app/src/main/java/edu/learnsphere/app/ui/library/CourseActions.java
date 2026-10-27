@@ -105,6 +105,22 @@ public final class CourseActions {
         }, "You're studying this course. It's on Home and in Study next.", null);
     }
 
+    /** Starts studying the course and opens a session of it once it has joined Home and Study next. */
+    public void enrolAndStudy(CourseSummary course) {
+        if (context.workspace() == null) {
+            return;
+        }
+        disposer.add(UiTasks.run(() -> {
+            workspace().courses().enrol(course.id());
+            return null;
+        }, ignored -> study(course), this::error));
+    }
+
+    /** What starting to study a course the learner isn't studying is called: in menus and on its page. */
+    public static String enrolLabel(CourseSummary course) {
+        return course.createdHere() ? "Study this course" : "Study again";
+    }
+
     /** Asks first, then stops studying the course; Undo starts again. */
     public void leave(CourseSummary course) {
         ConfirmDialog.of("Leave this course?",
@@ -179,7 +195,7 @@ public final class CourseActions {
         sheet.setButtons(cancel, next);
         sheet.setDefaultButton(next);
         sheet.setInitialFocus(code);
-        disposer.onDispose(sheet::close);
+        sheet.closeWith(disposer);
         sheet.show(anchor.get());
     }
 
@@ -223,8 +239,7 @@ public final class CourseActions {
         if (course.enrolled()) {
             menu.getItems().add(item("Leave course…", Feather.LOG_OUT, () -> leave(course)));
         } else if (!course.isArchived()) {
-            menu.getItems().add(item(course.createdHere() ? "Study this course" : "Study again", Feather.PLUS_CIRCLE,
-                    () -> enrol(course)));
+            menu.getItems().add(item(enrolLabel(course), Feather.PLUS_CIRCLE, () -> enrol(course)));
         }
         if (canExport(course)) {
             menu.getItems().add(item("Save course file…", Feather.SHARE, () -> export(course)));

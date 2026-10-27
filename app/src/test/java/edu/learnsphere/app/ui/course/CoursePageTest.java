@@ -8,15 +8,27 @@ import edu.learnsphere.app.ui.Destination;
 import edu.learnsphere.app.ui.library.CourseFixtures;
 import edu.learnsphere.app.ui.library.CourseFixtures.Built;
 import edu.learnsphere.app.ui.library.ScreenHarness;
+import edu.learnsphere.core.model.Course;
+import edu.learnsphere.core.model.CourseOrigin;
+import edu.learnsphere.core.model.CourseStatus;
+import edu.learnsphere.core.model.CourseVersion;
+import edu.learnsphere.core.model.ItemType;
+import edu.learnsphere.core.model.LearningItem;
 import edu.learnsphere.core.model.Rating;
+import edu.learnsphere.core.model.Visibility;
 import edu.learnsphere.core.service.ConceptMastery;
+import edu.learnsphere.core.service.CourseDraft;
+import edu.learnsphere.core.service.CourseSummary;
+import edu.learnsphere.core.service.ItemContent;
 import edu.learnsphere.core.service.Response;
 import edu.learnsphere.core.service.SessionRequest;
 import edu.learnsphere.core.service.StudySession;
 import edu.learnsphere.core.service.Workspace;
 import edu.learnsphere.core.testing.MutableClock;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
+import java.util.Set;
 import javafx.scene.Node;
 import javafx.scene.control.Labeled;
 import javafx.stage.Stage;
@@ -28,7 +40,10 @@ import org.testfx.api.FxRobot;
 import org.testfx.framework.junit5.ApplicationExtension;
 import org.testfx.framework.junit5.Start;
 
-/** The course page over the real services: module progress on the path, actions, and a missing course. */
+/**
+ * The course page over the real services: module progress on the path, the main action, the practice options,
+ * the update note and a missing course.
+ */
 @ExtendWith(ApplicationExtension.class)
 class CoursePageTest {
 
@@ -91,7 +106,7 @@ class CoursePageTest {
     }
 
     @Test
-    void aCourseTheLearnerLeftOffersToStudyItAgain(FxRobot robot) {
+    void startStudyingACourseTheLearnerIsNotStudyingOpensTheSession(FxRobot robot) {
         real = RealWorkspaces.open(dir, FakeAi.create(), clock);
         Workspace ws = real.workspace();
         Built course = CourseFixtures.flashcardCourse(ws, "Cell Biology", false, 2);
@@ -103,9 +118,69 @@ class CoursePageTest {
         assertThat(page.primaryButton().getText()).isEqualTo("Start studying");
 
         robot.clickOn(page.primaryButton());
-        ScreenHarness.until(() -> page.detail() != null && page.detail().summary().enrolled());
+        ScreenHarness.until(() -> screen.window().navigator().current() instanceof Destination.Study);
+        assertThat(screen.window().navigator().current())
+                .isEqualTo(new Destination.Study(SessionRequest.studyNext(course.id())));
         assertThat(ws.courses().summary(course.id()).enrolled()).isTrue();
-        assertThat(texts(robot, ".course-today-unit")).containsExactly("new questions");
+    }
+
+    @Test
+    void aCaughtUpCourseTheLearnerLeftCanBeStudiedAgainWithoutASession(FxRobot robot) {
+        real = RealWorkspaces.open(dir, FakeAi.create(), clock);
+        Workspace ws = real.workspace();
+        Built course = CourseFixtures.flashcardCourse(ws, "Cell Biology", true, 2);
+        CourseFixtures.study(ws, SessionRequest.studyNext(course.id()));
+        ws.courses().leave(course.id());
+
+        screen = new ScreenHarness(robot);
+        screen.show(stage, real.context(), new Destination.Course(course.id()));
+        CoursePage page = screen.view(CoursePage.class);
+        assertThat(page.primaryButton().getText()).as("the Library menu's words").isEqualTo("Study this course");
+
+        robot.clickOn(page.primaryButton());
+        ScreenHarness.until(() -> page.detail() != null && page.detail().summary().enrolled());
+        assertThat(screen.window().navigator().current()).isEqualTo(new Destination.Course(course.id()));
+        assertThat(texts(robot, ".course-today-headline")).containsExactly("All caught up");
+    }
+
+    @Test
+    void flashcardsArePractisedOnlyInACourseThatHasThem(FxRobot robot) {
+        real = RealWorkspaces.open(dir, FakeAi.create(), clock);
+        Workspace ws = real.workspace();
+        Course course = ws.courses().create(new CourseDraft("Cell Biology", "", "", "Ada Lovelace", 150));
+        LearningItem statement = ws.items().create(course.id(), null, new ItemContent(ItemType.TRUE_FALSE,
+                "Every living thing is made of cells.", "true", "", List.of(), null, Set.of()));
+        ws.items().approve(statement.id());
+        ws.courses().enrol(course.id());
+
+        screen = new ScreenHarness(robot);
+        screen.show(stage, real.context(), new Destination.Course(course.id()));
+        CoursePage page = screen.view(CoursePage.class);
+        assertThat(page.flashcardsRow().isDisabled()).isTrue();
+        assertThat(page.flashcardsRow().captionLabel().getText()).isEqualTo("No flashcards in this course");
+
+        LearningItem card = ws.items().create(course.id(), null, ItemContent.flashcard("Cell", "The unit of life"));
+        ws.items().approve(card.id());
+        ScreenHarness.until(() -> page.flashcardsRow() != null && !page.flashcardsRow().isDisabled());
+        assertThat(page.flashcardsRow().captionLabel().getText()).isEqualTo("Flip through the course's cards");
+        robot.clickOn(page.flashcardsRow());
+        assertThat(screen.window().navigator().current())
+                .isEqualTo(new Destination.Study(SessionRequest.flashcards(course.id(), null)));
+    }
+
+    @Test
+    void theUpdateNoteNamesTheNewestVersionWhileItIsRecent() {
+        long now = clock.millis();
+        long day = Duration.ofDays(1).toMillis();
+        CourseVersion first = new CourseVersion("v1", "c1", 1, "", now - 60 * day, now - 60 * day);
+        CourseVersion second = new CourseVersion("v2", "c1", 2, "A new chapter on mitosis", now - 3 * day, now - 3 * day);
+
+        assertThat(CoursePage.recentUpdate(imported(2), List.of(second, first), now)).isEqualTo(second);
+        assertThat(CoursePage.recentUpdate(imported(1), List.of(second, first), now))
+                .as("going back to version 1 is not an update").isNull();
+        assertThat(CoursePage.recentUpdate(imported(1), List.of(first), now)).as("the first import").isNull();
+        assertThat(CoursePage.recentUpdate(imported(2), List.of(second, first), now + 40 * day))
+                .as("an update weeks ago").isNull();
     }
 
     @Test
@@ -133,6 +208,12 @@ class CoursePageTest {
         assertThat(CoursePage.conceptTooltip(middling))
                 .isEqualTo("Scheduling: 70% mastered. Right in 3 of your last 4 answers. 4 questions.");
         assertThat(CoursePage.conceptTooltip(fresh)).isEqualTo("Threads: not studied yet. 3 questions.");
+    }
+
+    private static CourseSummary imported(int version) {
+        return new CourseSummary("c1", "Cell Biology", "", "Ada Lovelace", 150, CourseOrigin.IMPORTED,
+                CourseStatus.PUBLISHED, Visibility.SHAREABLE, version, false, true, 1, 1, 0, 0, 10, 0, 0, 0, 0,
+                0.5, null, 0L);
     }
 
     private static List<String> texts(FxRobot robot, String query) {

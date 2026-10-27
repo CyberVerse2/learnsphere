@@ -137,6 +137,20 @@ class HomePageTest {
     }
 
     @Test
+    void aProfileWhoseCoursesAreAllArchivedIsNotWelcomedAsNew(FxRobot robot) {
+        real = RealWorkspaces.open(dir, FakeAi.create(), clock);
+        Workspace ws = real.workspace();
+        Built course = CourseFixtures.flashcardCourse(ws, "Cell Biology", false, 2);
+        ws.courses().archive(course.id());
+
+        screen = new ScreenHarness(robot);
+        screen.show(stage, real.context(), Destination.HOME);
+
+        assertThat(texts(robot, ".empty-state-title")).isEmpty();
+        assertThat(screen.view(HomePage.class).hero().state()).isEqualTo(StudyNextCard.State.NOT_STUDYING);
+    }
+
+    @Test
     void caughtUpWordsSayWhenTheNextReviewIs() {
         assertThat(StudyNextCard.headline(Dashboards.caughtUp(clock, 0, null))).isEqualTo("You're all caught up.");
         assertThat(StudyNextCard.detail(Dashboards.caughtUp(clock, 0, clock.millis() + Duration.ofHours(3).toMillis()),

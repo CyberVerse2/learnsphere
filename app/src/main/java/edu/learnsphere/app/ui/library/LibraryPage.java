@@ -27,10 +27,13 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Predicate;
 import javafx.collections.FXCollections;
 import javafx.geometry.Pos;
@@ -58,6 +61,12 @@ import org.kordamp.ikonli.feather.Feather;
  * here, with archived ones on request. A search box filters by title, subtitle or author, and each shelf has
  * its own sort. Import course reads a shared course file; New course starts one for the Studio. Every card
  * has a menu with what can be done with that course.
+ *
+ * <p>Each view has one primary action: New course in the header while cards are shown, or the empty state's
+ * own action while a shelf is empty. An empty library shows only the empty state's actions.
+ *
+ * <p>Cards are kept between renders while their course is unchanged, so searching, sorting and live reloads
+ * keep the keyboard focus and replay no entrance motion.
  *
  * <p>Keyboard: Shortcut+F searches, Shortcut+N starts a new course; the arrow keys switch shelves.
  */
@@ -111,7 +120,17 @@ public final class LibraryPage extends PageView {
     private final ToggleChip showArchived = new ToggleChip("Show archived");
     private final VBox body = new VBox(32);
     private final CourseActions actions;
+    private final PageHeader header;
+    private final Button importCourse = new Button("Import course", Icons.of(Feather.DOWNLOAD));
+    private final Button create = new Button("New course", Icons.of(Feather.PLUS));
+    private final StackPane searchBox;
     private final List<LibraryCard> cards = new ArrayList<>();
+    /** Cards by course id and shelf, reused while their course is unchanged. */
+    private final Map<String, LibraryCard> cardCache = new HashMap<>();
+    /** Courses whose card has been on screen, so a card enters with motion only once. */
+    private final Set<String> seen = new HashSet<>();
+    private boolean emptyStateLeads;
+    private boolean headerActions = true;
     private final LiveLoad<List<CourseSummary>> load;
     private List<CourseSummary> courses;
     private final Runnable focusSearch = this::focusSearch;
@@ -128,12 +147,10 @@ public final class LibraryPage extends PageView {
                     render();
                 }, this::showError, disposer);
 
-        Button importCourse = new Button("Import course", Icons.of(Feather.DOWNLOAD));
         importCourse.setOnAction(event -> startImport());
-        Button create = new Button("New course", Icons.of(Feather.PLUS));
         create.getStyleClass().add("primary");
         create.setOnAction(event -> openNewCourse());
-        PageHeader header = new PageHeader("Library")
+        header = new PageHeader("Library")
                 .subtitle("The courses you study and the ones you're making, all on this computer.")
                 .actions(importCourse, create);
 
@@ -166,7 +183,7 @@ public final class LibraryPage extends PageView {
             search.requestFocus();
         });
         clear.visibleProperty().bind(search.textProperty().isNotEmpty());
-        StackPane searchBox = new StackPane(search, searchIcon, clear);
+        searchBox = new StackPane(search, searchIcon, clear);
         searchBox.getStyleClass().add("library-search");
         StackPane.setAlignment(searchIcon, Pos.CENTER_LEFT);
         StackPane.setAlignment(clear, Pos.CENTER_RIGHT);
@@ -228,9 +245,24 @@ public final class LibraryPage extends PageView {
         return showArchived;
     }
 
+    /** The header's New course button (tests). */
+    public Button newCourseButton() {
+        return create;
+    }
+
+    /** The header's Import course button (tests). */
+    public Button importButton() {
+        return importCourse;
+    }
+
     /** The cards on screen, in order (tests). */
     public List<LibraryCard> cards() {
         return List.copyOf(cards);
+    }
+
+    /** Finished loads (tests wait for a reload). */
+    public int loads() {
+        return load.completed();
     }
 
     /** The actions behind the card menus (tests replace the file dialogs here). */
@@ -292,7 +324,39 @@ public final class LibraryPage extends PageView {
         if (courses == null) {
             return;
         }
+        Node focused = page().getScene() == null ? null : page().getScene().getFocusOwner();
+        emptyStateLeads = false;
+        fill();
+        // An empty library has nothing to search or sort, and its empty state carries the actions.
+        boolean empty = courses.isEmpty();
+        if (empty && !search.getText().isEmpty()) {
+            search.clear();
+        }
+        setShown(searchBox, !empty);
+        setShown(sort, !empty);
+        if (headerActions == empty) {
+            headerActions = !empty;
+            if (empty) {
+                header.actions();
+            } else {
+                header.actions(importCourse, create);
+            }
+        }
+        // One primary per view: an empty state with its own primary action takes it over from the header.
+        create.getStyleClass().remove("primary");
+        if (!emptyStateLeads) {
+            create.getStyleClass().add("primary");
+        }
+        pruneCards();
+        if (focused != null) {
+            restoreFocus(focused);
+        }
+    }
+
+    /** Puts the active shelf into the body. */
+    private void fill() {
         cards.clear();
+        boolean anyCourse = !courses.isEmpty();
         String query = search.getText().strip().toLowerCase(Locale.ROOT);
         Predicate<CourseSummary> matches = course -> query.isEmpty() || contains(course.title(), query)
                 || contains(course.subtitle(), query) || contains(course.authorName(), query);
@@ -309,10 +373,13 @@ public final class LibraryPage extends PageView {
             List<CourseSummary> shown = studying.stream().filter(matches).sorted(order).toList();
             List<CourseSummary> leftShown = left.stream().filter(matches).sorted(order).toList();
             if (studying.isEmpty() && left.isEmpty()) {
-                body.getChildren().setAll(new EmptyState(EmptyIllustration.Kind.LIBRARY, "No courses to study yet",
+                EmptyState empty = new EmptyState(EmptyIllustration.Kind.LIBRARY, "No courses to study yet",
                         "Import a course someone shared with you, or make your own from your PDFs.")
-                        .primary("Import a course", this::startImport)
-                        .secondary("New course", this::openNewCourse));
+                        .primary("Import a course", this::startImport);
+                if (!anyCourse) {
+                    empty.secondary("New course", this::openNewCourse);
+                }
+                lead(empty);
                 return;
             }
             if (shown.isEmpty() && leftShown.isEmpty()) {
@@ -335,33 +402,62 @@ public final class LibraryPage extends PageView {
                         grid(leftShown, CourseCard.Mode.STUDYING)));
             }
             body.getChildren().setAll(sections);
-        } else {
-            if (creating.isEmpty()) {
-                body.getChildren().setAll(new EmptyState(EmptyIllustration.Kind.DOCUMENTS, "Turn your PDFs into a course",
-                        "Add lecture notes or a chapter of a textbook, and LearnSphere drafts questions for you to check.")
-                        .primary("New course", this::openNewCourse));
-                return;
-            }
-            List<CourseSummary> visible = creating.stream()
-                    .filter(c -> showArchived.isSelected() || !c.isArchived()).toList();
-            if (visible.isEmpty()) {
-                body.getChildren().setAll(new EmptyState(EmptyIllustration.Kind.DOCUMENTS, "Every course you made is archived",
-                        "Archived courses stay on this computer with their questions and PDFs.")
-                        .primary("Show archived", () -> showArchived.setSelected(true))
-                        .secondary("New course", this::openNewCourse));
-                return;
-            }
-            List<CourseSummary> shown = visible.stream().filter(matches).sorted(order).toList();
-            if (shown.isEmpty()) {
-                body.getChildren().setAll(noMatches(query));
-                return;
-            }
-            ResponsiveGrid grid = grid(shown, CourseCard.Mode.CREATING);
-            if (query.isEmpty()) {
-                grid.getChildren().add(newCourseTile());
-            }
-            body.getChildren().setAll(grid);
+            return;
         }
+        if (creating.isEmpty()) {
+            lead(new EmptyState(EmptyIllustration.Kind.DOCUMENTS, "Turn your PDFs into a course",
+                    "Add lecture notes or a chapter of a textbook, and LearnSphere drafts questions for you to check.")
+                    .primary("New course", this::openNewCourse));
+            return;
+        }
+        List<CourseSummary> visible = creating.stream()
+                .filter(c -> showArchived.isSelected() || !c.isArchived()).toList();
+        if (visible.isEmpty()) {
+            lead(new EmptyState(EmptyIllustration.Kind.DOCUMENTS, "Every course you made is archived",
+                    "Archived courses stay on this computer with their questions and PDFs.")
+                    .primary("Show archived", () -> showArchived.setSelected(true)));
+            return;
+        }
+        List<CourseSummary> shown = visible.stream().filter(matches).sorted(order).toList();
+        if (shown.isEmpty()) {
+            body.getChildren().setAll(noMatches(query));
+            return;
+        }
+        ResponsiveGrid grid = grid(shown, CourseCard.Mode.CREATING);
+        if (query.isEmpty()) {
+            grid.getChildren().add(newCourseTile());
+        }
+        body.getChildren().setAll(grid);
+    }
+
+    /** Shows an empty state whose primary action is the view's one primary. */
+    private void lead(EmptyState empty) {
+        emptyStateLeads = true;
+        body.getChildren().setAll(empty);
+    }
+
+    /** Forgets cards of courses that are gone. */
+    private void pruneCards() {
+        Set<String> ids = new HashSet<>();
+        courses.forEach(c -> ids.add(c.id()));
+        cardCache.values().removeIf(card -> !ids.contains(card.course().id()));
+    }
+
+    /** Keeps the focus on a card's control that a render moved into a new grid. */
+    private void restoreFocus(Node focused) {
+        for (LibraryCard card : cards) {
+            for (Node n = focused; n != null; n = n.getParent()) {
+                if (n == card) {
+                    focused.requestFocus();
+                    return;
+                }
+            }
+        }
+    }
+
+    private static void setShown(Node node, boolean value) {
+        node.setVisible(value);
+        node.setManaged(value);
     }
 
     private Node noMatches(String query) {
@@ -377,19 +473,33 @@ public final class LibraryPage extends PageView {
         ResponsiveGrid grid = ResponsiveGrid.forCards();
         grid.getStyleClass().add("library-grid");
         for (CourseSummary course : list) {
-            LibraryCard card = new LibraryCard(course, mode, () -> actions.menu(course, CourseActions.Place.LIBRARY));
-            card.card().setOnOpen(() -> {
-                if (mode == CourseCard.Mode.CREATING) {
-                    navigator.navigate(new Destination.Studio(course.id(), StudioTab.DETAILS));
-                } else {
-                    navigator.navigate(new Destination.Course(course.id()));
-                }
-            });
+            LibraryCard card = card(course, mode);
             grid.getChildren().add(card);
             cards.add(card);
-            card.card().animateIn();
         }
         return grid;
+    }
+
+    /** The card of {@code course} on a shelf: the one already made while the course is unchanged. */
+    private LibraryCard card(CourseSummary course, CourseCard.Mode mode) {
+        String key = course.id() + '/' + mode;
+        LibraryCard kept = cardCache.get(key);
+        if (kept != null && kept.course().equals(course)) {
+            return kept;
+        }
+        LibraryCard card = new LibraryCard(course, mode, () -> actions.menu(course, CourseActions.Place.LIBRARY));
+        card.card().setOnOpen(() -> {
+            if (mode == CourseCard.Mode.CREATING) {
+                navigator.navigate(new Destination.Studio(course.id(), StudioTab.DETAILS));
+            } else {
+                navigator.navigate(new Destination.Course(course.id()));
+            }
+        });
+        cardCache.put(key, card);
+        if (seen.add(key)) {
+            card.card().animateIn();
+        }
+        return card;
     }
 
     /** The last tile of the Creating shelf: starts a new course. */
