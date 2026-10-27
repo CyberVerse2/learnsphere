@@ -17,6 +17,7 @@ import edu.learnsphere.app.ui.progress.ProgressPage;
 import edu.learnsphere.app.ui.settings.SettingsPage;
 import edu.learnsphere.app.ui.studio.StudioPage;
 import edu.learnsphere.app.ui.study.StudyPage;
+import edu.learnsphere.core.events.CourseChanged;
 import edu.learnsphere.core.service.Workspace;
 import java.util.ArrayList;
 import java.util.List;
@@ -27,6 +28,7 @@ import javafx.animation.KeyValue;
 import javafx.animation.Timeline;
 import javafx.beans.value.ChangeListener;
 import javafx.geometry.Pos;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.StackPane;
@@ -38,7 +40,8 @@ import javafx.util.Duration;
  * The window content: the {@link Sidebar} on the left, the {@link TopBar} with breadcrumbs and back above
  * the routed content, and the overlay layers for toasts and dialogs on top. Every route has its screen
  * registered here. The study session is focus mode: the sidebar folds away and the top bar hides;
- * onboarding and profile choice take the whole window too.
+ * onboarding and profile choice take the whole window too. Breadcrumbs name the course on screen and follow
+ * it when it is renamed.
  */
 public final class MainWindow extends StackPane {
 
@@ -57,6 +60,8 @@ public final class MainWindow extends StackPane {
     private Timeline sidebarAnimation;
     private double targetWidth = SIDEBAR_WIDTH;
     private Disposer crumbScope = new Disposer();
+    /** Subscriptions to the open profile's events; replaced when the profile changes. */
+    private Disposer workspaceScope = new Disposer();
 
     public MainWindow(AppContext context) {
         this.context = context;
@@ -95,6 +100,7 @@ public final class MainWindow extends StackPane {
 
         navigator.currentProperty().addListener((obs, old, destination) -> routeChanged(old, destination));
         context.workspaceProperty().addListener(workspaceListener);
+        followCourseTitles(context.workspace());
         navigator.reset(startDestination(context));
     }
 
@@ -161,6 +167,9 @@ public final class MainWindow extends StackPane {
         topBar.setVisible(!full);
         topBar.setManaged(!full);
         topBar.setColumnMaxWidth(navigator.currentView() instanceof PageView ? Page.MAX_WIDTH : Double.POSITIVE_INFINITY);
+        // A scrolling page narrows its column by the scroll bar's width; the crumbs follow the column.
+        topBar.alignWith(navigator.currentView() != null && navigator.currentView().root() instanceof ScrollPane page
+                ? page : null);
         boolean animate = route.isFocusMode() || (old != null && old.route().isFocusMode());
         showSidebar(!full, animate);
         updateCrumbs(destination);
@@ -193,7 +202,7 @@ public final class MainWindow extends StackPane {
     }
 
     private void workspaceChanged(Workspace old, Workspace workspace) {
-        courseTitles.clear();
+        followCourseTitles(workspace);
         Destination current = navigator.current();
         if (current != null && current.route() == Route.ONBOARDING) {
             // Onboarding opens the new profile itself and finishes on its last step.
@@ -206,8 +215,36 @@ public final class MainWindow extends StackPane {
         }
     }
 
+    /**
+     * Forgets the course names of the previous profile and, while {@code workspace} is open, reloads a course's
+     * name in the crumbs when the course changes (renamed in the Studio, say).
+     */
+    private void followCourseTitles(Workspace workspace) {
+        workspaceScope.dispose();
+        workspaceScope = new Disposer();
+        courseTitles.clear();
+        if (workspace == null) {
+            return;
+        }
+        workspaceScope.add(Fx.subscribe(workspace.events(), CourseChanged.class, event -> {
+            String previous = courseTitles.remove(event.courseId());
+            Destination current = navigator.current();
+            if (current != null && event.courseId().equals(courseOf(current))) {
+                updateCrumbs(current, previous);
+            }
+        }));
+    }
+
     /** Breadcrumbs for {@code destination}; course names load in the background. */
     private void updateCrumbs(Destination destination) {
+        updateCrumbs(destination, null);
+    }
+
+    /**
+     * Breadcrumbs for {@code destination}. A course name not known yet loads in the background; until it
+     * arrives the crumbs show {@code interim} (the name before a change), or none.
+     */
+    private void updateCrumbs(Destination destination, String interim) {
         crumbScope.dispose();
         crumbScope = new Disposer();
         String courseId = courseOf(destination);
@@ -216,7 +253,7 @@ public final class MainWindow extends StackPane {
             topBar.setCrumbs(crumbs(destination, courseId == null ? null : courseTitles.get(courseId)));
             return;
         }
-        topBar.setCrumbs(crumbs(destination, null));
+        topBar.setCrumbs(crumbs(destination, interim));
         crumbScope.add(UiTasks.run(() -> workspace.courses().summary(courseId).title(), title -> {
             courseTitles.put(courseId, title);
             if (destination.equals(navigator.current())) {
@@ -284,6 +321,7 @@ public final class MainWindow extends StackPane {
     /** Disposes the screen on display and stops following the profile (window closing). */
     public void dispose() {
         context.workspaceProperty().removeListener(workspaceListener);
+        workspaceScope.dispose();
         crumbScope.dispose();
         navigator.dispose();
         sidebar.dispose();

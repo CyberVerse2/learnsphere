@@ -196,7 +196,7 @@ public final class ComponentGallery implements View {
         disabled.getStyleClass().add("primary");
         disabled.setDisable(true);
         Button small = new Button("Approve", Icons.of(Feather.CHECK, 14));
-        small.getStyleClass().addAll("primary", "small");
+        small.getStyleClass().addAll("positive", "small");
         Button smallSecondary = new Button("Edit");
         smallSecondary.getStyleClass().add("small");
         Button large = new Button("Check answer");

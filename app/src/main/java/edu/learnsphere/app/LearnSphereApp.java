@@ -21,7 +21,8 @@ import javafx.stage.Stage;
 
 /**
  * The JavaFX application: builds the context, opens the last used profile, applies the theme from the
- * app-wide preferences and shows the main window with its menus, where it was last time.
+ * app-wide preferences and shows the main window with its menus, where it was last time. The window's place
+ * is saved when it closes and again when the application stops, however it was quit.
  */
 public final class LearnSphereApp extends Application {
 
@@ -35,6 +36,7 @@ public final class LearnSphereApp extends Application {
     private MainWindow window;
     private AppMenus menus;
     private Theme theme;
+    private Stage stage;
     private WindowStateStore windowStates;
     /** The window's bounds when it is neither maximised nor minimised: what a maximised window restores to. */
     private Rectangle2D normalBounds;
@@ -51,6 +53,7 @@ public final class LearnSphereApp extends Application {
 
     @Override
     public void start(Stage stage) {
+        this.stage = stage;
         Typography.load();
         window = new MainWindow(context);
         menus = new AppMenus(window, AppMenus.usesSystemMenuBar());
@@ -75,7 +78,7 @@ public final class LearnSphereApp extends Application {
 
     /** Puts the window where it was last time, fitted to the screens attached now. */
     private void placeWindow(Stage stage) {
-        windowStates = new WindowStateStore(context.paths().windowStateFile());
+        windowStates = WindowStateStore.in(context.paths());
         List<Rectangle2D> screens = new ArrayList<>();
         screens.add(Screen.getPrimary().getVisualBounds());
         Screen.getScreens().stream().filter(s -> !s.equals(Screen.getPrimary()))
@@ -103,7 +106,7 @@ public final class LearnSphereApp extends Application {
     }
 
     private void saveWindow(Stage stage) {
-        if (windowStates == null || normalBounds == null) {
+        if (stage == null || windowStates == null || normalBounds == null) {
             return;
         }
         windowStates.save(new WindowState(normalBounds.getMinX(), normalBounds.getMinY(), normalBounds.getWidth(),
@@ -112,6 +115,8 @@ public final class LearnSphereApp extends Application {
 
     @Override
     public void stop() {
+        // Platform.exit() (the in-window Quit, or the system quitting the app) need not hide the window first.
+        saveWindow(stage);
         preferencesListener.close();
         if (menus != null) {
             menus.dispose();

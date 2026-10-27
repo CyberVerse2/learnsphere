@@ -7,6 +7,8 @@ import edu.learnsphere.app.ui.components.Formats;
 import edu.learnsphere.app.ui.components.Icons;
 import edu.learnsphere.app.ui.components.SphereArt;
 import edu.learnsphere.core.events.CourseChanged;
+import edu.learnsphere.core.events.ItemsChanged;
+import edu.learnsphere.core.events.ProgressChanged;
 import edu.learnsphere.core.service.CourseFilter;
 import edu.learnsphere.core.service.CourseSummary;
 import edu.learnsphere.core.service.ProfileSummary;
@@ -35,6 +37,8 @@ import org.kordamp.ikonli.feather.Feather;
 /**
  * App mark and name, primary navigation, the "Studying" list, then Settings and the profile chip at the
  * bottom. The selected item follows the navigator; the studying list and the chip follow the open profile.
+ * The studying list, with each course's due badge, reloads when a course, its items or the learner's
+ * progress change.
  */
 public final class Sidebar extends VBox {
 
@@ -170,7 +174,10 @@ public final class Sidebar extends VBox {
             }
         };
         load.run();
+        // Titles and enrolment change with the course; due badges change with every answer and approval.
         scope.add(Fx.subscribe(workspace.events(), CourseChanged.class, event -> load.run()));
+        scope.add(Fx.subscribe(workspace.events(), ProgressChanged.class, event -> load.run()));
+        scope.add(Fx.subscribe(workspace.events(), ItemsChanged.class, event -> load.run()));
     }
 
     private void showCourses(List<CourseSummary> courses) {
@@ -216,6 +223,16 @@ public final class Sidebar extends VBox {
         button.setOnAction(event -> open(button, destination));
         courseItems.put(course.id(), button);
         return button;
+    }
+
+    /** The due count on each course's badge in the "Studying" list, by course id (0 without a badge; tests). */
+    public Map<String, Integer> studyingDueCounts() {
+        Map<String, Integer> counts = new java.util.LinkedHashMap<>();
+        courseItems.forEach((courseId, button) -> {
+            Label badge = (Label) button.getGraphic().lookup(".nav-badge");
+            counts.put(courseId, badge == null ? 0 : Integer.parseInt(badge.getText()));
+        });
+        return counts;
     }
 
     /** The titles in the "Studying" list, in order (tests). */

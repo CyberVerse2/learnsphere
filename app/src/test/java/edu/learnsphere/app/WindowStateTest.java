@@ -73,6 +73,26 @@ class WindowStateTest {
     }
 
     @Test
+    void storeLivesInTheAppHome() {
+        WindowStateStore store = WindowStateStore.in(edu.learnsphere.core.AppPaths.at(home));
+
+        assertThat(store.file()).isEqualTo(home.resolve(WindowStateStore.FILE_NAME));
+    }
+
+    @Test
+    void aFailedSaveLeavesNoTemporaryFile() throws IOException {
+        // A folder in the file's place cannot be replaced by a file.
+        Path file = Files.createDirectories(home.resolve("window.json"));
+        Files.writeString(file.resolve("keep.txt"), "x", StandardCharsets.UTF_8);
+
+        new WindowStateStore(file).save(new WindowState(120, 80, 1440, 900, false));
+
+        try (var files = Files.list(home)) {
+            assertThat(files.map(p -> p.getFileName().toString())).containsExactly("window.json");
+        }
+    }
+
+    @Test
     void storeIgnoresUnreadableAndNewerFiles() throws IOException {
         Path file = home.resolve("window.json");
         WindowStateStore store = new WindowStateStore(file);

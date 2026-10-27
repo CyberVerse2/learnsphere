@@ -51,7 +51,7 @@ import java.util.Set;
  *
  * <ul>
  *   <li><b>Operating Systems Principles</b>: studying, about halfway through, reviews due today.</li>
- *   <li><b>Research Methods in Computing</b>: studying, just started.</li>
+ *   <li><b>Research Methods in Computing</b>: studying, just started (a few of its questions seen).</li>
  *   <li><b>Organic Chemistry Basics</b>: being written here; PDFs in every import state (one with scanned
  *       pages to check), draft and approved questions of every type.</li>
  * </ul>
@@ -295,6 +295,11 @@ final class DemoContent {
                 "The null hypothesis states that there is no effect.");
         m.flashcard(cHyp, hypothesis, "Null hypothesis", "The statement that there is no effect; a study gathers "
                 + "evidence to judge whether it can be rejected.");
+        m.cloze(cHyp, hypothesis, "A hypothesis is a ____ prediction derived from the research question.", "testable",
+                "A prediction that no evidence could contradict is not a hypothesis.");
+        m.shortAnswer(cRq, rq, "How do you narrow a broad topic into a research question?",
+                "Name a specific population, an intervention and a measurable outcome.",
+                "A population, an intervention and an outcome make a question answerable.");
 
         m = c.module("Literature Review", "Finding, reading and organising what is already known.");
         doc = m.document("Week 2 – Reviewing the Literature", "rm-week-2-literature.pdf", 22, 1_610_000);
@@ -308,6 +313,10 @@ final class DemoContent {
                 "It cites more than fifty papers", "It only uses journal articles", "It is written by several authors");
         m.cloze(cSys, systematic, "Inclusion and exclusion criteria are decided ____ the search.", "before",
                 "Deciding criteria in advance stops results from shaping what gets included.");
+        m.trueFalse(cSys, systematic, "A systematic review reports how many sources were screened at each step.", true,
+                "Reporting the numbers at each step lets others repeat the review.");
+        m.flashcard(cSys, systematic, "Inclusion criteria", "Rules, decided before searching, for which sources a "
+                + "review keeps.");
 
         m = c.module("Experimental Design", "Controlling variables so results mean something.");
         doc = m.document("Week 3 – Designing Experiments", "rm-week-3-experiments.pdf", 26, 2_030_000);
@@ -322,6 +331,10 @@ final class DemoContent {
         m.shortAnswer(cVar, variables, "Why do researchers randomly assign participants to conditions?",
                 "Random assignment spreads confounding variables evenly across conditions so they don't explain the result.",
                 "Randomising controls confounding variables.");
+        m.cloze(cVar, variables, "The variable the researcher changes is the ____ variable.", "independent",
+                "The independent variable is changed; the dependent variable is measured.");
+        m.flashcard(cVar, variables, "Confounding variable", "Something other than the variable being changed that "
+                + "also affects the outcome.");
 
         m = c.module("Research Ethics", "Consent, privacy and doing no harm.");
         doc = m.document("Week 4 – Ethics in Practice", "rm-week-4-ethics.pdf", 15, 980_000);
@@ -334,6 +347,12 @@ final class DemoContent {
                 "Participants can withdraw at any time without giving a reason.");
         m.flashcard(cConsent, consent, "Informed consent", "Agreement given after understanding the study, the data "
                 + "collected and its storage, and the right to withdraw at any time.");
+        m.mcq(cConsent, consent, "What must participants understand before agreeing to take part?",
+                "What the study involves, the data collected and their right to withdraw",
+                "Consent is informed only when all three are understood.",
+                "Only how long the study takes", "The researcher's hypothesis", "How the results will be graded");
+        m.cloze(cConsent, consent, "Participants can withdraw at any time without giving a ____.", "reason",
+                "Withdrawal needs no explanation.");
     }
 
     // ---------------------------------------------------------------------------------------------------
@@ -363,6 +382,12 @@ final class DemoContent {
                 "The four sp3 orbitals point to the corners of a tetrahedron.", "90°", "120°", "180°");
         m.status(ItemStatus.APPROVED).flashcard(cHybrid, hybrid, "sp3 hybridisation",
                 "One s and three p orbitals mix into four equivalent orbitals arranged tetrahedrally.");
+        m.status(ItemStatus.APPROVED).ai().trueFalse(cHybrid, hybrid, "The four C–H bonds in methane are equivalent.",
+                true, "All four come from identical sp3 hybrid orbitals.");
+        m.status(ItemStatus.APPROVED).ai().shortAnswer(cPolar, polarity,
+                "Which atom carries the partial negative charge in a C–Cl bond, and why?",
+                "Chlorine, because it is more electronegative than carbon and pulls the shared electrons towards it.",
+                "The more electronegative atom becomes partly negative.");
         m.status(ItemStatus.DRAFT).ai().trueFalse(cPolar, polarity,
                 "In a polar bond the shared electrons sit closer to the less electronegative atom.", false,
                 "They sit closer to the more electronegative atom, which becomes partly negative.");
@@ -461,7 +486,7 @@ final class DemoContent {
         List<LearningItem> os = store.studyItems(OPERATING_SYSTEMS);
         List<LearningItem> rm = store.studyItems(RESEARCH_METHODS);
         int osStarted = (int) Math.round(os.size() * 0.62);
-        int rmStarted = 4;
+        int rmStarted = 3;
         Set<LocalDate> restDays = Set.of(today.minusDays(29), today.minusDays(25), today.minusDays(22),
                 today.minusDays(18), today.minusDays(17), today.minusDays(13), today.minusDays(9));
         for (int i = 0; i < osStarted; i++) {

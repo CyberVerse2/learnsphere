@@ -5,15 +5,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 import edu.learnsphere.app.AppContext;
 import edu.learnsphere.app.dev.DemoData;
 import edu.learnsphere.app.dev.DemoWorkspace;
+import edu.learnsphere.app.dev.ScreenshotTour;
 import edu.learnsphere.app.theme.Theme;
 import edu.learnsphere.app.theme.Typography;
 import edu.learnsphere.core.AppPaths;
+import edu.learnsphere.core.service.CourseUpdate;
 import edu.learnsphere.core.service.SessionRequest;
 import edu.learnsphere.core.service.ThemePreference;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.Labeled;
@@ -70,9 +75,12 @@ class MainWindowSmokeTest {
 
         robot.clickOn("Library");
         assertThat(window.navigator().current()).isEqualTo(Destination.LIBRARY);
-
-        robot.interact(() -> window.navigator().navigate(new Destination.Course(DemoData.OPERATING_SYSTEMS)));
         settle();
+
+        Node firstCard = robot.lookup(".course-card").query();
+        robot.clickOn(firstCard);
+        settle();
+        assertThat(window.navigator().current()).isEqualTo(new Destination.Course(DemoData.OPERATING_SYSTEMS));
         assertThat(window.topBar().crumbTexts()).containsExactly("Library", "Operating Systems Principles");
 
         robot.clickOn(".profile-chip");
@@ -98,6 +106,42 @@ class MainWindowSmokeTest {
 
         robot.interact(() -> window.navigator().navigate(Destination.HOME));
         assertThat(window.isSidebarShown()).isTrue();
+    }
+
+    @Test
+    void answeringInAStudySessionUpdatesTheSidebarDueBadges(FxRobot robot) throws TimeoutException {
+        settle();
+        Map<String, Integer> before = window.sidebar().studyingDueCounts();
+        int dueBefore = before.values().stream().mapToInt(Integer::intValue).sum();
+        assertThat(dueBefore).as("the demo has reviews due").isPositive();
+
+        robot.interact(() -> window.navigator().navigate(new Destination.Study(SessionRequest.studyNext())));
+        settle();
+        robot.interact(() -> ScreenshotTour.answerCurrentQuestion(window));
+        settle();
+        assertThat(robot.lookup(".feedback-panel").tryQuery()).as("the answer was checked").isPresent();
+        robot.interact(() -> window.navigator().back());
+        settle();
+
+        WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () -> window.sidebar().studyingDueCounts().values().stream()
+                .mapToInt(Integer::intValue).sum() == dueBefore - 1);
+        assertThat(window.sidebar().studyingDueCounts().keySet()).isEqualTo(before.keySet());
+    }
+
+    @Test
+    void breadcrumbsFollowARenamedCourse(FxRobot robot) throws TimeoutException {
+        settle();
+        robot.interact(() -> window.navigator().navigate(
+                new Destination.Studio(DemoData.ORGANIC_CHEMISTRY, StudioTab.DETAILS)));
+        settle();
+        assertThat(window.topBar().crumbTexts()).containsExactly("Studio", "Organic Chemistry Basics", "Details");
+
+        context.workspace().courses().update(DemoData.ORGANIC_CHEMISTRY,
+                new CourseUpdate("Organic Chemistry Essentials", null, null, null));
+
+        WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS,
+                () -> window.topBar().crumbTexts().contains("Organic Chemistry Essentials"));
+        assertThat(window.topBar().crumbTexts()).containsExactly("Studio", "Organic Chemistry Essentials", "Details");
     }
 
     @Test

@@ -33,6 +33,9 @@ import java.io.ByteArrayInputStream;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import javafx.beans.binding.Bindings;
+import javafx.beans.property.BooleanProperty;
+import javafx.beans.property.SimpleBooleanProperty;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
@@ -57,6 +60,10 @@ import org.kordamp.ikonli.feather.Feather;
  * Asking about a course: the conversation on the left, answers in reading type with their citations
  * inline, and the source viewer on the right, which opens a cited page with the passage highlighted. An
  * answer the material doesn't support is a calm card that suggests what to try next.
+ *
+ * <p>One question is answered at a time: Ask stays disabled until the answer on its way has finished (the
+ * box stays editable, so the next question can be written meanwhile). The first question of a new
+ * conversation starts it, and later questions join it.
  */
 public final class AskPage implements View {
 
@@ -76,7 +83,9 @@ public final class AskPage implements View {
     private final VBox viewer = new VBox(14);
     private final Label courseTitle = new Label();
     private String threadId;
-    private Cancellable answering;
+    /** The question being answered (FX thread), or null. */
+    private PendingAnswer answering;
+    private final BooleanProperty busy = new SimpleBooleanProperty(this, "busy", false);
 
     public AskPage(AppContext context, Navigator navigator, Destination.Ask destination) {
         this.context = context;
@@ -113,7 +122,8 @@ public final class AskPage implements View {
         askButton.getStyleClass().add("primary");
         askButton.setMinWidth(Region.USE_PREF_SIZE);
         askButton.setGraphic(Icons.of(Feather.ARROW_UP, 16));
-        askButton.disableProperty().bind(question.textProperty().map(String::isBlank));
+        askButton.disableProperty().bind(Bindings.createBooleanBinding(
+                () -> busy.get() || question.getText().isBlank(), busy, question.textProperty()));
         askButton.setOnAction(event -> ask());
         question.setOnKeyPressed(event -> {
             if (event.getCode() == KeyCode.ENTER && !event.isShiftDown()) {
@@ -175,6 +185,16 @@ public final class AskPage implements View {
             answering.cancel();
         }
         disposer.dispose();
+    }
+
+    /** True while a question is on its way to an answer (Ask is disabled meanwhile). */
+    public boolean isAnswering() {
+        return busy.get();
+    }
+
+    /** The conversation on screen, or null before its first question (tests). */
+    public String threadId() {
+        return threadId;
     }
 
     private void render(Loaded loaded) {
@@ -262,9 +282,12 @@ public final class AskPage implements View {
     private void ask() {
         Workspace workspace = context.workspace();
         String text = question.getText().strip();
-        if (workspace == null || text.isEmpty()) {
+        if (workspace == null || text.isEmpty() || answering != null) {
             return;
         }
+        PendingAnswer answer = new PendingAnswer();
+        answering = answer;
+        busy.set(true);
         question.clear();
         if (messages.getChildren().size() == 1 && messages.getChildren().getFirst() instanceof EmptyState) {
             messages.getChildren().clear();
@@ -299,13 +322,13 @@ public final class AskPage implements View {
             }
 
             @Override
-            public void onAnswer(Answer answer) {
-                Fx.run(() -> finish(pending, answerNode(answer.text(), answer.status(), answer.citations())));
+            public void onAnswer(Answer result) {
+                Fx.run(() -> finish(answer, pending, answerNode(result.text(), result.status(), result.citations())));
             }
 
             @Override
-            public void onInsufficientEvidence(Answer answer) {
-                Fx.run(() -> finish(pending, insufficient()));
+            public void onInsufficientEvidence(Answer result) {
+                Fx.run(() -> finish(answer, pending, insufficient()));
             }
 
             @Override
@@ -313,40 +336,93 @@ public final class AskPage implements View {
                 Fx.run(() -> {
                     messages.getChildren().remove(pending);
                     Toasts.error(root, message);
-                    answering = null;
+                    answer.finished = true;
+                    settle(answer);
                 });
             }
 
             @Override
             public void onCancelled() {
-                Fx.run(() -> finish(pending, answerNode(tokens.getText(), MessageStatus.CANCELLED, List.of())));
+                Fx.run(() -> finish(answer, pending, answerNode(tokens.getText(), MessageStatus.CANCELLED, List.of())));
             }
         };
         String courseId = destination.courseId();
         String existing = threadId;
-        disposer.add(UiTasks.run(() -> {
+        answer.start = UiTasks.run(() -> {
             String thread = existing != null ? existing : workspace.ask().createThread(courseId, null).id();
-            return new Started(thread, workspace.ask().ask(thread, text, listener));
-        }, started -> {
-            threadId = started.threadId();
-            answering = started.handle();
-            navigator.replace(new Destination.Ask(courseId, threadId, null), false);
+            answer.streaming(workspace.ask().ask(thread, text, listener));
+            return thread;
+        }, thread -> {
+            threadId = thread;
+            navigator.replace(new Destination.Ask(courseId, thread, null), false);
+            answer.started = true;
+            settle(answer);
         }, message -> {
             messages.getChildren().remove(pending);
             Toasts.error(root, message);
-        }));
+            answer.started = true;
+            answer.finished = true;
+            settle(answer);
+        });
     }
 
-    private record Started(String threadId, Cancellable handle) {
+    /**
+     * A question on its way to an answer. It is done once its conversation is known (the start ran on the
+     * FX thread) and the answer has arrived, failed or stopped, in either order; only then can the next
+     * question go. {@link #cancel()} stops it from any thread, also while it is still starting.
+     */
+    private static final class PendingAnswer implements Cancellable {
+        private volatile boolean cancelled;
+        private volatile Cancellable start;
+        private volatile Cancellable streaming;
+        /** FX thread: the conversation is known. */
+        private boolean started;
+        /** FX thread: the answer has arrived, failed or stopped. */
+        private boolean finished;
+
+        /** Background thread: the answer is streaming; stops it at once if the question was cancelled meanwhile. */
+        void streaming(Cancellable handle) {
+            streaming = handle;
+            if (cancelled) {
+                handle.cancel();
+            }
+        }
+
+        @Override
+        public void cancel() {
+            cancelled = true;
+            Cancellable s = start;
+            if (s != null) {
+                s.cancel();
+            }
+            Cancellable h = streaming;
+            if (h != null) {
+                h.cancel();
+            }
+        }
+
+        @Override
+        public boolean isCancelled() {
+            return cancelled;
+        }
     }
 
-    private void finish(Node pending, Node answer) {
+    /** Lets the next question go once {@code answer} has both started and finished. */
+    private void settle(PendingAnswer answer) {
+        if (answer.started && answer.finished && answering == answer) {
+            answering = null;
+            busy.set(false);
+        }
+    }
+
+    private void finish(PendingAnswer answer, Node pending, Node node) {
         int index = messages.getChildren().indexOf(pending);
         if (index >= 0) {
-            messages.getChildren().set(index, answer);
-            Motion.fadeIn(answer, Motion.ROUTE);
+            messages.getChildren().set(index, node);
+            Motion.fadeIn(node, Motion.ROUTE);
         }
-        answering = null;
+        answer.finished = true;
+        settle(answer);
         Fx.run(() -> scroller.setVvalue(1));
     }
 

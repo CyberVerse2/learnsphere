@@ -362,6 +362,36 @@
     -fx-icon-color: -ls-on-danger;
 }
 
+/* Positive: a tinted secondary that confirms something is right (Approve on each card of a list). */
+.button.positive {
+    -fx-background-color: -ls-success-soft;
+    -fx-background-insets: 0;
+    -fx-background-radius: 10px;
+    -fx-text-fill: -ls-success-text;
+}
+
+.button.positive:hover {
+    -fx-background-color: -ls-success-soft, -ls-hover;
+    -fx-background-insets: 0, 0;
+    -fx-background-radius: 10px, 10px;
+}
+
+.button.positive:armed {
+    -fx-background-color: -ls-success-soft, -ls-pressed;
+    -fx-background-insets: 0, 0;
+    -fx-background-radius: 10px, 10px;
+}
+
+.button.positive:focus-visible {
+    -fx-background-color: -ls-focus, -ls-success-soft;
+    -fx-background-insets: -3px, 0;
+    -fx-background-radius: 13px, 10px;
+}
+
+.button.positive .ikonli-font-icon {
+    -fx-icon-color: -ls-success-text;
+}
+
 /* Quiet: text only, in the accent (or neutral with .neutral). */
 .button.quiet {
     -fx-background-color: transparent;
@@ -2498,7 +2528,7 @@
 }
 
 .citation-chip.inline {
-    -fx-translate-y: 3px;
+    -fx-translate-y: -1px;
 }
 
 .ask-thinking .label {

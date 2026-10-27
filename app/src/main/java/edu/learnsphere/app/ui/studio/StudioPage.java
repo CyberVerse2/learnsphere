@@ -65,7 +65,8 @@ import org.kordamp.ikonli.feather.Feather;
  * The Studio, where creators work. Without a course it lists the courses created here; with one it is a
  * working surface in tabs: details and cover, modules, PDFs with live status, the review queue (each AI
  * draft beside the passage it came from, with Approve, Edit, Regenerate and Reject), scanned pages to
- * check, and publishing.
+ * check, and publishing. Each view has one primary action: Save changes, Looks right or Publish version on
+ * their tabs; Approve in the review queue is a tinted secondary, since every card carries one.
  */
 public final class StudioPage extends PageView {
 
@@ -135,14 +136,15 @@ public final class StudioPage extends PageView {
         create.getStyleClass().add("primary");
         create.setOnAction(event -> Toasts.info(page(), "Name your course to start adding PDFs."));
         PageHeader header = new PageHeader("Studio")
-                .subtitle("Turn your PDFs into a course: check what the study assistant drafts, then publish and share it.")
-                .actions(create);
+                .subtitle("Turn your PDFs into a course: check what the study assistant drafts, then publish and share it.");
         if (courses.isEmpty()) {
+            // The empty state carries the one "New course" action.
             show(header, new EmptyState(EmptyIllustration.Kind.DOCUMENTS, "Make your first course",
                     "Add the PDFs you teach from. The study assistant drafts questions and flashcards for you to check.")
                     .primary("New course", () -> Toasts.info(page(), "Name your course to start adding PDFs.")));
             return;
         }
+        header.actions(create);
         ResponsiveGrid grid = ResponsiveGrid.forCards();
         for (CourseSummary course : courses) {
             CourseCard card = new CourseCard(course, CourseCard.Mode.CREATING);
@@ -161,12 +163,16 @@ public final class StudioPage extends PageView {
         CourseCover cover = new CourseCover(course.coverHue(), course.id(), CourseCover.Size.SMALL);
         Button preview = new Button("Study it yourself", Icons.of(Feather.PLAY));
         preview.setOnAction(event -> navigator.navigate(new Destination.Course(course.id())));
-        Button publish = new Button("Publish", Icons.of(Feather.UPLOAD_CLOUD));
-        publish.getStyleClass().add("primary");
-        publish.setOnAction(event -> navigator.navigate(new Destination.Studio(course.id(), StudioTab.PUBLISH)));
         PageHeader header = new PageHeader(course.title())
-                .overline(CourseCard.metaLine(course, CourseCard.Mode.CREATING))
-                .actions(preview, publish);
+                .overline(CourseCard.metaLine(course, CourseCard.Mode.CREATING));
+        if (destination.tab() == StudioTab.PUBLISH) {
+            header.actions(preview);
+        } else {
+            // A way to the Publish tab; the tabs keep their own primary action.
+            Button publish = new Button("Publish", Icons.of(Feather.UPLOAD_CLOUD));
+            publish.setOnAction(event -> navigator.replace(new Destination.Studio(course.id(), StudioTab.PUBLISH), true));
+            header.actions(preview, publish);
+        }
         HBox top = new HBox(20, cover, header);
         top.setAlignment(Pos.BOTTOM_LEFT);
         HBox.setHgrow(header, Priority.ALWAYS);
@@ -410,7 +416,7 @@ public final class StudioPage extends PageView {
         }
 
         Button approve = new Button("Approve", Icons.of(Feather.CHECK, 14));
-        approve.getStyleClass().addAll("primary", "small");
+        approve.getStyleClass().addAll("positive", "small");
         approve.setOnAction(event -> act(() -> workspace().items().approve(item.id()), "Approved"));
         Button edit = new Button("Edit");
         edit.getStyleClass().add("small");

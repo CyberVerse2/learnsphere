@@ -42,7 +42,9 @@ import javax.imageio.ImageIO;
  * {@code ScreenshotTour <output folder>} (run through {@code ./gradlew :app:screenshots}). Each shot is
  * written as {@code <name>-light.png} and {@code <name>-dark.png} at {@value #WIDTH}×{@value #HEIGHT}.
  *
- * <p>The demo profile is open, so screens show {@link DemoWorkspace} content. Add a {@link Shot} to
+ * <p>The demo profile is open, so screens show {@link DemoWorkspace} content. The profile is opened afresh
+ * for every capture, so each shot starts from the same demo content whatever earlier shots did (answering a
+ * question changes due counts, for one) and light and dark show identical screens. Add a {@link Shot} to
  * {@link #shots()} for each new screen; it receives the main window and puts it in the state to capture.
  * Background loads finish before each capture.
  */
@@ -95,7 +97,7 @@ public final class ScreenshotTour {
                 new Shot("ask", window -> window.navigator().reset(askWithSource(window, os))),
                 Shot.of("study", new Destination.Study(SessionRequest.studyNext())),
                 new Shot("study-feedback", window -> window.navigator().reset(new Destination.Study(SessionRequest.studyNext())),
-                        ScreenshotTour::answerFirstQuestion),
+                        ScreenshotTour::answerCurrentQuestion),
                 Shot.of("progress", Destination.Progress.overview()),
                 Shot.of("progress-course", new Destination.Progress(os)),
                 Shot.of("studio", Destination.Studio.courses()),
@@ -122,12 +124,19 @@ public final class ScreenshotTour {
     }
 
     /**
-     * Answers the question on screen through the keyboard, as a learner would: the second option (or a typed
-     * answer, or turning a flashcard and rating it Good), then Enter.
+     * Answers the question on screen in a study session through the keyboard, as a learner would: the second
+     * option (or a typed answer, or turning a flashcard and rating it Good), then Enter. Does nothing when no
+     * study session is on screen. FX thread.
      */
-    private static void answerFirstQuestion(MainWindow window) {
+    public static void answerCurrentQuestion(MainWindow window) {
         if (!(window.navigator().currentView() instanceof StudyPage study)) {
             return;
+        }
+        // The question sits in a scroll pane, whose content joins the scene only once its skin exists; an
+        // off-screen scene gets skins on its first CSS pass.
+        if (window.getScene() != null) {
+            window.getScene().getRoot().applyCss();
+            window.getScene().getRoot().layout();
         }
         Node root = study.root();
         if (root.lookup(".study-input") instanceof TextInputControl input) {
@@ -185,10 +194,12 @@ public final class ScreenshotTour {
         List<Path> files = new ArrayList<>();
         try (AppContext context = AppContext.create()) {
             DemoData.seedProfiles(context);
-            context.openLastProfile().orElseThrow(() -> new IllegalStateException("The demo profile did not open"));
-            settle();
             for (Shot shot : shots()) {
                 for (ThemePreference preference : List.of(ThemePreference.LIGHT, ThemePreference.DARK)) {
+                    // The demo profile afresh (opening it closes the previous one): every capture starts
+                    // from the same content.
+                    context.openLastProfile().orElseThrow(() -> new IllegalStateException("The demo profile did not open"));
+                    settle();
                     // A fresh scene per theme: snapshots of an off-screen scene can reuse cached renderings.
                     Capture capture = onFx(() -> {
                         MainWindow window = new MainWindow(context);
@@ -270,8 +281,11 @@ public final class ScreenshotTour {
     }
 
     private static Path write(Scene scene, Path file) throws IOException {
-        scene.getRoot().applyCss();
-        scene.getRoot().layout();
+        // Twice: the top bar lines up with the page's viewport, which is only known after the page's layout.
+        for (int pass = 0; pass < 2; pass++) {
+            scene.getRoot().applyCss();
+            scene.getRoot().layout();
+        }
         WritableImage image = scene.snapshot(null);
         ImageIO.write(SwingFXUtils.fromFXImage(image, null), "png", file.toFile());
         return file;

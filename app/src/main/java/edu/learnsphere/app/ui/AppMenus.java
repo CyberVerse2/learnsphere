@@ -67,7 +67,7 @@ public final class AppMenus {
         file.getItems().addAll(switchProfile, new SeparatorMenuItem(), settings);
         if (!systemMenuBar) {
             file.getItems().addAll(new SeparatorMenuItem(),
-                    item("Quit LearnSphere", shortcut(KeyCode.Q, false), Platform::exit));
+                    item("Quit LearnSphere", shortcut(KeyCode.Q, false), () -> quit(window)));
         }
 
         Menu go = new Menu("Go");
@@ -155,6 +155,14 @@ public final class AppMenus {
                 Toasts.error(navigator.currentView().root(), message);
             }
         });
+    }
+
+    /** Closes the window (so it remembers its place, as closing it does), then quits. */
+    private static void quit(MainWindow window) {
+        if (window.getScene() != null && window.getScene().getWindow() != null) {
+            window.getScene().getWindow().hide();
+        }
+        Platform.exit();
     }
 
     private static MenuItem item(String label, KeyCombination accelerator, Runnable action) {

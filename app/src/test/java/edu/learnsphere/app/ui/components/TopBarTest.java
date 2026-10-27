@@ -12,7 +12,13 @@ import java.util.List;
 import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
+import javafx.scene.control.Label;
+import javafx.scene.control.ScrollBar;
+import javafx.geometry.Orientation;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
+import javafx.scene.layout.VBox;
 import javafx.scene.text.Text;
 import javafx.stage.Stage;
 import org.junit.jupiter.api.Test;
@@ -61,6 +67,35 @@ class TopBarTest {
         double column = (WIDTH - Page.MAX_WIDTH) / 2 + Page.SIDE_PADDING;
         assertThat(textLeft(robot.lookup(".crumb").query()))
                 .isCloseTo(column, within(1.5));
+    }
+
+    @Test
+    void firstCrumbFollowsAPageColumnNarrowedByItsScrollBar(FxRobot robot) {
+        Label first = new Label("Good afternoon");
+        Region tall = new Region();
+        tall.setMinHeight(2000);
+        Page page = new Page(first, tall);
+        VBox.setVgrow(page, Priority.ALWAYS);
+        robot.interact(() -> {
+            host.getChildren().clear();
+            host.getChildren().setAll(new VBox(bar, page));
+            bar.setCrumbs(List.of(new Crumb("Home", null)));
+            bar.alignWith(page);
+        });
+        robot.interact(() -> {
+            host.applyCss();
+            host.layout();
+            host.layout();
+        });
+
+        ScrollBar vertical = (ScrollBar) page.lookupAll(".scroll-bar").stream()
+                .filter(n -> n instanceof ScrollBar s && s.getOrientation() == Orientation.VERTICAL && s.isVisible())
+                .findFirst().orElseThrow();
+        assertThat(vertical.getWidth()).as("the page scrolls").isPositive();
+        double columnText = textLeft(first);
+        assertThat(columnText).isCloseTo((WIDTH - vertical.getWidth() - Page.MAX_WIDTH) / 2 + Page.SIDE_PADDING,
+                within(1.5));
+        assertThat(textLeft(robot.lookup(".crumb").query())).isCloseTo(columnText, within(1.5));
     }
 
     @Test

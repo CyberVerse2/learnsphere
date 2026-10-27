@@ -2,6 +2,7 @@ package edu.learnsphere.app.ui.components;
 
 import java.util.List;
 import java.util.Objects;
+import javafx.beans.InvalidationListener;
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.SimpleBooleanProperty;
 import javafx.geometry.Insets;
@@ -9,6 +10,7 @@ import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -17,7 +19,9 @@ import org.kordamp.ikonli.feather.Feather;
 /**
  * The quiet bar above the content: a back button, breadcrumbs that say where the learner is ("Library ›
  * Operating Systems Principles › Ask"), and a slot on the right for status and window-wide controls.
- * Earlier crumbs are links; the last one is the current place.
+ * Earlier crumbs are links; the last one is the current place. The back arrow (or the first crumb) starts
+ * where the content column below starts, also when a scrolling page's scroll bar narrows that column
+ * ({@link #alignWith(ScrollPane)}).
  */
 public final class TopBar extends HBox {
 
@@ -51,6 +55,8 @@ public final class TopBar extends HBox {
     private final HBox trailing = new HBox(12);
     private final BooleanProperty canGoBack = new SimpleBooleanProperty(this, "canGoBack", false);
     private double columnMaxWidth = Page.MAX_WIDTH;
+    private final InvalidationListener viewportListener = observable -> requestLayout();
+    private ScrollPane alignedPage;
     private Node aligned;
     private double alignedSpace = -1;
 
@@ -83,10 +89,41 @@ public final class TopBar extends HBox {
         }
     }
 
+    /**
+     * Lines the crumbs up with the column of {@code page}, the scrolling page under the bar (null when the
+     * content does not scroll as a page). The column is centred in the page's viewport, which its vertical
+     * scroll bar narrows, so the bar follows the viewport's width instead of its own.
+     */
+    public void alignWith(ScrollPane page) {
+        if (page == alignedPage) {
+            return;
+        }
+        if (alignedPage != null) {
+            alignedPage.viewportBoundsProperty().removeListener(viewportListener);
+        }
+        alignedPage = page;
+        if (page != null) {
+            page.viewportBoundsProperty().addListener(viewportListener);
+        }
+        requestLayout();
+    }
+
+    /** The width the content column is centred in: the aligned page's viewport, or the bar's own width. */
+    private double columnArea() {
+        if (alignedPage != null) {
+            double viewport = alignedPage.getViewportBounds().getWidth();
+            // Before its first layout the page has no viewport; the bar's width is the best guess until then.
+            if (viewport > 0) {
+                return Math.min(viewport, getWidth());
+            }
+        }
+        return getWidth();
+    }
+
     /** The back arrow, or the first crumb's text when there is no way back, starts on the content column's edge. */
     @Override
     protected void layoutChildren() {
-        double column = Math.max(0, (getWidth() - columnMaxWidth) / 2) + Page.SIDE_PADDING;
+        double column = Math.max(0, (columnArea() - columnMaxWidth) / 2) + Page.SIDE_PADDING;
         Node first = back.isManaged() ? back : crumbs;
         double space = Math.max(0, column - snappedLeftInset() - (first == back ? BACK_ICON_INSET : CRUMB_INSET));
         if (first != aligned || space != alignedSpace) {
