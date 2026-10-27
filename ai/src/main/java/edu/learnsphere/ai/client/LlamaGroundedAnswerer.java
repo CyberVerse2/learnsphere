@@ -11,13 +11,15 @@ import edu.learnsphere.core.util.CancellationToken;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.regex.Pattern;
 
 /**
  * {@link GroundedAnswerer} on the chat model at {@link ChatPriority#INTERACTIVE}. The prompt
  * ({@code answer-system.txt}) asks for plain language, a {@code [n]} citation after each claim, and the
  * sentinel {@link Prompts#NOT_IN_MATERIAL} when the passages don't hold the answer; the sentinel is never
- * streamed and turns the result into {@link GroundedAnswer#insufficientEvidence()}. Thread-safe.
+ * streamed and turns the result into {@link GroundedAnswer#insufficientEvidence()}. A reply that refuses in
+ * its own words instead (it opens by saying the material doesn't cover the question and cites nothing) is
+ * held back while it streams ({@link RefusalOpeningFilter}) and also becomes insufficient evidence, so the
+ * learner never sees text that is then taken back. Thread-safe.
  */
 public final class LlamaGroundedAnswerer implements GroundedAnswerer {
 
@@ -27,15 +29,6 @@ public final class LlamaGroundedAnswerer implements GroundedAnswerer {
     public static final int PASSAGE_BUDGET = 28_000;
     /** Longest question sent, in characters. */
     public static final int MAX_QUESTION_CHARS = 2_000;
-
-    /**
-     * An opening sentence (before any citation) saying the material doesn't cover the question: the model
-     * refused in its own words instead of with the sentinel.
-     */
-    private static final Pattern REFUSAL_OPENING = Pattern.compile(
-            "(?is)^[^\\[.!?]{0,200}?\\b(your|the|this|provided|course) (provided |course )?(material|materials|passages?|notes|text)"
-                    + " (does ?n[o']t|do ?n[o']t|does not|do not|never|only) "
-                    + "(explain|cover|mention|contain|describe|say|include|discuss|address|talk)[^.\\[]*\\.");
 
     private final LocalChat chat;
     private final double temperature;
@@ -67,19 +60,24 @@ public final class LlamaGroundedAnswerer implements GroundedAnswerer {
                 "passages", PassageFormat.format(fitted),
                 "question", q));
         ChatRequest request = ChatRequest.text(messages(user), MAX_TOKENS, temperature);
-        SentinelStream stream = new SentinelStream(Prompts.NOT_IN_MATERIAL, sink);
+        RefusalOpeningFilter opening = new RefusalOpeningFilter(sink);
+        SentinelStream stream = new SentinelStream(Prompts.NOT_IN_MATERIAL, opening);
         chat.complete(ChatPriority.INTERACTIVE, request, stream, token);
         stream.finish();
+        opening.finish();
         String text = stream.text().strip();
-        if (stream.refused() || text.isEmpty() || refusesInItsOwnWords(text)) {
+        if (stream.refused() || text.isEmpty() || opening.refused()) {
             return GroundedAnswer.insufficientEvidence();
         }
         return new GroundedAnswer(text, false);
     }
 
-    /** True when the answer opens, before any citation, by saying the material doesn't cover the question. */
+    /**
+     * True when the answer opens, before any citation, by saying the material doesn't cover the question,
+     * and cites no passage anywhere.
+     */
     static boolean refusesInItsOwnWords(String text) {
-        return REFUSAL_OPENING.matcher(text.strip()).lookingAt();
+        return RefusalOpeningFilter.refuses(text);
     }
 
     /**

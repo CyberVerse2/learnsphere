@@ -98,11 +98,25 @@ class LlamaImplementationsTest {
     }
 
     @Test
-    void aRefusalInTheModelsOwnWordsIsInsufficientEvidence() {
-        server.reply(Reply.text("The passages don't cover who wrote Linux."));
+    void aRefusalInTheModelsOwnWordsIsInsufficientEvidenceAndNeverShown() {
+        server.reply(Reply.text("The passages ", "don't cover ", "who wrote ", "Linux."));
+        StringBuilder shown = new StringBuilder();
         GroundedAnswer answer = new LlamaGroundedAnswerer(chat).answer("Who wrote Linux?", List.of(PAGING),
-                piece -> { }, CancellationToken.NONE);
+                shown::append, CancellationToken.NONE);
         assertThat(answer.insufficient()).isTrue();
+        assertThat(shown).isEmpty();
+    }
+
+    @Test
+    void aRemarkAboutTheMaterialBeforeACitedAnswerIsShown() {
+        server.reply(Reply.text("The notes only describe ", "two algorithms. ", "FCFS runs jobs ",
+                "in arrival order [1]."));
+        StringBuilder shown = new StringBuilder();
+        GroundedAnswer answer = new LlamaGroundedAnswerer(chat).answer("Which algorithms are there?",
+                List.of(PAGING), shown::append, CancellationToken.NONE);
+        assertThat(answer.insufficient()).isFalse();
+        assertThat(answer.text()).isEqualTo("The notes only describe two algorithms. FCFS runs jobs in arrival order [1].");
+        assertThat(shown.toString()).isEqualTo(answer.text());
     }
 
     @Test
@@ -120,6 +134,9 @@ class LlamaImplementationsTest {
         assertThat(LlamaGroundedAnswerer.refusesInItsOwnWords(
                 "Paging uses frames [1]. The passages don't cover segmentation.")).isFalse();
         assertThat(LlamaGroundedAnswerer.refusesInItsOwnWords("The TLB caches page-table entries [2].")).isFalse();
+        assertThat(LlamaGroundedAnswerer.refusesInItsOwnWords(
+                "The notes only describe two algorithms. FCFS runs jobs in arrival order [1].")).isFalse();
+        assertThat(LlamaGroundedAnswerer.refusesInItsOwnWords("The notes only cover paging, not segmentation.")).isTrue();
     }
 
     // ------------------------------------------------------------------ embeddings and rerank
