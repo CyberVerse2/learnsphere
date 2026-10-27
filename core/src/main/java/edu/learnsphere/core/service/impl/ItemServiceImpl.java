@@ -36,6 +36,7 @@ import java.time.Clock;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -229,7 +230,7 @@ public final class ItemServiceImpl implements ItemService {
         Objects.requireNonNull(itemIds, "itemIds");
         List<LearningItem> items = repos.items().listByIds(new LinkedHashSet<>(itemIds));
         Map<String, List<String>> approvable = new LinkedHashMap<>();
-        Set<String> checkedCourses = new java.util.HashSet<>();
+        Set<String> checkedCourses = new HashSet<>();
         for (LearningItem item : items) {
             if (checkedCourses.add(item.courseId())) {
                 ServiceSupport.requireEditableCourse(repos, item.courseId());

@@ -55,7 +55,8 @@ import org.slf4j.LoggerFactory;
  * profile ({@code files/<sha256>.pdf}; the same PDF imported again reuses the stored file), records the
  * document as queued and enqueues a {@link JobKind#INGEST_DOCUMENT} job whose subject is the document id
  * (payload {@link IngestPayload}). The import pipeline's handler does the rest and reports through
- * {@link DocumentChanged}. A PDF larger than {@link #MAX_BYTES} is recorded as failed without copying it.
+ * {@link DocumentChanged}. A PDF larger than {@link #MAX_BYTES} is recorded as failed without copying it, so
+ * the creator sees why it was not imported.
  *
  * <p><b>Scanned pages.</b> Pages read from images wait for review. Editing or approving the last of them
  * moves a document waiting in {@link DocumentStatus#NEEDS_REVIEW} back to the queue so the import continues;
@@ -114,6 +115,7 @@ public final class DocumentServiceImpl implements DocumentService {
     private final IndexUpdates index;
     private final PageRenderer renderer;
     private final PassageLocator locator;
+    private final long maxBytes;
 
     /**
      * @param index    the profile's search index (passages of removed, renamed and moved documents)
@@ -123,6 +125,16 @@ public final class DocumentServiceImpl implements DocumentService {
      */
     public DocumentServiceImpl(Repositories repos, EventBus events, Clock clock, JobQueue jobs, SearchIndex index,
                                PdfStore pdfs, PageRenderer renderer, PassageLocator locator) {
+        this(repos, events, clock, jobs, index, pdfs, renderer, locator, MAX_BYTES);
+    }
+
+    /** As the public constructor, with another size limit (for tests). */
+    DocumentServiceImpl(Repositories repos, EventBus events, Clock clock, JobQueue jobs, SearchIndex index, PdfStore pdfs,
+                        PageRenderer renderer, PassageLocator locator, long maxBytes) {
+        if (maxBytes <= 0) {
+            throw new IllegalArgumentException("maxBytes must be positive: " + maxBytes);
+        }
+        this.maxBytes = maxBytes;
         this.repos = Objects.requireNonNull(repos, "repos");
         this.events = Objects.requireNonNull(events, "events");
         this.clock = Objects.requireNonNull(clock, "clock");
@@ -146,7 +158,7 @@ public final class DocumentServiceImpl implements DocumentService {
         String title = titleOf(fileName);
 
         Document document;
-        if (size > MAX_BYTES) {
+        if (size > maxBytes) {
             document = recordTooLarge(courseId, moduleId, title, fileName, source, size);
         } else {
             try (PdfStore.Staged staged = pdfs.stage(source)) {
@@ -287,7 +299,7 @@ public final class DocumentServiceImpl implements DocumentService {
         Document document = editable(documentId);
         if (document.status() == DocumentStatus.FAILED) {
             if (!pdfs.contains(document.fileSha256())) {
-                DocumentError error = document.byteSize() > MAX_BYTES ? DocumentError.TOO_LARGE : DocumentError.MISSING_FILE;
+                DocumentError error = document.byteSize() > maxBytes ? DocumentError.TOO_LARGE : DocumentError.MISSING_FILE;
                 repos.documents().markFailed(documentId, error, null);
                 publish(repos.documents().get(documentId), ChangeType.UPDATED);
                 return;
