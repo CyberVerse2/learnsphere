@@ -21,8 +21,8 @@ import java.util.concurrent.locks.ReentrantLock;
  * <p>Cancelling a waiter's token removes it from the queue ({@link #acquire} throws
  * {@link CancellationException}). When an {@code INTERACTIVE} request arrives while a {@code BACKGROUND}
  * request holds the chat server, the holder's {@link Permit#preemption()} token is cancelled so it can stop,
- * release its permit and queue again behind the interactive request; background work never streams to a
- * user, so it can safely start over.
+ * release its permit and queue again behind the interactive request. Background work (reading pages,
+ * describing figures) shows no text while it runs, so {@link LocalChat} starts it over from the beginning.
  *
  * <p>Thread-safe.
  */

@@ -21,6 +21,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 
 /**
@@ -77,6 +78,7 @@ final class FakeOpenAiServer implements AutoCloseable {
     private volatile Function<JsonNode, Reply> chat = body -> Reply.text("Hello", " there.");
     private volatile int dimensions = 4;
     private volatile CountDownLatch disconnected = new CountDownLatch(1);
+    private final AtomicInteger piecesSent = new AtomicInteger();
 
     FakeOpenAiServer() throws IOException {
         server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
@@ -151,6 +153,11 @@ final class FakeOpenAiServer implements AutoCloseable {
         return rerankRequests;
     }
 
+    /** Chat content pieces written to clients so far. */
+    int piecesSent() {
+        return piecesSent.get();
+    }
+
     /** Counts down when a streamed reply could not be written because the client went away. */
     CountDownLatch disconnected() {
         return disconnected;
@@ -196,6 +203,7 @@ final class FakeOpenAiServer implements AutoCloseable {
                     choice.putNull("finish_reason");
                 }
                 writeEvent(out, Json.write(chunk));
+                piecesSent.incrementAndGet();
             }
             if (reply.pieces().isEmpty() && reply.finish() != null) {
                 writeEvent(out, "{\"choices\":[{\"delta\":{},\"finish_reason\":\"" + reply.finish() + "\"}]}");

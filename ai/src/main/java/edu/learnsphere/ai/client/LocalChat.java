@@ -18,7 +18,11 @@ import org.slf4j.LoggerFactory;
 /**
  * Sends chat requests to the local chat server through the {@link ChatGate}: waits for the server (starting
  * it on first use), waits for its turn by priority, runs the request, and starts over when the request was
- * preempted by a more urgent one or the server restarted before answering. Thread-safe.
+ * preempted by a more urgent one or the server restarted before answering.
+ *
+ * <p>A request may start over only while nobody has seen any of its output: always when its sink is
+ * {@link TokenSink#NONE} (the caller only uses the finished result), otherwise only until the first piece
+ * reached the sink, so a reader never sees text repeated. Thread-safe.
  */
 public final class LocalChat {
 
@@ -68,12 +72,14 @@ public final class LocalChat {
                 }
                 CancellationToken requestToken = token.child();
                 Subscription preemption = permit.preemption().onCancel(requestToken::cancel);
+                // True once output reached a sink someone sees; from then on the request cannot start over.
                 AtomicBoolean streamed = new AtomicBoolean();
+                TokenSink tracked = sink == TokenSink.NONE ? TokenSink.NONE : piece -> {
+                    streamed.set(true);
+                    sink.accept(piece);
+                };
                 try {
-                    ChatResult result = client.chat(endpoint, request, piece -> {
-                        streamed.set(true);
-                        sink.accept(piece);
-                    }, requestToken);
+                    ChatResult result = client.chat(endpoint, request, tracked, requestToken);
                     LOG.debug("Chat {} done: {} prompt + {} generated tokens, first token {} ms, {} ms in all ({})",
                             priority, result.promptTokens(), result.completionTokens(), result.firstToken().toMillis(),
                             result.elapsed().toMillis(), result.finishReason());

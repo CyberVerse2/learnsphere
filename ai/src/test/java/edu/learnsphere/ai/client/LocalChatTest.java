@@ -20,6 +20,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -82,6 +83,57 @@ class LocalChatTest {
         assertThat(finished).containsExactly("interactive", "background");
         assertThat(server.chatRequests()).extracting(LocalChatTest::lastUserText)
                 .containsExactly("background", "interactive", "background");
+    }
+
+    @Test
+    void aBackgroundRequestPreemptedMidReplyStartsOverAndReturnsTheWholeText() throws Exception {
+        // The interactive request arrives after the background reply has started streaming.
+        server.onChat(body -> lastUserText(body).equals("background")
+                ? new Reply(200, null, List.of("page ", "one ", "of ", "the ", "notes"), "stop", 0, 200)
+                : Reply.text("answer"));
+        LocalChat chat = server.localChat(client);
+
+        CompletableFuture<ChatResult> background = CompletableFuture.supplyAsync(() -> chat.complete(
+                ChatPriority.BACKGROUND, ask("background"), TokenSink.NONE, CancellationToken.NONE));
+        awaitPieces(2);
+        ChatResult interactive = chat.complete(ChatPriority.INTERACTIVE, ask("interactive"), TokenSink.NONE,
+                CancellationToken.NONE);
+
+        assertThat(interactive.text()).isEqualTo("answer");
+        assertThat(background.get(20, TimeUnit.SECONDS).text()).isEqualTo("page one of the notes");
+        assertThat(server.chatRequests()).extracting(LocalChatTest::lastUserText)
+                .containsExactly("background", "interactive", "background");
+    }
+
+    @Test
+    void aPreemptedRequestWhoseTextSomeoneSawDoesNotStartOver() throws Exception {
+        server.onChat(body -> lastUserText(body).equals("background")
+                ? new Reply(200, null, List.of("page ", "one ", "of ", "the ", "notes"), "stop", 0, 200)
+                : Reply.text("answer"));
+        LocalChat chat = server.localChat(client);
+        List<String> seen = Collections.synchronizedList(new ArrayList<>());
+
+        CompletableFuture<ChatResult> background = CompletableFuture.supplyAsync(() -> chat.complete(
+                ChatPriority.BACKGROUND, ask("background"), seen::add, CancellationToken.NONE));
+        while (seen.isEmpty()) {
+            Thread.sleep(10);
+        }
+        chat.complete(ChatPriority.INTERACTIVE, ask("interactive"), TokenSink.NONE, CancellationToken.NONE);
+
+        assertThatThrownBy(() -> background.get(20, TimeUnit.SECONDS))
+                .hasCauseInstanceOf(CancellationException.class);
+        assertThat(server.chatRequests()).extracting(LocalChatTest::lastUserText)
+                .containsExactly("background", "interactive");
+    }
+
+    private void awaitPieces(int pieces) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (server.piecesSent() < pieces && System.nanoTime() < deadline) {
+            Thread.sleep(10);
+        }
+        assertThat(server.piecesSent()).isGreaterThanOrEqualTo(pieces);
+        // Give the client a moment to read what was written.
+        Thread.sleep(50);
     }
 
     @Test
