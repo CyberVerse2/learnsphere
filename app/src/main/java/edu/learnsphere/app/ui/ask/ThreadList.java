@@ -94,6 +94,7 @@ final class ThreadList extends VBox {
         scroller.setFitToWidth(true);
         scroller.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
         scroller.getStyleClass().add("ask-threads-scroller");
+        scroller.setFocusTraversable(false);
         VBox.setVgrow(scroller, Priority.ALWAYS);
         getChildren().addAll(top, scroller);
         showLoading();
@@ -288,6 +289,8 @@ final class ThreadList extends VBox {
                 if (editor != null) {
                     return;
                 }
+                // A click focuses the row (the list would keep the focus otherwise), so F2 and Delete follow it.
+                requestFocus();
                 if (event.getButton() == MouseButton.PRIMARY) {
                     if (event.getClickCount() == 2) {
                         startRename();
