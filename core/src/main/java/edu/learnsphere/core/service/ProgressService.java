@@ -20,6 +20,23 @@ public interface ProgressService {
     /** The Progress screen for one course. */
     CourseProgress course(String courseId);
 
+    /**
+     * Reviews done on each of the last {@code days} days in any course, oldest first and ending today: the
+     * learner's study habit, for the streak calendar on the Progress screen.
+     *
+     * <p>The default reads the home screen's {@link DashboardData#week() week}, so it covers at most the last
+     * 7 days; implementations that keep the full history return every day asked for.
+     *
+     * @param days how many days, at least 1
+     */
+    default List<DayActivity> activity(int days) {
+        if (days < 1) {
+            throw new IllegalArgumentException("days must be >= 1: " + days);
+        }
+        List<DayActivity> week = dashboard().week();
+        return week.subList(Math.max(0, week.size() - days), week.size());
+    }
+
     /** Mastery per concept of a course, weakest first. */
     List<ConceptMastery> conceptMastery(String courseId);
 

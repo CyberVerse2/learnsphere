@@ -45,6 +45,11 @@ final class DemoProgress implements ProgressService {
 
     private final DemoStore store;
 
+    /** The demo content (screenshot states that need more than the services offer). */
+    DemoStore store() {
+        return store;
+    }
+
     DemoProgress(DemoStore store) {
         this.store = store;
     }
@@ -64,6 +69,22 @@ final class DemoProgress implements ProgressService {
             }
             return new DashboardData(store.profileName, today, studyNext(null), continuing, week, store.streakDays(),
                     store.reviewsOn(today), recentQuestions(4));
+        }
+    }
+
+    @Override
+    public List<DayActivity> activity(int days) {
+        if (days < 1) {
+            throw new IllegalArgumentException("days must be >= 1: " + days);
+        }
+        synchronized (store) {
+            LocalDate today = store.today();
+            List<DayActivity> list = new ArrayList<>(days);
+            for (int i = days - 1; i >= 0; i--) {
+                LocalDate day = today.minusDays(i);
+                list.add(new DayActivity(day, store.reviewsOn(day), i == 0));
+            }
+            return list;
         }
     }
 
@@ -235,13 +256,15 @@ final class DemoProgress implements ProgressService {
         int open = (int) flags.values().stream().filter(f -> f.itemId().equals(item.id()) && f.resolvedAt() == null).count();
         Set<String> sessions = new HashSet<>();
         attempts.forEach(a -> sessions.add(a.sessionId()));
+        DemoClassProgress.ItemResult classResult = store.classResults.get(item.id());
         return new ItemStats(item.id(), item.type(), item.prompt(), item.status(), attempts.size(), correct,
                 attempts.isEmpty() ? null : correct / (double) attempts.size(),
                 attempts.isEmpty() ? null : attempts.stream().mapToDouble(Attempt::score).average().orElse(0),
                 attempts.isEmpty() ? null : (long) attempts.stream().mapToLong(Attempt::durationMs).average().orElse(0),
                 attempts.isEmpty() ? null : attempts.getLast().createdAt(),
                 state == null ? null : state.phase(), state == null ? null : state.dueAt(),
-                state == null ? null : state.stability(), state == null ? 0 : state.lapses(), open, 0, null);
+                state == null ? null : state.stability(), state == null ? 0 : state.lapses(), open,
+                classResult == null ? 0 : classResult.learners(), classResult == null ? null : classResult.accuracy());
     }
 
     /** Every studying course (tests and the overview). */

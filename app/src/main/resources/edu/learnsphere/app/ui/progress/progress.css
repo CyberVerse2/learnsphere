@@ -1,0 +1,238 @@
+/*
+ * Progress screen. Colours come only from the theme tokens (-ls-*), so light and dark follow the theme.
+ */
+
+/* ---- header ------------------------------------------------------------------------------ */
+
+.progress-page .page-header {
+    -fx-padding: 0 0 4px 0;
+}
+
+.progress-picker {
+    -fx-pref-width: 300px;
+}
+
+.progress-picker > .list-cell {
+    -fx-padding: 0 4px 0 10px;
+}
+
+.progress-picker-cell {
+    -fx-graphic-text-gap: 10px;
+    -fx-text-overrun: ellipsis;
+}
+
+.progress-picker-all {
+    -fx-background-color: -ls-accent-soft;
+    -fx-background-radius: 6px;
+}
+
+.progress-picker-all .ikonli-font-icon {
+    -fx-icon-color: -ls-accent;
+}
+
+/* Sections waiting for another course's data. */
+.progress-page .stale {
+    -fx-opacity: 0.45;
+}
+
+.progress-skeleton {
+    -fx-padding: 24px 28px 24px 28px;
+}
+
+.progress-empty {
+    -fx-padding: 8px 28px 8px 28px;
+}
+
+/* ---- ledger: four numbers and the study days --------------------------------------------- */
+
+.progress-ledger {
+    -fx-padding: 0;
+    -fx-spacing: 0;
+}
+
+.ledger-row {
+    -fx-padding: 24px 0 24px 0;
+}
+
+.ledger-cell {
+    -fx-padding: 0 24px 0 24px;
+}
+
+.ledger-cell.first {
+    -fx-padding: 0 24px 0 28px;
+}
+
+.ledger-rule {
+    -fx-background-color: -ls-border;
+    -fx-min-width: 1px;
+    -fx-pref-width: 1px;
+    -fx-max-width: 1px;
+}
+
+.ledger-divider {
+    -fx-background-color: -ls-border;
+    -fx-min-height: 1px;
+    -fx-pref-height: 1px;
+    -fx-max-height: 1px;
+}
+
+.study-days {
+    -fx-padding: 20px 28px 22px 28px;
+}
+
+/* ---- sections ----------------------------------------------------------------------------- */
+
+.trend-row {
+    -fx-spacing: 24px;
+}
+
+.trend-empty {
+    -fx-padding: 24px 0 24px 0;
+    -fx-max-width: 360px;
+}
+
+.forecast-card.quiet .forecast-chart {
+    -fx-opacity: 0.7;
+}
+
+.mastery-footer,
+.accuracy-card .show-all {
+    -fx-padding: 0;
+}
+
+/* Modules: number badge, title, bar, counts. */
+.module-grid {
+    -fx-hgap: 20px;
+    -fx-vgap: 16px;
+}
+
+.module-badge {
+    -fx-background-color: -ls-surface-sunken;
+    -fx-background-radius: 6px;
+    -fx-min-width: 26px;
+    -fx-pref-width: 26px;
+    -fx-max-width: 26px;
+    -fx-min-height: 26px;
+    -fx-pref-height: 26px;
+    -fx-max-height: 26px;
+}
+
+.module-index {
+    -fx-font-size: 12px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.module-badge.complete {
+    -fx-background-color: -ls-accent-soft;
+}
+
+.module-badge.complete .module-index {
+    -fx-text-fill: -ls-accent;
+}
+
+.module-name {
+    -fx-text-fill: -ls-text;
+}
+
+/* ---- the creator's questions -------------------------------------------------------------- */
+
+.creator-section {
+    -fx-padding: 16px 0 0 0;
+}
+
+.question-rows {
+    -fx-spacing: 2px;
+}
+
+.question-row {
+    -fx-padding: 14px 16px 14px 16px;
+    -fx-background-radius: 8px;
+    -fx-background-color: transparent;
+    -fx-cursor: hand;
+}
+
+.question-row:hover {
+    -fx-background-color: -ls-hover;
+}
+
+.question-row:pressed {
+    -fx-background-color: -ls-pressed;
+}
+
+.question-row:focus-visible {
+    -fx-background-color: -ls-focus, -ls-surface, -ls-hover;
+    -fx-background-insets: -2px, 0, 0;
+    -fx-background-radius: 10px, 8px, 8px;
+}
+
+.question-row .question-prompt {
+    -fx-text-fill: -ls-text;
+    -fx-font-size: 15px;
+}
+
+.question-accuracy {
+    -fx-font-size: 26px;
+    -fx-text-fill: -ls-text;
+}
+
+.question-accuracy.weak {
+    -fx-text-fill: -ls-warning-text;
+}
+
+.question-arrow {
+    -fx-icon-color: -ls-text-faint;
+}
+
+.question-row:hover .question-arrow,
+.question-row:focus-visible .question-arrow {
+    -fx-icon-color: -ls-accent;
+}
+
+.learner-list {
+    -fx-padding: 0 0 0 24px;
+    -fx-border-color: transparent transparent transparent -ls-border;
+    -fx-border-width: 0 0 0 1px;
+}
+
+.learner-list-title {
+    -fx-padding: 0 0 8px 0;
+}
+
+.learner-row {
+    -fx-padding: 7px 0 7px 0;
+    -fx-border-color: transparent transparent -ls-border transparent;
+    -fx-border-width: 0 0 1px 0;
+}
+
+.learner-name {
+    -fx-text-fill: -ls-text;
+    -fx-text-overrun: ellipsis;
+}
+
+.learner-accuracy {
+    -fx-min-width: 40px;
+    -fx-alignment: center-right;
+    -fx-text-fill: -ls-text;
+}
+
+.learner-accuracy.text-warning {
+    -fx-text-fill: -ls-warning-text;
+}
+
+.class-hint {
+    -fx-padding: 16px 20px 16px 20px;
+    -fx-background-color: -ls-surface-sunken;
+    -fx-background-radius: 10px;
+}
+
+.class-hint-text {
+    -fx-text-fill: -ls-text-muted;
+}
+
+.class-hint-icon {
+    -fx-icon-color: -ls-text-muted;
+}
+
+.creator-empty {
+    -fx-padding: 8px 28px 8px 28px;
+}

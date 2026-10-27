@@ -100,6 +100,33 @@ public final class ScreenshotTour {
                         ScreenshotTour::answerCurrentQuestion),
                 Shot.of("progress", Destination.Progress.overview()),
                 Shot.of("progress-course", new Destination.Progress(os)),
+                new Shot("progress-scrolled", window -> window.navigator().reset(Destination.Progress.overview()),
+                        ScreenshotTour::scrollToEnd),
+                new Shot("progress-tooltip", window -> window.navigator().reset(Destination.Progress.overview()),
+                        window -> {
+                            scrollToEnd(window);
+                            inspectChart(window, ".forecast-chart", 4);
+                        }),
+                new Shot("progress-course-scrolled", window -> window.navigator().reset(new Destination.Progress(os)),
+                        ScreenshotTour::scrollToEnd),
+                new Shot("progress-creator", window -> {
+                    DemoClassProgress.seed(window.context().workspace(), chemistry);
+                    window.navigator().reset(new Destination.Progress(chemistry));
+                }),
+                new Shot("progress-creator-scrolled", window -> {
+                    DemoClassProgress.seed(window.context().workspace(), chemistry);
+                    window.navigator().reset(new Destination.Progress(chemistry));
+                }, ScreenshotTour::scrollToEnd),
+                Shot.of("progress-creator-empty", new Destination.Progress(chemistry)),
+                new Shot("progress-new-learner", window -> {
+                    forgetStudy(window);
+                    window.navigator().reset(Destination.Progress.overview());
+                }),
+                new Shot("progress-no-courses", window -> {
+                    var courses = window.context().workspace().courses();
+                    courses.list(edu.learnsphere.core.service.CourseFilter.studying()).forEach(c -> courses.leave(c.id()));
+                    window.navigator().reset(Destination.Progress.overview());
+                }),
                 Shot.of("studio", Destination.Studio.courses()),
                 Shot.of("studio-review", new Destination.Studio(chemistry, StudioTab.REVIEW)),
                 Shot.of("studio-documents", new Destination.Studio(chemistry, StudioTab.DOCUMENTS)),
@@ -113,6 +140,39 @@ public final class ScreenshotTour {
                         window -> ((javafx.scene.control.Button) window.navigator().currentView().root()
                                 .lookup(".button.primary")).fire()),
                 Shot.of("gallery", Destination.GALLERY));
+    }
+
+    /** Scrolls the page on screen to its end. FX thread. */
+    private static void scrollToEnd(MainWindow window) {
+        if (window.navigator().currentView().root() instanceof javafx.scene.control.ScrollPane page) {
+            page.applyCss();
+            page.layout();
+            page.setVvalue(page.getVmax());
+        }
+    }
+
+    /** Shows the tooltip of item {@code index} of the first chart matching {@code selector}. FX thread. */
+    private static void inspectChart(MainWindow window, String selector, int index) {
+        Node root = window.navigator().currentView().root();
+        if (window.getScene() != null) {
+            window.getScene().getRoot().applyCss();
+            window.getScene().getRoot().layout();
+        }
+        if (root.lookup(selector) instanceof edu.learnsphere.app.ui.components.charts.CanvasChart chart) {
+            chart.inspect(index);
+        }
+    }
+
+    /** Takes the demo profile back to before its first study session. FX thread. */
+    private static void forgetStudy(MainWindow window) {
+        if (window.context().workspace().progress() instanceof DemoProgress demo) {
+            DemoStore store = demo.store();
+            synchronized (store) {
+                store.attempts.clear();
+                store.reviews.clear();
+                store.studyTime.clear();
+            }
+        }
     }
 
     /** The demo conversation about {@code courseId} with its first citation open in the source viewer. */
@@ -194,7 +254,7 @@ public final class ScreenshotTour {
         List<Path> files = new ArrayList<>();
         try (AppContext context = AppContext.create()) {
             DemoData.seedProfiles(context);
-            for (Shot shot : shots()) {
+            for (Shot shot : selected(shots())) {
                 for (ThemePreference preference : List.of(ThemePreference.LIGHT, ThemePreference.DARK)) {
                     // The demo profile afresh (opening it closes the previous one): every capture starts
                     // from the same content.
@@ -239,6 +299,20 @@ public final class ScreenshotTour {
     }
 
     private record Capture(MainWindow window, Scene scene, Theme theme) {
+    }
+
+    /**
+     * The shots whose names start with one of the comma-separated prefixes in the environment variable
+     * {@code LEARNSPHERE_SHOTS} (for example {@code progress,home}), or every shot when it is not set.
+     */
+    static List<Shot> selected(List<Shot> shots) {
+        String filter = System.getenv("LEARNSPHERE_SHOTS");
+        if (filter == null || filter.isBlank()) {
+            return shots;
+        }
+        List<String> prefixes = java.util.Arrays.stream(filter.split(",")).map(String::trim).filter(p -> !p.isEmpty())
+                .toList();
+        return shots.stream().filter(shot -> prefixes.stream().anyMatch(shot.name()::startsWith)).toList();
     }
 
     /**

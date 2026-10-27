@@ -75,6 +75,8 @@ final class DemoStore {
     final Map<String, List<ChatMessage>> messages = new HashMap<>();
     final Map<String, Flag> flags = new LinkedHashMap<>();
     final Map<String, ClassInsight> insights = new LinkedHashMap<>();
+    /** The class's results per question, by item id, once a class's progress is in ({@link DemoClassProgress}). */
+    final Map<String, DemoClassProgress.ItemResult> classResults = new HashMap<>();
     /** Study time per day, for the progress screens. */
     final Map<LocalDate, Long> studyTime = new HashMap<>();
 
