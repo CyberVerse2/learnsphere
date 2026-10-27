@@ -406,6 +406,11 @@ public final class StudioPage extends PageView {
         }
 
         @Override
+        void onShown() {
+            queue.onShown();
+        }
+
+        @Override
         void dispose() {
             queue.dispose();
             super.dispose();

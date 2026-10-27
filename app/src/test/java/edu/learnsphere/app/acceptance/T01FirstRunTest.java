@@ -114,7 +114,7 @@ class T01FirstRunTest {
         assertThat(window.navigator().current()).isEqualTo(Destination.HOME);
         assertThat(window.isSidebarShown()).isTrue();
         assertThat(texts(robot, ".profile-chip-name")).containsExactly("Ada Lovelace");
-        assertThat(robot.lookup("Your library is empty").tryQuery()).isPresent();
+        assertThat(robot.lookup("Start with a course").tryQuery()).isPresent();
         ProfileSummary ada = app.context().profile();
         assertThat(ada.displayName()).isEqualTo("Ada Lovelace");
         assertThat(ada.avatarHue()).isEqualTo(violet);
