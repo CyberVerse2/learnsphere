@@ -1,5 +1,6 @@
 package edu.learnsphere.core.learning;
 
+import edu.learnsphere.core.model.ItemType;
 import edu.learnsphere.core.model.LearningItem;
 import edu.learnsphere.core.service.Hint;
 import edu.learnsphere.core.service.SourceRef;
@@ -17,6 +18,9 @@ import java.util.Locale;
  *   <li>True/false and short answers: where in the material the answer is, when the item has a source.</li>
  *   <li>Flashcards: none (the learner turns the card over instead).</li>
  * </ul>
+ *
+ * <p>{@link #steps} lays them out as steps for showing one at a time: multiple choice and cloze first say where
+ * to look in the material.
  */
 public final class Hints {
 
@@ -52,6 +56,21 @@ public final class Hints {
             case TRUE_FALSE, SHORT_ANSWER -> new Hint(whereToLook(source), List.of());
             case FLASHCARD -> throw new IllegalStateException("No hint for flashcards");
         };
+    }
+
+    /**
+     * The hints for {@code item} as steps, gentlest first, for a study screen that shows one at a time. Multiple
+     * choice and cloze items with a source start with where to look in the material, then give {@link #hint};
+     * every other item has the one step {@link #hint}.
+     *
+     * @param choices the options in the order shown (multiple choice), used to pick which to hide
+     * @param source  where the item comes from, or null
+     * @throws IllegalStateException when {@link #available} is false
+     */
+    public static List<Hint> steps(LearningItem item, List<String> choices, SourceRef source) {
+        Hint last = hint(item, choices, source);
+        boolean pointsFirst = source != null && (item.type() == ItemType.MCQ || item.type() == ItemType.CLOZE);
+        return pointsFirst ? List.of(new Hint(whereToLook(source), List.of()), last) : List.of(last);
     }
 
     private static Hint multipleChoice(LearningItem item, List<String> choices) {

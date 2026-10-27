@@ -55,6 +55,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -299,6 +300,16 @@ public final class PracticeServiceImpl implements PracticeService {
 
     @Override
     public Hint hint(String sessionId, String itemId) {
+        return hintSteps(sessionId, itemId, false).getFirst();
+    }
+
+    @Override
+    public List<Hint> hints(String sessionId, String itemId) {
+        return hintSteps(sessionId, itemId, true);
+    }
+
+    /** The one hint ({@code steps} false) or every step of it, after marking the item's answer as hinted. */
+    private List<Hint> hintSteps(String sessionId, String itemId, boolean steps) {
         LiveSession session = requireLive(sessionId);
         session.lastUsedAt = clock.millis();
         Entry entry = session.entries.get(itemId);
@@ -315,11 +326,12 @@ public final class PracticeServiceImpl implements PracticeService {
         if (!entry.hintAvailable || !Hints.available(item, source)) {
             throw new InvalidInputException(StudyMessages.NO_HINT, "no hint for item " + itemId);
         }
-        Hint hint = Hints.hint(item, entry.choices, source);
+        List<Hint> hints = steps ? Hints.steps(item, entry.choices, source)
+                : List.of(Hints.hint(item, entry.choices, source));
         synchronized (session) {
             entry.hinted = true;
         }
-        return hint;
+        return hints;
     }
 
     // ---- finish -------------------------------------------------------------------------------
@@ -413,6 +425,21 @@ public final class PracticeServiceImpl implements PracticeService {
         }
         changes.sort(Comparator.comparingDouble(ConceptChange::delta).reversed().thenComparing(ConceptChange::name));
         return changes;
+    }
+
+    // ---- next reviews -------------------------------------------------------------------------
+
+    @Override
+    public Map<Rating, Long> nextReviews(String itemId) {
+        LearningItem item = repos.items().get(itemId);
+        long now = clock.millis();
+        ReviewState current = repos.reviews().find(item.id()).orElse(ReviewState.newItem(item.id(), now));
+        FsrsScheduler scheduler = scheduler();
+        Map<Rating, Long> due = new EnumMap<>(Rating.class);
+        for (Rating rating : Rating.values()) {
+            due.put(rating, scheduler.review(current, rating, now).dueAt());
+        }
+        return Collections.unmodifiableMap(due);
     }
 
     // ---- dispute ------------------------------------------------------------------------------

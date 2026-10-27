@@ -40,6 +40,7 @@ public final class ConfirmDialog {
     private final String confirmLabel;
     private String cancelLabel = "Cancel";
     private boolean danger;
+    private Modal shown;
 
     private ConfirmDialog(String title, String message, String confirmLabel) {
         this.title = Objects.requireNonNull(title, "title");
@@ -77,8 +78,19 @@ public final class ConfirmDialog {
         CompletableFuture<Boolean> result = new CompletableFuture<>();
         Modal modal = new Modal(result);
         layer.getChildren().add(modal);
+        shown = modal;
         modal.open();
         return result;
+    }
+
+    /**
+     * Closes the dialog as if cancelled, when it is open: for a view that goes away while the dialog is still
+     * asking (the future completes with false).
+     */
+    public void dismiss() {
+        if (shown != null) {
+            shown.close(false);
+        }
     }
 
     /**

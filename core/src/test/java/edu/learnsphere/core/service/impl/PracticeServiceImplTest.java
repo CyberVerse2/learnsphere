@@ -56,6 +56,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
@@ -273,6 +274,29 @@ class PracticeServiceImplTest {
         assertThat(cards.items()).extracting(SessionItem::itemId).containsExactly(card.id());
         assertThat(cards.items().getFirst().hintAvailable()).isFalse();
         assertThat(messageOf(() -> practice.hint(cards.id(), card.id()))).isEqualTo(StudyMessages.NO_HINT);
+    }
+
+    @Test
+    void hintStepsSayWhereToLookFirstAndCapTheRatingOnce() {
+        LearningItem mcq = item(ItemType.MCQ, "Which part holds the DNA?");
+        LearningItem cloze = item(ItemType.CLOZE, "The ___ holds the DNA.");
+        LearningItem statement = item(ItemType.TRUE_FALSE, "The nucleus holds the DNA.");
+        StudySession session = start(SessionRequest.studyNext(course.id()));
+
+        List<Hint> steps = practice.hints(session.id(), mcq.id());
+        assertThat(steps).extracting(Hint::text)
+                .containsExactly("Look back at page 5 of “Cell Biology”.", "One wrong answer is hidden.");
+        assertThat(steps.getFirst().removedChoices()).isEmpty();
+        assertThat(steps.getLast().removedChoices()).hasSize(1).isSubsetOf("ribosome", "membrane");
+        assertThat(practice.hints(session.id(), cloze.id())).extracting(Hint::text)
+                .containsExactly("Look back at page 5 of “Cell Biology”.", "It starts with “n” and has 7 letters.");
+        assertThat(practice.hints(session.id(), statement.id())).extracting(Hint::text)
+                .containsExactly("Look back at page 5 of “Cell Biology”.");
+
+        Feedback feedback = practice.submit(session.id(), Response.answer(mcq.id(), "nucleus", Confidence.CERTAIN, false, 1));
+        assertThat(feedback.rating()).as("hinted, however many steps were shown").isEqualTo(Rating.HARD);
+        assertThat(t.repos.sessions().findAttempt(feedback.attemptId()).orElseThrow().hintUsed()).isTrue();
+        assertThat(messageOf(() -> practice.hints(session.id(), mcq.id()))).isEqualTo(StudyMessages.ALREADY_ANSWERED);
     }
 
     @Test
@@ -614,5 +638,25 @@ class PracticeServiceImplTest {
         assertThat(there.courseId()).isEqualTo(other.id());
         assertThat(practice.studyNext(null).newCount()).isEqualTo(1);
         assertThat(practice.studyNext(null).courseId()).isNull();
+    }
+
+    @Test
+    void nextReviewsPreviewEachRatingWithoutRecordingIt() {
+        LearningItem card = item(ItemType.FLASHCARD, "Where is the DNA kept?");
+        StudySession session = start(SessionRequest.flashcards(course.id(), null));
+
+        Map<Rating, Long> preview = practice.nextReviews(card.id());
+
+        assertThat(preview).containsOnlyKeys(Rating.values());
+        assertThat(preview.get(Rating.AGAIN)).isLessThan(preview.get(Rating.GOOD));
+        assertThat(preview.get(Rating.GOOD)).isLessThan(preview.get(Rating.EASY));
+        assertThat(t.repos.reviews().find(card.id())).as("nothing recorded").isEmpty();
+        assertThat(t.repos.sessions().listAttemptsForSession(session.id())).isEmpty();
+
+        Feedback rated = practice.submit(session.id(), Response.flashcard(card.id(), Rating.GOOD, 1_000));
+        assertThat(rated.nextDueAt()).isEqualTo(preview.get(Rating.GOOD));
+        assertThat(practice.nextReviews(card.id()).get(Rating.GOOD)).as("follows the new review state")
+                .isGreaterThan(preview.get(Rating.GOOD));
+        assertThatThrownBy(() -> practice.nextReviews(Ids.newId())).isInstanceOf(NotFoundException.class);
     }
 }

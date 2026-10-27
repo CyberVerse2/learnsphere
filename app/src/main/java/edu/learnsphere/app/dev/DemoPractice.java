@@ -3,6 +3,7 @@ package edu.learnsphere.app.dev;
 import edu.learnsphere.core.error.NotFoundException;
 import edu.learnsphere.core.error.UserMessage;
 import edu.learnsphere.core.events.ProgressChanged;
+import edu.learnsphere.core.learning.StudyMessages;
 import edu.learnsphere.core.model.Attempt;
 import edu.learnsphere.core.model.Concept;
 import edu.learnsphere.core.model.GradedBy;
@@ -43,7 +44,7 @@ import java.util.Set;
 final class DemoPractice implements PracticeService {
 
     private static final long DAY = Duration.ofDays(1).toMillis();
-    private static final UserMessage SESSION_ENDED = UserMessage.of("This session has ended. Start a new one.");
+    private static final UserMessage SESSION_ENDED = StudyMessages.SESSION_ENDED;
 
     private record Running(StudySession session, Map<String, Feedback> answers, Map<String, Double> masteryBefore,
                            long startedAt) {
@@ -91,7 +92,9 @@ final class DemoPractice implements PracticeService {
                     pool.stream().filter(i -> !store.started(i.id())).limit(10).forEach(picked::add);
                 }
             }
-            if (picked.isEmpty() && request.kind() != SessionKind.STUDY_NEXT) {
+            // Weak spots stay empty when nothing is weak, as on the real services.
+            if (picked.isEmpty() && request.kind() != SessionKind.STUDY_NEXT
+                    && request.kind() != SessionKind.WEAK_CONCEPTS) {
                 picked.addAll(pool);
             }
             List<LearningItem> chosen = picked.stream().distinct().limit(request.size()).toList();
@@ -226,6 +229,19 @@ final class DemoPractice implements PracticeService {
     }
 
     @Override
+    public Map<Rating, Long> nextReviews(String itemId) {
+        synchronized (store) {
+            store.item(itemId);
+            long now = store.now();
+            Map<Rating, Long> due = new java.util.EnumMap<>(Rating.class);
+            for (Rating rating : Rating.values()) {
+                due.put(rating, schedule(itemId, rating, now).dueAt());
+            }
+            return due;
+        }
+    }
+
+    @Override
     public Hint hint(String sessionId, String itemId) {
         synchronized (store) {
             running(sessionId);
@@ -244,6 +260,19 @@ final class DemoPractice implements PracticeService {
                     yield new Hint("Think about what " + section + " says.", List.of());
                 }
             };
+        }
+    }
+
+    @Override
+    public List<Hint> hints(String sessionId, String itemId) {
+        Hint last = hint(sessionId, itemId);
+        synchronized (store) {
+            LearningItem item = store.item(itemId);
+            SourcePassage source = store.sourcePassage(item);
+            if (source == null || (item.type() != ItemType.MCQ && item.type() != ItemType.CLOZE)) {
+                return List.of(last);
+            }
+            return List.of(new Hint("Think about what “" + source.sectionTitle() + "” says.", List.of()), last);
         }
     }
 

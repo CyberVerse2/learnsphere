@@ -3,6 +3,9 @@ package edu.learnsphere.core.service;
 import edu.learnsphere.core.error.InvalidInputException;
 import edu.learnsphere.core.error.NotFoundException;
 import edu.learnsphere.core.error.UnavailableException;
+import edu.learnsphere.core.model.Rating;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Study sessions, grading and spaced-review scheduling (FSRS-6). Recording answers publishes
@@ -45,8 +48,32 @@ public interface PracticeService {
     /** A hint for an item in the session; marks the item's answer as hinted. */
     Hint hint(String sessionId, String itemId);
 
+    /**
+     * Every hint for an item in the session, gentlest first, for the study screen to show one step at a time
+     * (where to look in the material, then the hint itself). Marks the item's answer as hinted, as {@link #hint}
+     * does; one or several steps cap the rating the same way.
+     *
+     * <p>The default offers {@link #hint} as the only step.
+     */
+    default List<Hint> hints(String sessionId, String itemId) {
+        return List.of(hint(sessionId, itemId));
+    }
+
     /** Finishes the session and summarizes it. Unanswered items stay as they were. */
     SessionSummary finish(String sessionId);
+
+    /**
+     * When an item would come back for each rating, without recording anything: what the flashcard rating
+     * buttons show ("Good · 4 days"). Computed from the item's review state now, exactly as {@link #submit}
+     * would schedule it.
+     *
+     * <p>The default returns an empty map, and the rating buttons then show no times.
+     *
+     * @return the due time (epoch millis) for each rating
+     */
+    default Map<Rating, Long> nextReviews(String itemId) {
+        return Map.of();
+    }
 
     /**
      * Disputes an AI grade: the attempt is re-rated Good and marked disputed, and the item rescheduled.
