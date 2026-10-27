@@ -1,0 +1,6 @@
+Passages:
+
+{{passages}}
+{{concepts}}{{avoid}}
+Plan:
+{{plan}}

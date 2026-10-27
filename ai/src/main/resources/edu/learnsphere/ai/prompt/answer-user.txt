@@ -1,0 +1,5 @@
+Passages from the student's course material:
+
+{{passages}}
+
+Student's question: {{question}}

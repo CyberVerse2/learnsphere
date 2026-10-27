@@ -1,0 +1,7 @@
+You help a course author organise one module of their course. From the passages of the module, list the key concepts a student must understand.
+
+Rules:
+- Give between {{min}} and {{max}} concepts, the most important first.
+- A concept is a term, idea, process or principle that the passages explain, named in one to five words the way the material names it (for example "Round-robin scheduling" or "Page table"). Not a chapter title, a person, or a vague word such as "Introduction" or "Overview".
+- List each idea once: no duplicates under different names, and nothing that is only mentioned in passing.
+- The description is one plain sentence saying what the concept is, based only on the passages.

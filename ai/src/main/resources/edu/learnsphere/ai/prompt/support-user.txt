@@ -1,0 +1,6 @@
+Source passage ({{source}}):
+{{passage}}
+
+Item type: {{type}}
+Item: {{prompt}}
+Answer: {{answer}}
