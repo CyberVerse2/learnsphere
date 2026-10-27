@@ -23,6 +23,8 @@ import edu.learnsphere.core.service.DocumentSummary;
 import edu.learnsphere.core.service.JobQueue;
 import edu.learnsphere.core.service.JobSpec;
 import edu.learnsphere.core.service.RenderedPage;
+import edu.learnsphere.core.service.SourcePassage;
+import edu.learnsphere.core.service.SourceRef;
 import edu.learnsphere.core.spi.NormalizedRect;
 import edu.learnsphere.core.spi.PageRenderer;
 import edu.learnsphere.core.spi.PassageLocator;
@@ -278,6 +280,22 @@ public final class DocumentServiceImpl implements DocumentService {
     public DocumentPage page(String documentId, int pageNumber) {
         repos.documents().get(documentId);
         return requirePage(documentId, pageNumber);
+    }
+
+    @Override
+    public List<SourcePassage> passages(Collection<String> chunkIds) {
+        Objects.requireNonNull(chunkIds, "chunkIds");
+        Set<String> ids = new LinkedHashSet<>();
+        for (String id : chunkIds) {
+            if (id != null) {
+                ids.add(id);
+            }
+        }
+        return repos.chunks().listWithTitles(ids).stream().map(found -> {
+            var chunk = found.chunk();
+            return new SourcePassage(new SourceRef(chunk.documentId(), found.documentTitle(), chunk.pageStart(),
+                    chunk.pageEnd(), chunk.id()), chunk.sectionTitle(), chunk.text());
+        }).toList();
     }
 
     // ---- changes -----------------------------------------------------------------------------

@@ -30,6 +30,7 @@ import edu.learnsphere.core.model.PageSource;
 import edu.learnsphere.core.service.DocumentSummary;
 import edu.learnsphere.core.service.JobSpec;
 import edu.learnsphere.core.service.RenderedPage;
+import edu.learnsphere.core.service.SourcePassage;
 import edu.learnsphere.core.service.impl.DocumentServiceImpl.IngestPayload;
 import edu.learnsphere.core.service.impl.DocumentServiceImpl.IngestPayload.Reason;
 import edu.learnsphere.core.spi.IndexedChunk;
@@ -208,6 +209,21 @@ class DocumentServiceImplTest {
 
         documents.remove(second.id());
         assertThat(stored).doesNotExist();
+    }
+
+    @Test
+    void namesThePassagesCitationsComeFrom() {
+        Document document = h.t.document(course, cells, "Cells");
+        Chunk first = h.t.chunk(document, 0, "The cell.");
+        Chunk third = h.t.chunk(document, 2, "The membrane.");
+
+        List<SourcePassage> found = documents.passages(java.util.Arrays.asList(third.id(), "removed", null, first.id()));
+
+        assertThat(found).extracting(p -> p.ref().chunkId(), p -> p.ref().documentTitle(), p -> p.ref().pageStart(),
+                        SourcePassage::sectionTitle, SourcePassage::text)
+                .containsExactlyInAnyOrder(tuple(first.id(), "Cells", 1, "Section 0", "The cell."),
+                        tuple(third.id(), "Cells", 3, "Section 2", "The membrane."));
+        assertThat(documents.passages(List.of())).isEmpty();
     }
 
     @Test

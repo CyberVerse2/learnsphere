@@ -1,0 +1,682 @@
+/*
+ * Ask: the conversations, the questions and answers, and the source viewer.
+ * Colours come only from the theme tokens; faces from the type classes (.serif*, .text-*).
+ */
+
+/* ---- the page ------------------------------------------------------------------------------- */
+
+.ask-page {
+    -fx-background-color: -ls-bg;
+}
+
+.ask-conversation-pane {
+    -fx-background-color: -ls-bg;
+}
+
+/* ---- conversations ---------------------------------------------------------------------------- */
+
+.ask-threads {
+    -fx-background-color: -ls-bg;
+    -fx-border-color: transparent -ls-border transparent transparent;
+    -fx-border-width: 0 1px 0 0;
+    -fx-padding: 20px 0 12px 0;
+    -fx-spacing: 12px;
+}
+
+.ask-threads-top {
+    -fx-padding: 0 16px 4px 20px;
+}
+
+.ask-new-thread {
+    -fx-min-height: 36px;
+    -fx-pref-height: 36px;
+    -fx-padding: 0 12px 0 10px;
+    -fx-graphic-text-gap: 8px;
+}
+
+.ask-threads-scroller,
+.ask-threads-scroller > .viewport {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-padding: 0;
+}
+
+.ask-thread-rows {
+    -fx-padding: 0 12px 12px 12px;
+    -fx-spacing: 2px;
+}
+
+.ask-thread-group {
+    -fx-padding: 16px 8px 6px 8px;
+    -fx-font-size: 11px;
+    -fx-text-fill: -ls-text-faint;
+}
+
+.ask-threads-note {
+    -fx-padding: 8px 8px 0 8px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.ask-thread-skeleton {
+    -fx-padding: 12px 8px 12px 8px;
+}
+
+.ask-thread-row {
+    -fx-background-color: transparent;
+    -fx-background-radius: 10px;
+    -fx-padding: 9px 6px 9px 10px;
+    -fx-spacing: 6px;
+    -fx-cursor: hand;
+}
+
+.ask-thread-row:hover {
+    -fx-background-color: -ls-hover;
+}
+
+.ask-thread-row:selected {
+    -fx-background-color: -ls-accent-soft;
+}
+
+.ask-thread-row:focus-visible {
+    -fx-background-color: -ls-focus, -ls-bg;
+    -fx-background-insets: 0, 2px;
+    -fx-background-radius: 10px, 8px;
+}
+
+.ask-thread-row:selected:focus-visible {
+    -fx-background-color: -ls-focus, -ls-accent-soft;
+}
+
+.ask-thread-title {
+    -fx-font-size: 14px;
+    -fx-text-fill: -ls-text;
+}
+
+.ask-thread-row:selected .ask-thread-title {
+    -fx-text-fill: -ls-text;
+}
+
+.ask-thread-meta {
+    -fx-font-size: 12px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.ask-thread-row .ask-thread-more {
+    -fx-opacity: 0;
+}
+
+.ask-thread-row:hover .ask-thread-more,
+.ask-thread-row:selected .ask-thread-more,
+.ask-thread-row:focus-within .ask-thread-more {
+    -fx-opacity: 1;
+}
+
+.ask-thread-editor {
+    -fx-min-height: 32px;
+    -fx-pref-height: 32px;
+    -fx-padding: 0 8px 0 8px;
+    -fx-font-size: 14px;
+}
+
+/* ---- the conversation's head ------------------------------------------------------------------ */
+
+.ask-head-bar {
+    -fx-padding: 12px 20px 12px 20px;
+    -fx-min-height: 60px;
+    -fx-border-color: transparent transparent -ls-border transparent;
+    -fx-border-width: 0 0 1px 0;
+}
+
+.ask-heading {
+    -fx-font-size: 20px;
+    -fx-text-fill: -ls-text;
+}
+
+.ask-head-bar .icon-button:on {
+    -fx-background-color: -ls-hover;
+}
+
+.ask-head-bar .icon-button:on .ikonli-font-icon {
+    -fx-icon-color: -ls-accent;
+}
+
+/* ---- questions and answers -------------------------------------------------------------------- */
+
+.ask-column {
+    -fx-padding: 40px 32px 40px 32px;
+    -fx-spacing: 56px;
+}
+
+.ask-loading {
+    -fx-padding: 8px 0 0 0;
+}
+
+.ask-empty {
+    -fx-padding: 48px 0 0 0;
+}
+
+.ask-suggestions-hint {
+    -fx-text-fill: -ls-text-faint;
+}
+
+.ask-exchange {
+    -fx-spacing: 18px;
+}
+
+.ask-q {
+    -fx-font-size: 22px;
+    -fx-line-spacing: 2px;
+    -fx-text-fill: -ls-text;
+}
+
+.ask-a {
+    -fx-spacing: 20px;
+}
+
+.ask-phase {
+    -fx-font-size: 13px;
+    -fx-text-fill: -ls-text-muted;
+    -fx-graphic-text-gap: 10px;
+}
+
+.ask-caret {
+    -fx-background-color: -ls-accent;
+    -fx-background-radius: 1px;
+    -fx-min-width: 2px;
+    -fx-pref-width: 2px;
+    -fx-max-width: 2px;
+    -fx-min-height: 18px;
+    -fx-pref-height: 18px;
+    -fx-max-height: 18px;
+    -fx-translate-x: 2px;
+    -fx-translate-y: 3px;
+}
+
+/* The answer's text, set from Markdown in reading type. */
+.md {
+    -fx-spacing: 14px;
+}
+
+.md-paragraph {
+    -fx-line-spacing: 8px;
+}
+
+.md-text {
+    -fx-fill: -ls-text;
+    -fx-font-size: 17px;
+}
+
+.md-heading.md-h1 .md-text {
+    -fx-font-size: 21px;
+}
+
+.md-heading.md-h2 .md-text {
+    -fx-font-size: 19px;
+}
+
+.md-heading.md-h3 .md-text {
+    -fx-font-size: 17px;
+}
+
+.md-heading {
+    -fx-padding: 6px 0 0 0;
+}
+
+.md-list {
+    -fx-spacing: 8px;
+}
+
+.md-list.tight {
+    -fx-spacing: 4px;
+}
+
+.md-list-row {
+    -fx-spacing: 10px;
+}
+
+.md-marker-box {
+    -fx-min-width: 20px;
+    -fx-pref-width: 20px;
+    -fx-alignment: top-right;
+}
+
+.md-marker {
+    -fx-font-size: 17px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.md-item {
+    -fx-spacing: 8px;
+}
+
+.md-code {
+    -fx-font-family: "Monospaced";
+    -fx-font-size: 14px;
+    -fx-text-fill: -ls-text;
+    -fx-background-color: -ls-surface-sunken;
+    -fx-background-radius: 6px;
+    -fx-padding: 0 5px 0 5px;
+}
+
+.md-codeblock {
+    -fx-background-color: -ls-border, -ls-surface-sunken;
+    -fx-background-insets: 0, 1px;
+    -fx-background-radius: 10px, 9px;
+    -fx-padding: 12px 16px 12px 16px;
+}
+
+.md-code-text {
+    -fx-font-family: "Monospaced";
+    -fx-font-size: 13px;
+    -fx-fill: -ls-text;
+}
+
+.md-quote {
+    -fx-border-color: transparent transparent transparent -ls-border-strong;
+    -fx-border-width: 0 0 0 3px;
+    -fx-padding: 2px 0 2px 16px;
+    -fx-spacing: 10px;
+}
+
+.md-quote .md-text {
+    -fx-fill: -ls-text-muted;
+}
+
+.md-rule {
+    -fx-background-color: -ls-border;
+    -fx-min-height: 1px;
+    -fx-pref-height: 1px;
+    -fx-max-height: 1px;
+}
+
+/* Page chips, with the punctuation after them, sit on the line of text. */
+.md-chips {
+    -fx-padding: 0 0 0 2px;
+}
+
+.citation-chip:active {
+    -fx-background-color: -ls-accent;
+    -fx-text-fill: -ls-on-accent;
+}
+
+/* Sources under an answer. */
+.ask-sources {
+    -fx-spacing: 6px;
+    -fx-padding: 4px 0 0 0;
+}
+
+.ask-sources-title {
+    -fx-font-size: 11px;
+    -fx-text-fill: -ls-text-faint;
+}
+
+.ask-sources-list {
+    -fx-spacing: 0;
+}
+
+.ask-source-row {
+    -fx-background-color: transparent;
+    -fx-background-radius: 8px;
+    -fx-background-insets: 0;
+    -fx-padding: 6px 10px 6px 0;
+    -fx-alignment: center-left;
+    -fx-cursor: hand;
+    -fx-min-height: 34px;
+}
+
+.ask-source-row:hover {
+    -fx-background-color: -ls-hover;
+    -fx-background-insets: 0 0 0 -8px;
+}
+
+.ask-source-row:active {
+    -fx-background-color: -ls-accent-soft;
+    -fx-background-insets: 0 0 0 -8px;
+}
+
+.ask-source-row:focus-visible {
+    -fx-background-color: -ls-focus, -ls-bg;
+    -fx-background-insets: 0 0 0 -8px, 2px 2px 2px -6px;
+    -fx-background-radius: 8px, 6px;
+}
+
+.ask-source-pages {
+    -fx-background-color: -ls-accent-soft;
+    -fx-background-radius: 6px;
+    -fx-text-fill: -ls-accent;
+    -fx-font-size: 12px;
+    -fx-padding: 2px 7px 2px 7px;
+}
+
+.ask-source-row:active .ask-source-pages {
+    -fx-background-color: -ls-accent;
+    -fx-text-fill: -ls-on-accent;
+}
+
+.ask-source-title {
+    -fx-font-size: 14px;
+    -fx-text-fill: -ls-text;
+}
+
+.ask-source-section {
+    -fx-font-size: 14px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.ask-actions {
+    -fx-padding: 0 0 0 -10px;
+}
+
+.ask-copy {
+    -fx-graphic-text-gap: 6px;
+}
+
+/* Not covered by the material: a calm, distinct card. */
+.ask-insufficient {
+    -fx-background-color: -ls-border, -ls-surface;
+    -fx-background-insets: 0, 1px;
+    -fx-background-radius: 14px, 13px;
+    -fx-padding: 20px 24px 22px 20px;
+    -fx-effect: dropshadow(gaussian, -ls-shadow, 24, 0, 0, 8);
+}
+
+.ask-insufficient-icon {
+    -fx-background-color: -ls-warning-soft;
+    -fx-background-radius: 999px;
+}
+
+.ask-insufficient-icon .ikonli-font-icon {
+    -fx-icon-color: -ls-warning-text;
+}
+
+.ask-insufficient-content {
+    -fx-spacing: 12px;
+}
+
+.ask-insufficient-text {
+    -fx-font-size: 18px;
+    -fx-line-spacing: 3px;
+    -fx-text-fill: -ls-text;
+}
+
+.ask-insufficient-actions {
+    -fx-padding: 4px 0 0 0;
+}
+
+.ask-suggestions {
+    -fx-hgap: 8px;
+    -fx-vgap: 8px;
+}
+
+.ask-suggestion {
+    -fx-background-color: -ls-border-strong, -ls-surface;
+    -fx-background-insets: 0, 1px;
+    -fx-background-radius: 999px;
+    -fx-text-fill: -ls-text;
+    -fx-font-size: 13px;
+    -fx-padding: 0 14px 0 14px;
+    -fx-min-height: 32px;
+    -fx-pref-height: 32px;
+    -fx-cursor: hand;
+}
+
+.ask-suggestion:hover {
+    -fx-background-color: -ls-accent, -ls-surface;
+    -fx-text-fill: -ls-accent;
+}
+
+.ask-suggestion:armed {
+    -fx-background-color: -ls-accent, -ls-accent-soft;
+}
+
+.ask-suggestion:focus-visible {
+    -fx-background-color: -ls-focus, -ls-accent, -ls-surface;
+    -fx-background-insets: -3px, 0, 1px;
+}
+
+/* Something went wrong: one sentence and Try again. */
+.ask-error {
+    -fx-background-color: -ls-danger-soft;
+    -fx-background-radius: 10px;
+    -fx-padding: 10px 12px 10px 14px;
+    -fx-alignment: center-left;
+}
+
+.ask-error > .ikonli-font-icon {
+    -fx-icon-color: -ls-danger-text;
+}
+
+.ask-error-text {
+    -fx-font-size: 14px;
+    -fx-text-fill: -ls-danger-text;
+}
+
+.ask-stopped {
+    -fx-alignment: center-left;
+}
+
+.ask-stopped-note {
+    -fx-font-size: 13px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+/* ---- the question box ------------------------------------------------------------------------- */
+
+.ask-composer-row {
+    -fx-padding: 8px 32px 20px 32px;
+    -fx-background-color: -ls-bg;
+}
+
+.ask-composer-area {
+    -fx-spacing: 8px;
+}
+
+.ask-field {
+    -fx-background-color: -ls-input-border, -ls-surface;
+    -fx-background-insets: 0, 1px;
+    -fx-background-radius: 14px, 13px;
+    -fx-padding: 6px 6px 6px 4px;
+    -fx-effect: dropshadow(gaussian, -ls-shadow, 24, 0, 0, 8);
+}
+
+.ask-field:focus-within {
+    -fx-background-color: -ls-focus, -ls-accent, -ls-surface;
+    -fx-background-insets: -3px, 0, 1.5px;
+    -fx-background-radius: 17px, 14px, 12.5px;
+}
+
+.ask-composer-input,
+.ask-composer-input:hover,
+.ask-composer-input:focused,
+.ask-composer-input:disabled {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-font-size: 15px;
+}
+
+.ask-composer-input:disabled {
+    -fx-opacity: 0.55;
+}
+
+.ask-composer-input .content {
+    -fx-padding: 12px 10px 10px 10px;
+}
+
+.ask-send,
+.ask-stop {
+    -fx-min-height: 40px;
+    -fx-pref-height: 40px;
+    -fx-padding: 0 14px 0 12px;
+    -fx-graphic-text-gap: 6px;
+}
+
+.ask-composer-status {
+    -fx-padding: 0 4px 0 4px;
+    -fx-spacing: 10px;
+}
+
+.ask-composer-status-text {
+    -fx-font-size: 13px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.ask-composer-status.failed .ikonli-font-icon,
+.ask-composer-status.failed .ask-composer-status-text {
+    -fx-icon-color: -ls-danger-text;
+    -fx-text-fill: -ls-danger-text;
+}
+
+.ask-composer-status.unavailable .ikonli-font-icon {
+    -fx-icon-color: -ls-warning-text;
+}
+
+.ask-composer-hint {
+    -fx-padding: 0 4px 0 4px;
+    -fx-text-fill: -ls-text-faint;
+}
+
+/* ---- the source viewer ------------------------------------------------------------------------ */
+
+.ask-source {
+    -fx-background-color: -ls-border, -ls-surface;
+    -fx-background-insets: 0, 0 0 0 1px;
+}
+
+.ask-source-head {
+    -fx-padding: 16px 16px 12px 24px;
+    -fx-min-height: 60px;
+}
+
+.ask-source-doc {
+    -fx-text-fill: -ls-text;
+}
+
+.ask-source-where {
+    -fx-text-fill: -ls-text-muted;
+}
+
+.ask-source-body {
+    -fx-spacing: 8px;
+    -fx-padding: 0 16px 16px 16px;
+}
+
+.ask-source-toolbar {
+    -fx-padding: 0 0 0 4px;
+}
+
+.ask-source-page-label {
+    -fx-font-size: 12px;
+    -fx-text-fill: -ls-text-muted;
+    -fx-padding: 0 4px 0 4px;
+}
+
+.ask-zoom-label {
+    -fx-font-size: 12px;
+    -fx-min-width: 52px;
+}
+
+.ask-source-note {
+    -fx-background-color: -ls-surface-sunken;
+    -fx-background-radius: 8px;
+    -fx-padding: 8px 12px 8px 12px;
+    -fx-font-size: 12px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.ask-source-note .ikonli-font-icon {
+    -fx-icon-color: -ls-text-muted;
+}
+
+.ask-source-quote {
+    -fx-background-color: -ls-highlight, -ls-surface-sunken;
+    -fx-background-insets: 0, 0 0 0 3px;
+    -fx-background-radius: 8px, 0 8px 8px 0;
+    -fx-padding: 10px 14px 12px 16px;
+    -fx-spacing: 6px;
+}
+
+.ask-source-quote-title {
+    -fx-font-size: 11px;
+    -fx-text-fill: -ls-text-faint;
+}
+
+.ask-source-quote-text {
+    -fx-font-size: 15px;
+    -fx-line-spacing: 3px;
+    -fx-text-fill: -ls-text;
+}
+
+.ask-page-well {
+    -fx-background-color: -ls-surface-sunken;
+    -fx-background-radius: 10px;
+}
+
+.ask-page-scroller,
+.ask-page-scroller > .viewport {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-padding: 0;
+}
+
+.ask-page-holder {
+    -fx-padding: 16px;
+}
+
+/* The page itself stays a white sheet in both appearances (the sheet is scoped light). */
+.ask-page-sheet {
+    -fx-background-color: -ls-surface;
+    -fx-effect: dropshadow(gaussian, -ls-shadow-pop, 18, 0, 0, 4);
+}
+
+.ask-page-skeleton {
+    -fx-background-radius: 2px;
+}
+
+.ask-highlight {
+    -fx-fill: -ls-highlight;
+    -fx-blend-mode: multiply;
+}
+
+.ask-highlight-mark {
+    -fx-fill: -ls-accent;
+}
+
+.ask-source-hint {
+    -fx-padding: 24px 32px 64px 32px;
+}
+
+.ask-source-hint-icon {
+    -fx-background-color: -ls-surface-sunken;
+    -fx-background-radius: 999px;
+}
+
+.ask-source-hint-icon .ikonli-font-icon {
+    -fx-icon-color: -ls-text-muted;
+}
+
+.ask-source-hint-text {
+    -fx-font-size: 14px;
+    -fx-line-spacing: 3px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.ask-source-error {
+    -fx-padding: 48px 24px 48px 24px;
+}
+
+.ask-source-error > .ikonli-font-icon {
+    -fx-icon-color: -ls-danger-text;
+}
+
+.ask-source-error-text {
+    -fx-font-size: 14px;
+    -fx-text-fill: -ls-text;
+}
+
+.ask-source-footer {
+    -fx-padding: 4px 0 0 0;
+}
+
+.ask-open-course {
+    -fx-graphic-text-gap: 6px;
+}

@@ -67,4 +67,13 @@ public interface DocumentService {
 
     /** Where {@code passage} appears on a page, for highlighting a citation. Empty when not found. */
     List<NormalizedRect> locatePassage(String documentId, int pageNumber, String passage);
+
+    /**
+     * The passages with these ids that still exist, each with its PDF's title, its pages and its section, in no
+     * particular order. Shows where cited text comes from ("Lecture 1, p. 17, Threads"); ids of removed passages
+     * are left out. The default knows no passages.
+     */
+    default List<SourcePassage> passages(Collection<String> chunkIds) {
+        return List.of();
+    }
 }
