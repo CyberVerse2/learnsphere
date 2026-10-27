@@ -13,8 +13,10 @@ dependencies {
     runtimeOnly(libs.jai.imageio.jpeg2000)
 
     // Test fixtures (edu.learnsphere.pdf.testing): TestPdf writes realistic PDFs for tests in any module,
-    // through testImplementation(testFixtures(project(":pdf"))).
+    // through testImplementation(testFixtures(project(":pdf"))). SharedFontList hooks into the JUnit launcher,
+    // which every test run already has.
     testFixturesImplementation(libs.pdfbox)
+    testFixturesCompileOnly(libs.junit.platform.launcher)
 
     testImplementation(testFixtures(project(":core")))
 }

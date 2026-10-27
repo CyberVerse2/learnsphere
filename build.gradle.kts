@@ -24,9 +24,10 @@ extra["javafxPlatform"] = javafxPlatform
  * The folders a test JVM gets as system properties:
  *
  * - `learnsphere.home`: an app home, so tests never touch the real one (individual tests use their own temp
- *   folders).
+ *   folders). Each test JVM uses a subfolder of its own (`TestWorkerHome` in core's test fixtures).
  * - `pdfbox.fontcache`: where PDFBox keeps its list of the computer's fonts (by default in the user's home): the
- *   module's build folder, so tests never write outside the project and build the list only once.
+ *   module's build folder, so tests never write outside the project and build the list only once. The module's
+ *   test JVMs share it (`SharedFontList` in pdf's test fixtures).
  *
  * The paths are @Internal: they differ between checkouts, and as inputs they would give every checkout its own
  * build cache key, so no checkout could reuse another's test results.
@@ -94,6 +95,13 @@ subprojects {
                 showCauses = true
                 showStackTraces = true
             }
+        }
+
+        // Unit test classes run in several JVMs at once. Modules also test side by side (org.gradle.parallel), so
+        // each module's tests take about a quarter of the processors. Other test tasks keep one JVM: the AI
+        // integration tests share one set of real model servers, and the search benchmark measures latency.
+        tasks.named<Test>("test") {
+            maxParallelForks = (Runtime.getRuntime().availableProcessors() / 4).coerceAtLeast(1)
         }
 
         tasks.withType<AbstractArchiveTask>().configureEach {
