@@ -36,7 +36,9 @@ import javafx.scene.input.KeyCode;
 import javafx.stage.Stage;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.testfx.api.FxRobot;
@@ -46,12 +48,16 @@ import org.testfx.util.WaitForAsyncUtils;
 
 /**
  * Ask over the real services (SQLite, the pdf module, Lucene) with the AI fakes: a course with one PDF whose
- * page 4 is about mitochondria. Answers stream one word every {@value #WORD_DELAY_MS} ms.
+ * page 4 is about mitochondria. Answers stream one word every {@value #WORD_DELAY_MS} ms (every
+ * {@value #SLOW_WORD_DELAY_MS} ms in tests tagged {@value #SLOW_ANSWERS}).
  */
 @ExtendWith(ApplicationExtension.class)
 class AskPageTest {
 
     private static final long WORD_DELAY_MS = 60;
+    /** Tests that stop an answer midway get slow answers, so the answer is still on its way however busy the machine. */
+    private static final String SLOW_ANSWERS = "slow-answers";
+    private static final long SLOW_WORD_DELAY_MS = 400;
     private static final String COVERED = "What do mitochondria produce?";
     private static final String NOT_COVERED = "Who painted the Mona Lisa?";
     private static final Duration WAIT = Duration.ofSeconds(30);
@@ -72,8 +78,9 @@ class AskPageTest {
     }
 
     @BeforeEach
-    void setUp(FxRobot robot) throws Exception {
-        real = RealWorkspaces.open(dir, FakeAi.create(Duration.ofMillis(WORD_DELAY_MS)), Clock.systemDefaultZone());
+    void setUp(FxRobot robot, TestInfo test) throws Exception {
+        long delay = test.getTags().contains(SLOW_ANSWERS) ? SLOW_WORD_DELAY_MS : WORD_DELAY_MS;
+        real = RealWorkspaces.open(dir, FakeAi.create(Duration.ofMillis(delay)), Clock.systemDefaultZone());
         workspace = real.workspace();
         courseId = workspace.courses().create(CourseDraft.titled("Cell Biology")).id();
         Path pdf = cellsPdf(dir.resolve("cells.pdf"));
@@ -141,6 +148,59 @@ class AskPageTest {
         waitUntil(() -> page.threadList().shown().stream().anyMatch(t -> t.title().equals(COVERED)),
                 "the conversation to be listed under its question");
         assertThat(fx(page::headingText)).isEqualTo(COVERED);
+    }
+
+    /** ACCEPTANCE.md T03, steps 2 to 5 in one conversation, then Home. */
+    @Test
+    @Tag(SLOW_ANSWERS)
+    void acceptanceT03AskingAQuestionGivesCitedAnswers(FxRobot robot) {
+        open(robot, Destination.Ask.newThread(courseId));
+        AskPage page = page();
+
+        // 2. A question answered on page 4: it streams, then the final text brings the chip.
+        robot.interact(() -> page.composer().input().setText(COVERED));
+        robot.clickOn(page.composer().input()).type(KeyCode.ENTER);
+        ExchangeView answered = fx(() -> page.exchanges().getFirst());
+        waitUntil(() -> answered.state() == ExchangeView.State.STREAMING && !answered.streamedText().isBlank(),
+                "the answer to stream");
+        waitUntil(() -> answered.state() == ExchangeView.State.ANSWERED, "the final answer");
+        settle();
+        assertThat(chipTexts(answered)).contains("p. 4");
+
+        // 3. The first chip opens page 4 with the passage marked.
+        robot.clickOn(fx(() -> answered.lookup(".citation-chip")));
+        waitUntil(() -> page.viewer().hasPage(), "the cited page");
+        assertThat(fx(() -> page.viewer().page())).isEqualTo(4);
+        assertThat(fx(() -> page.viewer().highlightCount())).isPositive();
+
+        // 4. Not covered: the calm card, and nothing written.
+        ExchangeView notCovered = askAndWait(robot, page, NOT_COVERED, ExchangeView.State.INSUFFICIENT);
+        assertThat(fx(() -> labels(notCovered, ".ask-insufficient-text")))
+                .containsExactly("Your material doesn't cover this. Try rephrasing, or add a document that does.");
+        assertThat(fx(notCovered::streamedText)).isEmpty();
+
+        // 5. Cancelled while streaming: stored as cancelled.
+        robot.interact(() -> page.composer().input().setText("How do ribosomes build proteins?"));
+        robot.clickOn(page.composer().input()).type(KeyCode.ENTER);
+        ExchangeView stopped = fx(() -> page.exchanges().getLast());
+        waitUntil(() -> stopped.streamedText().split(" ").length >= 2, "the third answer to stream");
+        // Fired rather than clicked: a pointer move can outlast a short answer.
+        robot.interact(() -> page.composer().stopButton().fire());
+        waitUntil(() -> stopped.state() == ExchangeView.State.STOPPED, "the answer to stop");
+        String threadId = fx(page::threadId);
+        RealWorkspaces.await(() -> workspace.ask().messages(threadId).getLast().status() == MessageStatus.CANCELLED,
+                WAIT, "the stopped answer to be stored");
+        assertThat(workspace.ask().messages(threadId).stream().map(ChatMessage::status).toList())
+                .containsExactly(MessageStatus.COMPLETE, MessageStatus.COMPLETE, MessageStatus.COMPLETE,
+                        MessageStatus.INSUFFICIENT, MessageStatus.COMPLETE, MessageStatus.CANCELLED);
+
+        // The conversation is among the recent questions on Home.
+        assertThat(workspace.ask().recentQuestions(5)).anyMatch(q -> q.threadId().equals(threadId));
+        open(robot, Destination.HOME);
+        String recent = workspace.ask().recentQuestions(5).stream().filter(q -> q.threadId().equals(threadId))
+                .findFirst().orElseThrow().question();
+        assertThat(robot.lookup(node -> node instanceof javafx.scene.control.Labeled labeled
+                && labeled.getText() != null && labeled.getText().contains(recent)).tryQuery()).isPresent();
     }
 
     @Test
@@ -215,6 +275,7 @@ class AskPageTest {
     }
 
     @Test
+    @Tag(SLOW_ANSWERS)
     void stoppingAnAnswerMidwayKeepsItAsStopped(FxRobot robot) {
         open(robot, Destination.Ask.newThread(courseId));
         AskPage page = page();
@@ -223,7 +284,8 @@ class AskPageTest {
         ExchangeView exchange = fx(() -> page.exchanges().getFirst());
         waitUntil(() -> exchange.streamedText().split(" ").length >= 2, "a few words");
 
-        robot.clickOn(page.composer().stopButton());
+        // Fired rather than clicked: a pointer move can outlast a short answer.
+        robot.interact(() -> page.composer().stopButton().fire());
         waitUntil(() -> exchange.state() == ExchangeView.State.STOPPED, "the answer to stop");
         settle();
 
@@ -237,6 +299,7 @@ class AskPageTest {
     }
 
     @Test
+    @Tag(SLOW_ANSWERS)
     void leavingTheScreenStopsTheAnswerOnItsWay(FxRobot robot) {
         open(robot, Destination.Ask.newThread(courseId));
         AskPage page = page();
