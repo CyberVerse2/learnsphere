@@ -30,6 +30,8 @@ import edu.learnsphere.core.model.PageSource;
 import edu.learnsphere.core.service.DocumentSummary;
 import edu.learnsphere.core.service.JobSpec;
 import edu.learnsphere.core.service.RenderedPage;
+import edu.learnsphere.core.service.impl.DocumentServiceImpl.IngestPayload;
+import edu.learnsphere.core.service.impl.DocumentServiceImpl.IngestPayload.Reason;
 import edu.learnsphere.core.spi.IndexedChunk;
 import edu.learnsphere.core.spi.NormalizedRect;
 import edu.learnsphere.core.spi.PageRenderer;
@@ -41,6 +43,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -107,7 +110,7 @@ class DocumentServiceImplTest {
         assertThat(job.subjectId()).isEqualTo(summary.id());
         assertThat(job.priority()).isEqualTo(JobSpec.USER_PRIORITY);
         assertThat(Json.read(job.payloadJson(), DocumentServiceImpl.IngestPayload.class))
-                .isEqualTo(new DocumentServiceImpl.IngestPayload(summary.id()));
+                .isEqualTo(new DocumentServiceImpl.IngestPayload(summary.id(), Reason.IMPORT));
         assertThat(h.t.repos.audit().listForEntity(EntityType.DOCUMENT, summary.id()))
                 .extracting(AuditLogEntry::action, AuditLogEntry::detail)
                 .containsExactly(tuple("import", "Cell Biology.pdf"));
@@ -251,30 +254,92 @@ class DocumentServiceImplTest {
 
         documents.approvePages(document.id(), List.of(2));
         assertThat(documents.get(document.id()).status()).isEqualTo(DocumentStatus.QUEUED);
-        assertThat(h.jobs(JobKind.INGEST_DOCUMENT, JobStatus.QUEUED)).extracting(Job::subjectId)
-                .containsExactly(document.id());
+        assertThat(h.jobs(JobKind.INGEST_DOCUMENT, JobStatus.QUEUED)).singleElement().satisfies(job -> {
+            assertThat(job.subjectId()).isEqualTo(document.id());
+            assertThat(payload(job)).isEqualTo(new IngestPayload(document.id(), Reason.CONTINUE_AFTER_REVIEW));
+        });
     }
 
     @Test
-    void correctingAPageOfAReadyDocumentPreparesItAgain() {
-        Document document = h.t.document(course, null, "Scans");
+    void correctingAPageOfAReadyDocumentKeepsItsPassagesAndItemSourcesUntilTheImportReplacesThem() {
+        Document document = h.t.document(course, cells, "Scans");
         page(document, 1, PageSource.AI_READ, "Teh cell");
+        page(document, 2, PageSource.TEXT_LAYER, "The membrane");
         h.t.repos.documents().markPagesReviewed(document.id(), List.of(1));
-        Chunk chunk = h.t.chunk(document, 0, "Teh cell");
-        h.t.repos.chunks().updateEmbeddings(Map.of(chunk.id(), new float[] {1f, 0f}), "embed-v1");
+        Chunk first = h.t.chunk(document, 0, "Teh cell");
+        Chunk second = h.t.chunk(document, 1, "The membrane");
+        h.t.repos.chunks().updateEmbeddings(Map.of(first.id(), new float[] {1f, 0f}, second.id(), new float[] {0f, 1f}),
+                "embed-v1");
         h.t.repos.documents().markReady(document.id());
-        h.index.upsert(List.of(new IndexedChunk(chunk.id(), document.id(), course.id(), null, "Scans", 1, 1, null,
-                "Teh cell", new float[] {1f, 0f})));
+        h.index.upsert(h.t.repos.chunks().listByDocument(document.id()).stream()
+                .map(c -> new IndexedChunk(c.id(), document.id(), course.id(), cells.id(), "Scans", c.pageStart(),
+                        c.pageEnd(), null, c.text(), c.embedding()))
+                .toList());
         h.index.commit();
+        LearningItem fromFirst = sourcedItem(first, 1);
+        LearningItem fromSecond = sourcedItem(second, 2);
+        h.t.clock.advance(Duration.ofMillis(1));
 
         documents.approvePages(document.id(), List.of(1));
+        documents.editPageText(document.id(), 1, " Teh cell ");
         assertThat(documents.get(document.id()).status()).isEqualTo(DocumentStatus.READY);
+        assertThat(h.t.repos.chunks().isOutdated(document.id())).isFalse();
+        assertThat(h.jobs(JobKind.INGEST_DOCUMENT, JobStatus.QUEUED)).isEmpty();
+        h.clearEvents();
 
         documents.editPageText(document.id(), 1, "The cell");
+
         assertThat(documents.get(document.id()).status()).isEqualTo(DocumentStatus.QUEUED);
-        assertThat(h.t.repos.chunks().countByDocument(document.id())).isZero();
-        assertThat(h.index.chunks()).isEmpty();
-        assertThat(h.jobs(JobKind.INGEST_DOCUMENT, JobStatus.QUEUED)).hasSize(1);
+        assertThat(h.t.repos.chunks().isOutdated(document.id())).isTrue();
+        assertThat(h.t.repos.chunks().listByDocument(document.id())).extracting(Chunk::id, Chunk::text)
+                .containsExactly(tuple(first.id(), "Teh cell"), tuple(second.id(), "The membrane"));
+        assertThat(h.index.chunks()).containsOnlyKeys(first.id(), second.id());
+        assertThat(sourceOf(fromFirst)).isEqualTo(first.id());
+        assertThat(sourceOf(fromSecond)).isEqualTo(second.id());
+        Job job = h.jobs(JobKind.INGEST_DOCUMENT, JobStatus.QUEUED).getFirst();
+        assertThat(payload(job)).isEqualTo(new IngestPayload(document.id(), Reason.PAGES_CHANGED));
+        assertThat(h.events(ItemsChanged.class)).isEmpty();
+        assertThat(h.events(DocumentChanged.class)).extracting(DocumentChanged::status)
+                .containsExactly(DocumentStatus.QUEUED);
+
+        // An import handler that keeps the INGEST_DOCUMENT contract makes the passages again from the pages.
+        h.t.clock.advance(Duration.ofMillis(1));
+        h.jobs.register(JobKind.INGEST_DOCUMENT, context -> {
+            String id = context.payload(IngestPayload.class).documentId();
+            if (h.t.repos.chunks().isOutdated(id)) {
+                Document doc = h.t.repos.documents().get(id);
+                h.t.repos.chunks().replaceForDocument(id, h.t.repos.documents().listUsablePages(id).stream()
+                        .map(p -> Chunk.create(id, doc.courseId(), doc.moduleId(), p.pageNumber() - 1, p.pageNumber(),
+                                p.pageNumber(), null, p.text(), 2, h.t.now()))
+                        .toList());
+            }
+            h.t.repos.documents().markReady(id);
+        });
+        JobQueueImplTest.await(() -> h.t.repos.jobs().find(job.id()).orElseThrow().status() == JobStatus.DONE);
+
+        List<Chunk> remade = h.t.repos.chunks().listByDocument(document.id());
+        assertThat(remade).extracting(Chunk::text).containsExactly("The cell", "The membrane");
+        assertThat(remade).extracting(Chunk::id).doesNotContain(first.id(), second.id());
+        assertThat(sourceOf(fromFirst)).isEqualTo(remade.get(0).id());
+        assertThat(sourceOf(fromSecond)).isEqualTo(remade.get(1).id());
+        assertThat(h.t.repos.chunks().isOutdated(document.id())).isFalse();
+        assertThat(documents.get(document.id()).status()).isEqualTo(DocumentStatus.READY);
+    }
+
+    @Test
+    void retryingADocumentStillImportingHurriesItsJob() {
+        Document document = h.t.document(course, null, "Waiting");
+        assertThat(documents.resumeInterrupted()).isEqualTo(1);
+        Job job = h.jobs(JobKind.INGEST_DOCUMENT, JobStatus.QUEUED).getFirst();
+        assertThat(job.priority()).isEqualTo(JobSpec.BACKGROUND_PRIORITY);
+        assertThat(payload(job)).isEqualTo(new IngestPayload(document.id(), Reason.RESUME));
+
+        documents.retry(document.id());
+
+        assertThat(h.jobs(JobKind.INGEST_DOCUMENT, JobStatus.QUEUED)).singleElement().satisfies(raised -> {
+            assertThat(raised.id()).isEqualTo(job.id());
+            assertThat(raised.priority()).isEqualTo(JobSpec.USER_PRIORITY);
+        });
     }
 
     @Test
@@ -356,6 +421,21 @@ class DocumentServiceImplTest {
     private Path pdf(String name, String body) throws IOException {
         Path folder = Files.createDirectories(dir.resolve("sources"));
         return Files.writeString(folder.resolve(name), "%PDF-1.7\n" + body + "\n%%EOF\n", StandardCharsets.US_ASCII);
+    }
+
+    private LearningItem sourcedItem(Chunk source, int page) {
+        LearningItem item = LearningItem.draft(course.id(), cells.id(), ItemType.FLASHCARD, "What is on page " + page + "?",
+                "A cell", "", List.of(), Difficulty.MEDIUM, source.id(), page, ItemOrigin.AI, h.t.now());
+        h.t.repos.items().insert(item);
+        return item;
+    }
+
+    private String sourceOf(LearningItem item) {
+        return h.t.repos.items().get(item.id()).sourceChunkId();
+    }
+
+    private static IngestPayload payload(Job job) {
+        return Json.read(job.payloadJson(), IngestPayload.class);
     }
 
     private void page(Document document, int number, PageSource source, String text) {

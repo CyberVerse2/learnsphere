@@ -59,8 +59,13 @@ import org.slf4j.LoggerFactory;
  * the creator sees why it was not imported.
  *
  * <p><b>Scanned pages.</b> Pages read from images wait for review. Editing or approving the last of them
- * moves a document waiting in {@link DocumentStatus#NEEDS_REVIEW} back to the queue so the import continues;
- * changing the text of a page of a ready document prepares its passages again.
+ * moves a document waiting in {@link DocumentStatus#NEEDS_REVIEW} back to the queue so the import continues.
+ * Changing the text of a page of a ready document queues the import again to make its passages from the
+ * corrected text. Nothing is deleted here: the old passages stay searchable, and the items drafted from them
+ * keep their source, until the handler swaps in the new passages with
+ * {@link edu.learnsphere.core.db.ChunkRepository#replaceForDocument}, which links each item to the new passage
+ * covering its page. Every re-queue puts the document back at {@link DocumentStatus#QUEUED}; the handler
+ * continues from what is stored (see {@link JobKind#INGEST_DOCUMENT}).
  *
  * <p>Changes to documents of courses imported from a package are refused with a {@link ConflictException}.
  * Thread-safe.
@@ -101,10 +106,32 @@ public final class DocumentServiceImpl implements DocumentService {
     static final UserMessage PAGE_NOT_SHOWN = UserMessage.of("This page couldn't be shown. Try again.");
 
     /**
-     * Payload of the {@link JobKind#INGEST_DOCUMENT} jobs this service queues. The job's subject is the same
-     * document id.
+     * Payload of the {@link JobKind#INGEST_DOCUMENT} jobs this service queues; the job's subject is the same
+     * document id. The handler contract is on {@link JobKind#INGEST_DOCUMENT}: whatever the reason, the job
+     * continues from what is stored and never starts the document over.
+     *
+     * @param documentId the document to import
+     * @param reason     why the job was queued; for logs and progress lines only, since the handler works out
+     *                   what is left from what is stored (null in jobs queued by other code)
      */
-    public record IngestPayload(String documentId) {
+    public record IngestPayload(String documentId, Reason reason) {
+
+        /** Why an import job was queued. */
+        public enum Reason {
+            /** A PDF was just added to a course. */
+            IMPORT,
+            /** The creator finished checking the pages read from scanned images. */
+            CONTINUE_AFTER_REVIEW,
+            /** The creator asked to try a failed or unfinished import again. */
+            RETRY,
+            /**
+             * The creator changed the text of a page of a ready document; its passages are outdated
+             * ({@link edu.learnsphere.core.db.ChunkRepository#isOutdated}) and are made again.
+             */
+            PAGES_CHANGED,
+            /** The app stopped while the document was being imported. */
+            RESUME
+        }
     }
 
     private final Repositories repos;
@@ -172,7 +199,7 @@ public final class DocumentServiceImpl implements DocumentService {
                     return queued;
                 }));
             }
-            enqueueIngestion(document.id(), JobSpec.USER_PRIORITY);
+            enqueueIngestion(document.id(), IngestPayload.Reason.IMPORT, JobSpec.USER_PRIORITY);
         }
         publish(document, ChangeType.CREATED);
         return summary(document);
@@ -207,15 +234,20 @@ public final class DocumentServiceImpl implements DocumentService {
         int queued = 0;
         for (Document document : repos.documents().listByStatus(PROCESSING)) {
             if (repos.jobs().findActive(JobKind.INGEST_DOCUMENT, document.id()).isEmpty()) {
-                enqueueIngestion(document.id(), JobSpec.BACKGROUND_PRIORITY);
+                enqueueIngestion(document.id(), IngestPayload.Reason.RESUME, JobSpec.BACKGROUND_PRIORITY);
                 queued++;
             }
         }
         return queued;
     }
 
-    private void enqueueIngestion(String documentId, int priority) {
-        jobs.enqueue(JobSpec.of(JobKind.INGEST_DOCUMENT, documentId, new IngestPayload(documentId)).withPriority(priority));
+    /**
+     * Queues the document's import job, or raises the priority of the one already carrying it (the queue keeps
+     * one active import job per document).
+     */
+    private void enqueueIngestion(String documentId, IngestPayload.Reason reason, int priority) {
+        jobs.enqueue(JobSpec.of(JobKind.INGEST_DOCUMENT, documentId, new IngestPayload(documentId, reason))
+                .withPriority(priority));
     }
 
     // ---- reading -----------------------------------------------------------------------------
@@ -305,11 +337,11 @@ public final class DocumentServiceImpl implements DocumentService {
                 return;
             }
             repos.documents().updateStatus(documentId, DocumentStatus.QUEUED, 0, null);
-            enqueueIngestion(documentId, JobSpec.USER_PRIORITY);
+            enqueueIngestion(documentId, IngestPayload.Reason.RETRY, JobSpec.USER_PRIORITY);
             publish(repos.documents().get(documentId), ChangeType.UPDATED);
         } else if (PROCESSING.contains(document.status())) {
-            // Still importing; make sure a job is carrying it.
-            enqueueIngestion(documentId, JobSpec.USER_PRIORITY);
+            // Still importing: make sure a job is carrying it, at the priority of work the user waits for.
+            enqueueIngestion(documentId, IngestPayload.Reason.RETRY, JobSpec.USER_PRIORITY);
         }
     }
 
@@ -325,7 +357,11 @@ public final class DocumentServiceImpl implements DocumentService {
             throw new InvalidInputException(PAGE_TEXT_TOO_LONG, "Page text of " + clean.length() + " characters");
         }
         boolean changed = !clean.equals(page.text());
-        repos.documents().updatePageText(documentId, pageNumber, clean, true);
+        if (changed) {
+            repos.documents().updatePageText(documentId, pageNumber, clean, true);
+        } else if (!page.reviewed()) {
+            repos.documents().markPagesReviewed(documentId, List.of(pageNumber));
+        }
         continueAfterReview(document, changed);
     }
 
@@ -345,7 +381,9 @@ public final class DocumentServiceImpl implements DocumentService {
 
     /**
      * After a review: a document waiting for review with no page left to check goes back to the queue so the
-     * import continues; a ready document whose page text changed has its passages prepared again.
+     * import continues; a ready document whose page text changed is queued so its passages are made again.
+     * Its passages, search entries and item sources are left as they are: the handler replaces the passages
+     * in one step (see {@link IngestPayload.Reason#PAGES_CHANGED}).
      */
     private void continueAfterReview(Document before, boolean textChanged) {
         String documentId = before.id();
@@ -353,18 +391,10 @@ public final class DocumentServiceImpl implements DocumentService {
         Document current = repos.documents().get(documentId);
         if (left == 0 && current.status() == DocumentStatus.NEEDS_REVIEW) {
             repos.documents().updateStatus(documentId, DocumentStatus.QUEUED, 0, null);
-            enqueueIngestion(documentId, JobSpec.USER_PRIORITY);
+            enqueueIngestion(documentId, IngestPayload.Reason.CONTINUE_AFTER_REVIEW, JobSpec.USER_PRIORITY);
         } else if (textChanged && current.status() == DocumentStatus.READY) {
-            int itemsFromIt = repos.items().countBySourceDocument(documentId);
-            repos.database().useTransaction(h -> {
-                repos.chunks().deleteByDocument(documentId);
-                repos.documents().updateStatus(documentId, DocumentStatus.QUEUED, 0, null);
-            });
-            index.removeDocument(documentId);
-            enqueueIngestion(documentId, JobSpec.USER_PRIORITY);
-            if (itemsFromIt > 0) {
-                events.publish(new ItemsChanged(current.courseId(), null, Set.of(), ChangeType.UPDATED));
-            }
+            repos.documents().updateStatus(documentId, DocumentStatus.QUEUED, 0, null);
+            enqueueIngestion(documentId, IngestPayload.Reason.PAGES_CHANGED, JobSpec.USER_PRIORITY);
         }
         publish(repos.documents().get(documentId), ChangeType.UPDATED);
     }
@@ -428,7 +458,7 @@ public final class DocumentServiceImpl implements DocumentService {
     private static void writeCached(Path cached, byte[] png) {
         Path temp = null;
         try {
-            temp = Files.createTempFile(cached.getParent(), ".render-", ".partial");
+            temp = Files.createTempFile(cached.getParent(), PdfStore.RENDER_PREFIX, PdfStore.PARTIAL_SUFFIX);
             Files.write(temp, png);
             try {
                 Files.move(temp, cached, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
