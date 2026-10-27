@@ -73,7 +73,7 @@ final class PassageMatcher {
         if (runs.isEmpty()) {
             return null;
         }
-        return bestChain(runs, passage.length(), q);
+        return bestChain(runs, page, passage, q);
     }
 
     private static List<Run> runs(String page, String passage, int q) {
@@ -111,7 +111,8 @@ final class PassageMatcher {
         return runs;
     }
 
-    private static Match bestChain(List<Run> runs, int passageLength, int q) {
+    private static Match bestChain(List<Run> runs, String page, String passage, int q) {
+        int passageLength = passage.length();
         int n = runs.size();
         double[] score = new double[n];
         int[] previous = new int[n];
@@ -148,10 +149,23 @@ final class PassageMatcher {
             chain.add(first);
             covered += first.length(q);
         }
+        // Q-grams too common to anchor on may hide a few matching characters at either end; take them back.
+        int iStart = first.iFrom;
         int start = first.jFrom;
+        while (iStart > 0 && start > 0 && passage.charAt(iStart - 1) == page.charAt(start - 1)) {
+            iStart--;
+            start--;
+            covered++;
+        }
+        int iEnd = last.iTo(q);
         int end = last.jTo(q);
-        boolean touchesStart = first.iFrom <= q;
-        boolean touchesEnd = last.iTo(q) >= passageLength - q;
+        while (iEnd < passageLength && end < page.length() && passage.charAt(iEnd) == page.charAt(end)) {
+            iEnd++;
+            end++;
+            covered++;
+        }
+        boolean touchesStart = iStart <= q;
+        boolean touchesEnd = iEnd >= passageLength - q;
         boolean enough = covered * 10 >= passageLength * 3 || ((touchesStart || touchesEnd) && covered >= 20);
         boolean dense = covered * 2 >= end - start;
         if (covered < Math.min(passageLength, 16) || !enough || !dense) {
@@ -163,6 +177,8 @@ final class PassageMatcher {
             segments[2 * k] = run.jFrom;
             segments[2 * k + 1] = run.jTo(q);
         }
+        segments[0] = start;
+        segments[segments.length - 1] = end;
         return new Match(start, end, covered, segments);
     }
 

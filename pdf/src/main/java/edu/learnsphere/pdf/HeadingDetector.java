@@ -26,9 +26,13 @@ final class HeadingDetector {
     private static final Pattern CAPTION = Pattern.compile(
             "^(fig(ure)?|table|tab|chart|graph|listing|algorithm|eq(uation)?|exhibit|plate|source|note)s?\\.?\\s*[\\dIVX]",
             Pattern.CASE_INSENSITIVE);
-    /** "Membranes ........ 47" or "3.2 Membranes 47": a contents line ending in a page number. */
-    private static final Pattern TOC_ENTRY = Pattern.compile(
-            "((\\.\\s?){2,}|\\x{2026})\\s*\\d{1,4}$|^\\d{1,2}(\\.\\d{1,2}){0,3}\\.?\\s+\\S.*\\s\\d{1,4}$");
+    /** "Membranes ........ 47": a contents line with dot leaders. */
+    private static final Pattern DOT_LEADER_ENTRY = Pattern.compile("((\\.\\s?){2,}|\\x{2026})\\s*\\d{1,4}$");
+    /**
+     * "3.2 Membranes 47": a numbered contents line ending in a page number. In plain body type it is a contents
+     * entry; in larger or bold type it is a heading that happens to end in a number ("2 Phase 1").
+     */
+    private static final Pattern NUMBERED_ENTRY = Pattern.compile("^\\d{1,2}(\\.\\d{1,2}){0,3}\\.?\\s+\\S.*\\s\\d{1,4}$");
 
     private HeadingDetector() {
     }
@@ -51,7 +55,11 @@ final class HeadingDetector {
         if (text.length() > MAX_CHARS || text.indexOf('\n') >= 0 || words(text) > MAX_WORDS || block.lineCount() > 3) {
             return null;
         }
-        if (!hasLetter(text) || CAPTION.matcher(text).find() || text.startsWith("Figure:") || TOC_ENTRY.matcher(text).find()) {
+        if (!hasLetter(text) || CAPTION.matcher(text).find() || text.startsWith("Figure:") || DOT_LEADER_ENTRY.matcher(text).find()) {
+            return null;
+        }
+        boolean emphasised = bodySize > 0 && (block.bold() || block.fontSize() >= bodySize * 1.15f);
+        if (!emphasised && NUMBERED_ENTRY.matcher(text).find()) {
             return null;
         }
         char last = text.charAt(text.length() - 1);
