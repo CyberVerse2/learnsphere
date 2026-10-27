@@ -22,6 +22,7 @@ dependencies {
     runtimeOnly(libs.logback.classic)
 
     testImplementation(testFixtures(project(":core")))
+    testImplementation(testFixtures(project(":pdf")))
     testImplementation(libs.testfx.junit5)
     testImplementation(libs.hamcrest)
 }

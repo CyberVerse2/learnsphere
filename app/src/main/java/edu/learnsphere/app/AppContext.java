@@ -1,10 +1,9 @@
 package edu.learnsphere.app;
 
+import edu.learnsphere.ai.LocalAi;
 import edu.learnsphere.app.dev.DemoWorkspace;
 import edu.learnsphere.app.ui.Fx;
 import edu.learnsphere.core.AppPaths;
-import edu.learnsphere.core.error.UnavailableException;
-import edu.learnsphere.core.error.UserMessage;
 import edu.learnsphere.core.events.EventBus;
 import edu.learnsphere.core.profile.AppPreferencesStore;
 import edu.learnsphere.core.profile.ProfileRegistry;
@@ -13,6 +12,11 @@ import edu.learnsphere.core.service.ProfileService;
 import edu.learnsphere.core.service.ProfileServices;
 import edu.learnsphere.core.service.Workspace;
 import edu.learnsphere.core.service.WorkspaceFactory;
+import edu.learnsphere.core.service.impl.WorkspaceImpl;
+import edu.learnsphere.core.spi.AiCapabilities;
+import edu.learnsphere.core.spi.Capabilities;
+import edu.learnsphere.pdf.PdfModule;
+import edu.learnsphere.search.LuceneSearchIndexFactory;
 import java.time.Clock;
 import java.util.Objects;
 import java.util.Optional;
@@ -30,7 +34,8 @@ import org.slf4j.LoggerFactory;
  *
  * <p>In demo mode ({@code -Dlearnsphere.demo=true}) workspaces are {@link DemoWorkspace}s: real settings,
  * assistant and job queue over the profile's database with the simulated study assistant, and sample
- * courses and progress. Otherwise workspaces come from {@link #workspaceFactory()}.
+ * courses and progress. Otherwise workspaces are real ({@link WorkspaceImpl}) over {@link #capabilities}, with the
+ * study assistant from {@link LocalAi}.
  */
 public final class AppContext implements AutoCloseable {
 
@@ -46,9 +51,19 @@ public final class AppContext implements AutoCloseable {
     private final ProfileService profiles;
     private final EventBus events = new EventBus();
     private final ReadOnlyObjectWrapper<Workspace> workspace = new ReadOnlyObjectWrapper<>(this, "workspace");
+    private final AutoCloseable resources;
     private Workspace openWorkspace;
 
     public AppContext(AppPaths paths, Clock clock, boolean demo, WorkspaceFactory workspaces) {
+        this(paths, clock, demo, workspaces, () -> { });
+    }
+
+    /**
+     * A context whose workspaces come from {@code workspaces}; {@code resources} (the study assistant's
+     * processes) close after the open workspace when the context closes.
+     */
+    public AppContext(AppPaths paths, Clock clock, boolean demo, WorkspaceFactory workspaces, AutoCloseable resources) {
+        this.resources = Objects.requireNonNull(resources, "resources");
         this.paths = Objects.requireNonNull(paths, "paths");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.demo = demo;
@@ -61,20 +76,24 @@ public final class AppContext implements AutoCloseable {
     public static AppContext create() {
         boolean demo = Boolean.getBoolean(DEMO_PROPERTY);
         Clock clock = Clock.systemDefaultZone();
-        return new AppContext(AppPaths.resolve(), clock, demo, demo ? DemoWorkspace.factory() : workspaceFactory());
+        AppPaths paths = AppPaths.resolve();
+        if (demo) {
+            return new AppContext(paths, clock, true, DemoWorkspace.factory());
+        }
+        LocalAi ai = LocalAi.create(paths);
+        return new AppContext(paths, clock, false, WorkspaceImpl.factory(capabilities(paths, ai.capabilities())), ai);
     }
 
     /**
-     * Workspaces outside demo mode. The pdf, search and ai modules do not provide their implementations yet,
-     * so there is no {@code Capabilities} to build them from and opening a profile reports that it couldn't be
-     * opened. Once they exist this returns the factory of
-     * {@code ProfileServices.create(paths, registry, hasher, clock, capabilities)}.
+     * Everything a real workspace is built from: the PDF tools, the Lucene search index and the given AI.
+     * PDFBox keeps its font cache under the app home.
      */
-    static WorkspaceFactory workspaceFactory() {
-        return context -> {
-            throw new UnavailableException(UserMessage.PROFILE_NOT_OPENED,
-                    "No Capabilities: the pdf, search and ai modules have no implementations yet");
-        };
+    public static Capabilities capabilities(AppPaths paths, AiCapabilities ai) {
+        PdfModule.useFontCacheDirectory(paths.home().resolve("cache").resolve("pdf-fonts"));
+        return PdfModule.install(Capabilities.builder())
+                .searchIndexFactory(new LuceneSearchIndexFactory())
+                .ai(ai)
+                .build();
     }
 
     public AppPaths paths() {
@@ -167,6 +186,11 @@ public final class AppContext implements AutoCloseable {
     @Override
     public void close() {
         closeWorkspace();
+        try {
+            resources.close();
+        } catch (Exception e) {
+            LOG.warn("Stopping the study assistant failed", e);
+        }
         events.close();
     }
 }
