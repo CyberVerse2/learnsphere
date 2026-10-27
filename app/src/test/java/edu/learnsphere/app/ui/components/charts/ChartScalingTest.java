@@ -100,11 +100,61 @@ class ChartScalingTest {
         double[] clear = LineChart.referenceLabelBox(60, 40, 10, 300, 200, 60, xs, ys);
         assertThat(clear).as("above the line at the right end").containsExactly(234, 42);
 
-        double[] crowded = LineChart.referenceLabelBox(60, 40, 10, 300, 200, 60, new double[] {50, 280}, new double[] {150, 50});
+        double[] crowded = LineChart.referenceLabelBox(60, 40, 10, 300, 200, 60, new double[] {50, 150, 290},
+                new double[] {150, 30, 50});
         assertThat(crowded).as("the last point sits there: below the line instead").containsExactly(234, 64);
     }
 
+    @Test
+    void theGoalLabelAlsoKeepsClearOfTheLineBetweenPoints() {
+        // The line rises from (50, 150) to (280, 50) and passes under the right end of the goal line at y = 60,
+        // through the spot below it: the label moves to the left end, where the line is far below.
+        double[] xs = {50, 280};
+        double[] ys = {150, 50};
+        double[] box = LineChart.referenceLabelBox(60, 40, 10, 300, 200, 60, xs, ys);
+        assertThat(box).containsExactly(46, 42);
+        assertThat(LineChart.segmentCrosses(50, 150, 280, 50, box[0] - 3, box[1] - 3, box[0] + 63, box[1] + 17)).isFalse();
+
+        // A gap breaks the line, so nothing joins the points on either side of it.
+        double[] gap = LineChart.referenceLabelBox(60, 40, 10, 300, 200, 60, new double[] {50, 165, 280},
+                new double[] {150, Double.NaN, 50});
+        assertThat(gap).as("only the last point is in the way above").containsExactly(234, 64);
+    }
+
+    @Test
+    void segmentsCrossBoxesTheyEnterAndMissThoseTheyPass() {
+        assertThat(LineChart.segmentCrosses(0, 0, 100, 100, 40, 40, 60, 60)).as("through the middle").isTrue();
+        assertThat(LineChart.segmentCrosses(50, 50, 55, 55, 40, 40, 60, 60)).as("wholly inside").isTrue();
+        assertThat(LineChart.segmentCrosses(0, 100, 100, 0, 0, 0, 20, 20)).as("passes the corner").isFalse();
+        assertThat(LineChart.segmentCrosses(0, 70, 100, 70, 40, 40, 60, 60)).as("level, underneath").isFalse();
+        assertThat(LineChart.segmentCrosses(50, 0, 50, 30, 40, 40, 60, 60)).as("stops short").isFalse();
+    }
+
+    @Test
+    void gapsSplitTheLineIntoRuns() {
+        double nan = Double.NaN;
+        assertThat(LineChart.runs(new double[0])).isEmpty();
+        assertThat(LineChart.runs(new double[] {nan, nan})).isEmpty();
+        assertThat(LineChart.runs(new double[] {1, 2, 3})).containsExactly(new int[] {0, 2});
+        assertThat(LineChart.runs(new double[] {nan, 1, 2, nan, 3, nan}))
+                .containsExactly(new int[] {1, 2}, new int[] {4, 4});
+        assertThat(LineChart.yOf(nan, 0, 1, 10, 110)).isNaN();
+    }
+
     // ---- week and streak strips -----------------------------------------------------------------
+
+    @Test
+    void weekDaysAreNamedFromTheirPlaceBeforeToday() {
+        List<WeekStrip.Day> week = List.of(new WeekStrip.Day("S", 2, false), new WeekStrip.Day("S", 0, false),
+                new WeekStrip.Day("M", 1, false), new WeekStrip.Day("T", 5, true));
+        assertThat(WeekStrip.tipOf(week, 0)).isEqualTo(new CanvasChart.Tip("3 days ago", "2 reviews"));
+        assertThat(WeekStrip.tipOf(week, 1)).isEqualTo(new CanvasChart.Tip("2 days ago", "No reviews"));
+        assertThat(WeekStrip.tipOf(week, 2)).isEqualTo(new CanvasChart.Tip("Yesterday", "1 review"));
+        assertThat(WeekStrip.tipOf(week, 3)).isEqualTo(new CanvasChart.Tip("Today", "5 reviews"));
+
+        List<WeekStrip.Day> noToday = List.of(new WeekStrip.Day("M", 1, false));
+        assertThat(WeekStrip.tipOf(noToday, 0)).as("without today, the label").isEqualTo(new CanvasChart.Tip("M", "1 review"));
+    }
 
     @Test
     void weekPillsFillByShareOfTheBusiestDayButStayRound() {

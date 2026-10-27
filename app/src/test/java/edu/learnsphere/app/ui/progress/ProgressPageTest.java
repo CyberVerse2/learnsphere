@@ -1,6 +1,7 @@
 package edu.learnsphere.app.ui.progress;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 
 import edu.learnsphere.ai.fake.FakeAi;
 import edu.learnsphere.app.testing.RealWorkspaces;
@@ -11,6 +12,7 @@ import edu.learnsphere.app.ui.MainWindow;
 import edu.learnsphere.app.ui.StudioTab;
 import edu.learnsphere.app.ui.UiExecutors;
 import edu.learnsphere.app.ui.components.EmptyState;
+import edu.learnsphere.app.ui.components.StatTile;
 import edu.learnsphere.app.ui.components.charts.BarChart;
 import edu.learnsphere.app.ui.components.charts.ColumnChart;
 import edu.learnsphere.core.model.Concept;
@@ -21,6 +23,7 @@ import edu.learnsphere.core.model.ItemType;
 import edu.learnsphere.core.model.LearningItem;
 import edu.learnsphere.core.service.CourseDraft;
 import edu.learnsphere.core.service.CourseProgress;
+import edu.learnsphere.core.service.ForecastDay;
 import edu.learnsphere.core.service.ItemContent;
 import edu.learnsphere.core.service.Response;
 import edu.learnsphere.core.service.SessionItem;
@@ -36,6 +39,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
@@ -65,8 +70,15 @@ class ProgressPageTest {
     private MainWindow window;
     private MutableClock clock;
 
+    /** Time taken by every answer. */
+    private static final long ANSWER_MS = 20_000;
+
     /** Correct answers by item id, for answering sessions. */
     private final Map<String, ItemContent> answers = new HashMap<>();
+    /** Item ids by prompt. */
+    private final Map<String, String> itemIds = new HashMap<>();
+    /** The module of each course. */
+    private final Map<String, String> modules = new HashMap<>();
     /** Answers given per course. */
     private final Map<String, Integer> answered = new HashMap<>();
     /** Prompts of the questions answered wrongly, in the order answered. */
@@ -97,16 +109,28 @@ class ProgressPageTest {
     void theOverviewAddsUpOnlyTheCoursesStillBeingStudied(FxRobot robot) {
         Course biology = studiedCourse("Biology", 3, 1);
         Course chemistry = studiedCourse("Chemistry", 2, 0);
+        addQuestion(chemistry);
         Course left = studiedCourse("History", 3, 0);
-        Course archived = studiedCourse("Art", 2, 1);
+        Course archived = studiedCourse("Art", 2, 2);
         ws().courses().leave(left.id());
         ws().courses().archive(archived.id());
 
         ProgressPage page = open(robot, Destination.Progress.overview());
 
+        // Biology: 2 of 3 right; Chemistry: 2 of 2 right, one question not started. With History (3 of 3) or
+        // Art (0 of 2), accuracy, time and progress would all come out differently.
+        int reviews = answered.get(biology.id()) + answered.get(chemistry.id());
         CourseProgress overview = page.data().progress();
         assertThat(overview.isOverview()).isTrue();
-        assertThat(overview.totalReviews()).isEqualTo(answered.get(biology.id()) + answered.get(chemistry.id()));
+        assertThat(overview.totalReviews()).isEqualTo(reviews).isEqualTo(5);
+        assertThat(overview.accuracy()).isCloseTo(4 / 5.0, within(1e-9));
+        assertThat(overview.studyTimeMs()).isEqualTo(reviews * ANSWER_MS);
+        assertThat(overview.progress()).as("5 of 6 questions started").isCloseTo(5 / 6.0, within(1e-9));
+        assertThat(overview.forecast()).hasSize(CourseProgress.FORECAST_DAYS);
+        assertThat(overview.forecast().stream().mapToInt(ForecastDay::dueCount).sum())
+                .isEqualTo(dueSoon(biology) + dueSoon(chemistry));
+        assertThat(ledger(robot, "Reviews")).isEqualTo("5");
+        assertThat(ledger(robot, "Accuracy")).isEqualTo("80%");
         assertThat(page.picker().getItems()).extracting(CoursePicker.Choice::title)
                 .containsExactlyInAnyOrder("All courses", "Biology", "Chemistry");
         assertThat(page.picker().getValue()).isEqualTo(CoursePicker.Choice.ALL);
@@ -136,6 +160,9 @@ class ProgressPageTest {
         Course chemistry = studiedCourse("Chemistry", 2, 0);
         ProgressPage page = open(robot, Destination.Progress.overview());
 
+        assertThat(forecastShown(robot)).isEqualTo(dueCounts(ws().progress().overview().forecast()));
+        assertThat(ledger(robot, "Reviews")).isEqualTo("5");
+
         robot.clickOn(".progress-picker");
         robot.clickOn(robot.lookup(".progress-picker-cell").match(cell -> cell instanceof Labeled l
                 && "Chemistry".equals(l.getText()) && cell.getScene() != stage.getScene()).queryLabeled());
@@ -147,11 +174,18 @@ class ProgressPageTest {
         assertThat(page.data().progress().totalReviews()).isEqualTo(answered.get(chemistry.id()));
         assertThat(texts(robot, ".page-title")).containsExactly("Chemistry");
         assertThat(robot.lookup(".modules-card").tryQuery()).isPresent();
+        assertThat(ledger(robot, "Reviews")).isEqualTo(String.valueOf(answered.get(chemistry.id())));
+        List<Integer> chemistryForecast = dueCounts(ws().progress().course(chemistry.id()).forecast());
+        assertThat(forecastShown(robot)).as("Chemistry's own reviews coming up").isEqualTo(chemistryForecast)
+                .hasSize(CourseProgress.FORECAST_DAYS);
+        assertThat(chemistryForecast.stream().mapToInt(Integer::intValue).sum()).isEqualTo(dueSoon(chemistry));
 
         robot.interact(() -> page.picker().pick(biology.id()));
         settle();
         assertThat(page.data().progress().totalReviews()).isEqualTo(answered.get(biology.id()));
         assertThat(texts(robot, ".page-title")).containsExactly("Biology");
+        assertThat(ledger(robot, "Reviews")).isEqualTo(String.valueOf(answered.get(biology.id())));
+        assertThat(forecastShown(robot)).isEqualTo(dueCounts(ws().progress().course(biology.id()).forecast()));
 
         robot.interact(() -> page.picker().pick(null));
         settle();
@@ -178,14 +212,15 @@ class ProgressPageTest {
     }
 
     @Test
-    void aCreatorSeesTheirQuestionsHardestFirstAndOpensThemInTheStudio(FxRobot robot) {
+    void aCreatorSeesTheirQuestionsHardestFirstAndOpensOneInTheStudio(FxRobot robot) {
         Course biology = studiedCourse("Biology", 3, 1);
         open(robot, new Destination.Progress(biology.id()));
 
         assertThat(robot.lookup(".creator-section").tryQuery()).isPresent();
         List<Node> rows = List.copyOf(robot.lookup(".question-row").queryAll());
         assertThat(rows).as("the one question answered wrongly").hasSize(1);
-        assertThat(rows.getFirst().getAccessibleText()).startsWith(missed.getFirst() + ". 0% right.");
+        assertThat(rows.getFirst().getAccessibleText())
+                .isEqualTo(missed.getFirst() + ". 0% right. Opens the course in the Studio.");
         assertThat(rows.getFirst().isFocusTraversable()).isTrue();
 
         // From the keyboard, as the row is below the fold.
@@ -193,7 +228,46 @@ class ProgressPageTest {
         robot.type(javafx.scene.input.KeyCode.ENTER);
         settle();
 
-        assertThat(window.navigator().current()).isEqualTo(new Destination.Studio(biology.id(), StudioTab.REVIEW));
+        String itemId = itemIds.get(missed.getFirst());
+        assertThat(window.navigator().current()).as("the Studio, on the question")
+                .isEqualTo(Destination.Studio.question(biology.id(), itemId))
+                .isEqualTo(new Destination.Studio(biology.id(), StudioTab.REVIEW, itemId));
+    }
+
+    @Test
+    void aQuestionInTheAccuracyChartOpensInTheStudioAndTheCourseOpensFromTheHeading(FxRobot robot) {
+        Course biology = studiedCourse("Biology", 3, 1);
+        open(robot, new Destination.Progress(biology.id()));
+
+        BarChart chart = robot.lookup(".question-chart").queryAs(BarChart.class);
+        assertThat(chart.bars()).hasSize(3);
+        robot.interact(() -> {
+            chart.requestFocus();
+            chart.inspect(0);
+        });
+        robot.type(javafx.scene.input.KeyCode.ENTER);
+        settle();
+        assertThat(window.navigator().current())
+                .isEqualTo(Destination.Studio.question(biology.id(), itemIds.get(missed.getFirst())));
+
+        robot.interact(() -> window.navigator().back());
+        settle();
+        Button studio = robot.lookup(".creator-section .section-trailing .button").queryButton();
+        assertThat(studio.getText()).isEqualTo("Open in the Studio");
+        robot.interact(studio::fire);
+        settle();
+        assertThat(window.navigator().current()).isEqualTo(new Destination.Studio(biology.id(), StudioTab.DETAILS));
+    }
+
+    @Test
+    void withNoAnswersTheCreatorSectionLeadsToStudyingWithoutAListSubtitle(FxRobot robot) {
+        Course biology = course("Biology", 2);
+        open(robot, new Destination.Progress(biology.id()));
+
+        EmptyState empty = robot.lookup(".creator-section .empty-state").queryAs(EmptyState.class);
+        assertThat(empty.titleText()).isEqualTo("No answers yet");
+        assertThat(robot.lookup(".creator-section .section-subtitle").tryQuery()).as("no list to describe").isEmpty();
+        assertThat(robot.lookup(".question-row").tryQuery()).isEmpty();
     }
 
     @Test
@@ -226,14 +300,22 @@ class ProgressPageTest {
     }
 
     @Test
-    void aCourseThatCannotBeReadShowsAnErrorWithTryAgain(FxRobot robot) {
+    void aCourseThatIsNotThereShowsAnErrorThatLeadsToEveryCourse(FxRobot robot) {
         open(robot, new Destination.Progress("a-course-that-does-not-exist"));
 
         EmptyState error = robot.lookup(".empty-state").queryAs(EmptyState.class);
         assertThat(error.titleText()).isEqualTo("Your progress couldn't be shown");
         assertThat(error.messageText()).isNotBlank().doesNotContain("Exception").doesNotContain("a-course-that-does-not-exist");
-        assertThat(error.actions().getChildren()).extracting(node -> ((Button) node).getText())
-                .containsExactly("Try again", "Go to Home");
+        assertThat(error.actions().getChildren()).as("trying again can't bring the course back")
+                .extracting(node -> ((Button) node).getText()).containsExactly("Show all courses", "Go to Home");
+
+        studiedCourse("Biology", 2, 0);
+        robot.interact(() -> ((Button) error.actions().getChildren().getFirst()).fire());
+        settle();
+        ProgressPage page = (ProgressPage) window.navigator().currentView();
+        assertThat(window.navigator().current()).isEqualTo(Destination.Progress.overview());
+        assertThat(page.data().isOverview()).isTrue();
+        assertThat(robot.lookup(".progress-ledger").tryQuery()).isPresent();
     }
 
     @Test
@@ -273,15 +355,60 @@ class ProgressPageTest {
     private Course course(String title, int items) {
         Course course = ws().courses().create(CourseDraft.titled(title));
         CourseModule module = ws().courses().addModule(course.id(), "Basics");
+        modules.put(course.id(), module.id());
         for (int i = 1; i <= items; i++) {
-            Concept concept = ws().generation().addConcept(course.id(), module.id(), title + " concept " + i, "");
-            ItemContent content = new ItemContent(ItemType.MCQ, title + " question " + i, "Right " + i, "",
-                    List.of("Wrong A" + i, "Wrong B" + i, "Wrong C" + i), Difficulty.MEDIUM, Set.of(concept.id()));
-            LearningItem item = ws().items().create(course.id(), module.id(), content);
-            ws().items().approve(item.id());
-            answers.put(item.id(), content);
+            question(course, title + " question " + i);
         }
         return course;
+    }
+
+    /** Adds an approved question, with a concept of its own, to the course's module. */
+    private void question(Course course, String prompt) {
+        String moduleId = modules.get(course.id());
+        Concept concept = ws().generation().addConcept(course.id(), moduleId, prompt + " concept", "");
+        ItemContent content = new ItemContent(ItemType.MCQ, prompt, "Right answer", "",
+                List.of("Wrong A", "Wrong B", "Wrong C"), Difficulty.MEDIUM, Set.of(concept.id()));
+        LearningItem item = ws().items().create(course.id(), moduleId, content);
+        ws().items().approve(item.id());
+        answers.put(item.id(), content);
+        itemIds.put(prompt, item.id());
+    }
+
+    /** Adds a question that hasn't been studied yet. */
+    private void addQuestion(Course course) {
+        question(course, course.title() + " question not started");
+    }
+
+    /** Reviews of {@code course} due in the next 14 days, from its own Progress data. */
+    private int dueSoon(Course course) {
+        return ws().progress().course(course.id()).forecast().stream().mapToInt(ForecastDay::dueCount).sum();
+    }
+
+    private static List<Integer> dueCounts(List<ForecastDay> forecast) {
+        return forecast.stream().map(ForecastDay::dueCount).toList();
+    }
+
+    /** The reviews the forecast chart on screen shows per day. */
+    private static List<Integer> forecastShown(FxRobot robot) {
+        ColumnChart chart = robot.lookup(".forecast-chart").queryAs(ColumnChart.class);
+        return chart.columns().stream().map(column -> (int) Math.round(column.value())).toList();
+    }
+
+    /** The numeral the ledger shows under {@code label}, once it has finished counting up. */
+    private static String ledger(FxRobot robot, String label) {
+        StatTile tile = robot.lookup(".progress-ledger .stat-tile").queryAllAs(StatTile.class).stream()
+                .filter(t -> label.equals(t.labelNode().getText())).findFirst().orElseThrow();
+        try {
+            WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, () -> {
+                String before = tile.valueText();
+                WaitForAsyncUtils.sleep(100, TimeUnit.MILLISECONDS);
+                WaitForAsyncUtils.waitForFxEvents();
+                return before.equals(tile.valueText());
+            });
+        } catch (TimeoutException e) {
+            throw new AssertionError("The " + label + " numeral kept changing", e);
+        }
+        return tile.valueText();
     }
 
     /** A course studied once: every question answered, the first {@code wrong} of them wrongly. */
@@ -302,9 +429,9 @@ class ProgressPageTest {
             if (!right) {
                 missed.add(content.prompt());
             }
-            ws().practice().submit(session.id(), Response.answer(shown.itemId(), answer, null, false, 20_000));
+            ws().practice().submit(session.id(), Response.answer(shown.itemId(), answer, null, false, ANSWER_MS));
             answered.merge(course.id(), 1, Integer::sum);
-            clock.advance(Duration.ofSeconds(20));
+            clock.advance(Duration.ofMillis(ANSWER_MS));
         }
         ws().practice().finish(session.id());
     }

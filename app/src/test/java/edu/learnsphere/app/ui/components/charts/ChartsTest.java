@@ -167,6 +167,31 @@ class ChartsTest {
     }
 
     @Test
+    void weeksWithoutAValueBreakTheLineAndKeepTheirPlace(FxRobot robot) {
+        LineChart chart = new LineChart();
+        double height = 200;
+        CanvasChart.Tip none = new CanvasChart.Tip("Week of 12 Oct", "No reviews");
+        WritableImage image = render(robot, chart, () -> chart.setPoints(List.of(new Point("5 Oct", 0.5),
+                new Point("12 Oct", Double.NaN, none), new Point("19 Oct", 0.5))), WIDTH, height);
+
+        double left = 40;
+        double right = image.getWidth() - 52;
+        double y = (image.getHeight() - 26) - (image.getHeight() - 26 - 12) * 0.5;
+        double middle = (left + right) / 2;
+        assertThat(near(pixel(image, left + 30, y), chart.accent())).as("no line out of the first week").isFalse();
+        assertThat(near(pixel(image, middle, y), chart.accent())).as("nothing drawn for the empty week").isFalse();
+        assertThat(near(pixel(image, right, y), chart.accent())).as("the latest value keeps its dot").isTrue();
+        assertThat(chart.getAccessibleText()).isEqualTo("5 Oct 50%, 12 Oct No reviews, 19 Oct 50%");
+
+        robot.interact(() -> chart.inspect(1));
+        assertThat(chart.shownTip()).as("the empty week can be inspected").isEqualTo(none);
+
+        robot.interact(() -> chart.setPoints(List.of(new Point("5 Oct", Double.NaN))));
+        assertThat(chart.getAccessibleText()).as("only gaps: nothing to describe").isEmpty();
+        assertThat(chart.isFocusTraversable()).isFalse();
+    }
+
+    @Test
     void sparklineIsSmallAndBare() {
         LineChart sparkline = LineChart.sparkline();
 
@@ -186,8 +211,26 @@ class ChartsTest {
         robot.interact(() -> strip.setDays(List.of(new Day("M", 4, false), new Day("T", 0, false),
                 new Day("W", 6, true))));
 
-        assertThat(strip.getAccessibleText()).isEqualTo("M 4, T 0, W 6");
+        assertThat(strip.getAccessibleText()).as("days named from their place before today, not by an initial")
+                .isEqualTo("2 days ago 4 reviews, Yesterday No reviews, Today 6 reviews");
         assertThatThrownBy(() -> new Day("T", -1, false)).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void weekStripTooltipsTellDaysWithTheSameInitialApart(FxRobot robot) {
+        WeekStrip strip = new WeekStrip();
+        robot.interact(() -> strip.setDays(List.of(new Day("T", 1, false), new Day("W", 0, false),
+                new Day("T", 3, true))));
+
+        robot.interact(() -> strip.inspect(0));
+        assertThat(strip.shownTip()).isEqualTo(new CanvasChart.Tip("2 days ago", "1 review"));
+        robot.interact(() -> strip.inspect(2));
+        assertThat(strip.shownTip()).isEqualTo(new CanvasChart.Tip("Today", "3 reviews"));
+
+        CanvasChart.Tip own = new CanvasChart.Tip("Tuesday 27 October", "5 reviews");
+        robot.interact(() -> strip.setDays(List.of(new Day("T", 5, true, own))));
+        robot.interact(() -> strip.inspect(0));
+        assertThat(strip.shownTip()).as("a day's own tooltip wins").isEqualTo(own);
     }
 
     @Test

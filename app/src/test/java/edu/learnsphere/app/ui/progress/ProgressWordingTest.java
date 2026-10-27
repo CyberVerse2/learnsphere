@@ -10,6 +10,7 @@ import edu.learnsphere.core.model.Visibility;
 import edu.learnsphere.core.service.CourseSummary;
 import edu.learnsphere.core.service.ForecastDay;
 import edu.learnsphere.core.service.ItemStats;
+import edu.learnsphere.core.service.RetentionPoint;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -38,6 +39,28 @@ class ProgressWordingTest {
                 .isEqualTo("7 reviews in the next 11 days. The busiest day is Thursday 5 November.");
         assertThat(TrendSections.forecastSummary(forecast(0, 1))).as("one busy day is not news")
                 .isEqualTo("1 review in the next 2 days.");
+    }
+
+    @Test
+    void weeksWithoutReviewsKeepTheirPlaceInTheRetentionTrend() {
+        LocalDate thisMonday = LocalDate.of(2026, 10, 26);
+        RetentionPoint sixWeeksAgo = new RetentionPoint(thisMonday.minusWeeks(5), 0.7, 10);
+        RetentionPoint threeWeeksAgo = new RetentionPoint(thisMonday.minusWeeks(3), 0.8, 12);
+        RetentionPoint lastWeek = new RetentionPoint(thisMonday.minusWeeks(1), 0.9, 8);
+
+        List<TrendSections.Week> weeks = TrendSections.weeks(List.of(sixWeeksAgo, threeWeeksAgo, lastWeek), TODAY);
+
+        assertThat(weeks).extracting(TrendSections.Week::start).as("every week from the first to this one")
+                .containsExactly(thisMonday.minusWeeks(5), thisMonday.minusWeeks(4), thisMonday.minusWeeks(3),
+                        thisMonday.minusWeeks(2), thisMonday.minusWeeks(1), thisMonday);
+        assertThat(weeks).extracting(TrendSections.Week::result)
+                .containsExactly(sixWeeksAgo, null, threeWeeksAgo, null, lastWeek, null);
+
+        assertThat(TrendSections.weeks(List.of(), TODAY)).isEmpty();
+        assertThat(TrendSections.weeks(List.of(new RetentionPoint(thisMonday, 1, 3)), TODAY))
+                .as("one week, this one").extracting(TrendSections.Week::start).containsExactly(thisMonday);
+        assertThat(TrendSections.weeks(List.of(sixWeeksAgo, lastWeek), null)).as("without today, up to the last week")
+                .hasSize(5);
     }
 
     @Test

@@ -186,13 +186,29 @@ public final class ProgressPage extends PageView {
     protected void showError(UserMessage message) {
         data = null;
         mastery = null;
-        EmptyState error = new EmptyState(EmptyIllustration.Kind.SEARCH, "Your progress couldn't be shown", message.text())
-                .primary("Try again", () -> {
-                    showSkeleton();
-                    reload(true);
-                })
-                .secondary("Go to Home", () -> navigator.navigate(Destination.HOME));
+        EmptyState error = new EmptyState(EmptyIllustration.Kind.SEARCH, "Your progress couldn't be shown", message.text());
+        Runnable tryAgain = () -> {
+            showSkeleton();
+            reload(true);
+        };
+        Runnable showAll = () -> {
+            showSkeleton();
+            switchTo(null);
+        };
+        if (destination.courseId() == null) {
+            error.primary("Try again", tryAgain).secondary("Go to Home", () -> navigator.navigate(Destination.HOME));
+        } else if (isGone(message)) {
+            // Trying again can't bring back a course that isn't there: lead to the courses that are.
+            error.primary("Show all courses", showAll).secondary("Go to Home", () -> navigator.navigate(Destination.HOME));
+        } else {
+            error.primary("Try again", tryAgain).secondary("Show all courses", showAll);
+        }
         show(error);
+    }
+
+    /** True when the message says the course on screen doesn't exist (any more). */
+    private static boolean isGone(UserMessage message) {
+        return message.equals(UserMessage.COURSE_NOT_FOUND) || message.equals(UserMessage.NOT_AVAILABLE);
     }
 
     // ---- rendering ----------------------------------------------------------------------------
@@ -235,7 +251,9 @@ public final class ProgressPage extends PageView {
             sections.add(mastery.node());
             primaryUsed = mastery.node().lookup(".practise-weak") != null;
             Card forecast = TrendSections.forecast(p.forecast());
-            Card retention = TrendSections.retention(p.retention(), loaded.retentionGoal());
+            // The forecast starts today, so its first day is the learner's today.
+            Card retention = TrendSections.retention(p.retention(), loaded.retentionGoal(),
+                    p.forecast().isEmpty() ? null : p.forecast().getFirst().date());
             HBox trends = new HBox(24, forecast, retention);
             trends.getStyleClass().add("trend-row");
             for (Card card : List.of(forecast, retention)) {
@@ -354,7 +372,16 @@ public final class ProgressPage extends PageView {
         return new CreatorSection.Actions() {
             @Override
             public void openQuestion(String itemId) {
-                // The Studio opens on its review queue, where every question of the course can be found.
+                navigator.navigate(Destination.Studio.question(courseId, itemId));
+            }
+
+            @Override
+            public void openStudio() {
+                navigator.navigate(new Destination.Studio(courseId, StudioTab.DETAILS));
+            }
+
+            @Override
+            public void openReviewQueue() {
                 navigator.navigate(new Destination.Studio(courseId, StudioTab.REVIEW));
             }
 

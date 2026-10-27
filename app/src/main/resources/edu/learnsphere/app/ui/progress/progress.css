@@ -43,6 +43,11 @@
     -fx-padding: 8px 28px 8px 28px;
 }
 
+/* A one-line message sits in the middle of its column, under the centred title. */
+.progress-page .empty-state-message {
+    -fx-alignment: center;
+}
+
 /* ---- ledger: four numbers and the study days --------------------------------------------- */
 
 .progress-ledger {

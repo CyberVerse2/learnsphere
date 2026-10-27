@@ -8,17 +8,23 @@ import edu.learnsphere.app.ui.components.charts.ColumnChart;
 import edu.learnsphere.app.ui.components.charts.LineChart;
 import edu.learnsphere.core.service.ForecastDay;
 import edu.learnsphere.core.service.RetentionPoint;
+import java.time.DayOfWeek;
+import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import javafx.scene.control.Label;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 
 /**
  * The two charts over time: reviews coming up over the next 14 days (columns, today first and highlighted)
- * and the share of reviews remembered week by week (a line with the learner's goal dashed across it).
+ * and the share of reviews remembered week by week (a line with the learner's goal dashed across it, with
+ * a break for each week without reviews).
  */
 final class TrendSections {
 
@@ -86,7 +92,53 @@ final class TrendSections {
 
     // ---- remembered ---------------------------------------------------------------------------
 
-    static Card retention(List<RetentionPoint> points, double goal) {
+    /**
+     * One week of the retention trend.
+     *
+     * @param start  its Monday
+     * @param result its reviews, or null for a week without any
+     */
+    record Week(LocalDate start, RetentionPoint result) {
+    }
+
+    /**
+     * Every week from the first one with reviews to the week of {@code today}, in order: the service lists
+     * only weeks with reviews, and the chart spaces its points evenly, so the weeks in between are put back
+     * as gaps to keep each point at its place in time.
+     *
+     * @param today the learner's today, or null to end at the last week with reviews
+     */
+    static List<Week> weeks(List<RetentionPoint> points, LocalDate today) {
+        if (points.isEmpty()) {
+            return List.of();
+        }
+        Map<LocalDate, RetentionPoint> byWeek = new HashMap<>();
+        LocalDate first = null;
+        LocalDate last = null;
+        for (RetentionPoint point : points) {
+            LocalDate monday = monday(point.weekStart());
+            byWeek.put(monday, point);
+            first = first == null || monday.isBefore(first) ? monday : first;
+            last = last == null || monday.isAfter(last) ? monday : last;
+        }
+        if (today != null && monday(today).isAfter(last)) {
+            last = monday(today);
+        }
+        List<Week> weeks = new ArrayList<>();
+        for (LocalDate week = first; !week.isAfter(last); week = week.plusWeeks(1)) {
+            weeks.add(new Week(week, byWeek.get(week)));
+        }
+        return weeks;
+    }
+
+    private static LocalDate monday(LocalDate date) {
+        return date.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+    }
+
+    /**
+     * @param today the learner's today (the first day of the forecast), or null
+     */
+    static Card retention(List<RetentionPoint> points, double goal, LocalDate today) {
         SectionHeader header = new SectionHeader("Remembered")
                 .subtitle("Reviews you got right, week by week. Your goal is " + Formats.percent(goal) + ".");
         if (points.isEmpty()) {
@@ -104,10 +156,19 @@ final class TrendSections {
         double[] range = LineChart.fractionRange(points.stream().map(RetentionPoint::retention).toList(), goal);
         chart.setRange(range[0], range[1]);
         chart.setReference(goal, "Goal " + Formats.percent(goal));
-        chart.setPoints(points.stream().map(point -> new LineChart.Point(point.weekStart().format(DAY_MONTH),
-                point.retention(), new Tip("Week of " + point.weekStart().format(DAY_MONTH),
-                Formats.percent(point.retention()) + " right · " + Formats.count(point.reviews(), "review", "reviews"))))
-                .toList());
+        LocalDate thisWeek = today == null ? null : monday(today);
+        chart.setPoints(weeks(points, today).stream().map(week -> {
+            String label = week.start().format(DAY_MONTH);
+            Tip tip;
+            if (week.result() == null) {
+                tip = new Tip("Week of " + label, week.start().equals(thisWeek) ? "No reviews yet" : "No reviews");
+                return new LineChart.Point(label, Double.NaN, tip);
+            }
+            RetentionPoint result = week.result();
+            tip = new Tip("Week of " + label, Formats.percent(result.retention()) + " right · "
+                    + Formats.count(result.reviews(), "review", "reviews"));
+            return new LineChart.Point(label, result.retention(), tip);
+        }).toList());
         chart.setPrefHeight(CHART_HEIGHT);
         chart.setMinHeight(CHART_HEIGHT);
         Card card = panel(header, chart);

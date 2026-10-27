@@ -237,9 +237,18 @@ final class DemoProgress implements ProgressService {
     public List<ItemStats> itemStats(String courseId) {
         synchronized (store) {
             store.course(courseId);
-            return store.itemsOf(courseId).stream().map(this::stats).toList();
+            return store.itemsOf(courseId).stream().filter(item -> item.status() == ItemStatus.APPROVED)
+                    .map(this::stats).sorted(HARDEST_FIRST).toList();
         }
     }
+
+    /** Hardest (lowest accuracy) first, questions without answers last, then most answered, then by prompt. */
+    private static final Comparator<ItemStats> HARDEST_FIRST = Comparator
+            .comparing((ItemStats s) -> s.accuracy() == null ? 1 : 0)
+            .thenComparing(s -> s.accuracy() == null ? 0.0 : s.accuracy())
+            .thenComparing(Comparator.comparingInt(ItemStats::attempts).reversed())
+            .thenComparing(s -> s.prompt().toLowerCase(java.util.Locale.ROOT))
+            .thenComparing(ItemStats::itemId);
 
     @Override
     public ItemStats itemStatsFor(String itemId) {

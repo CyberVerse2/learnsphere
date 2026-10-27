@@ -38,9 +38,10 @@ import org.kordamp.ikonli.feather.Feather;
 
 /**
  * For a course made in this profile: how each question is answered. The questions missed most come first as
- * rows that open the question in the Studio, then accuracy per question as bars (hardest first), then, when
- * the creator imported their class's progress, the concepts the class finds hard and each learner's results.
- * Accuracy comes from the class when it has answered a question, otherwise from the creator's own answers.
+ * rows, then accuracy per question as bars (hardest first), then, when the creator imported their class's
+ * progress, the concepts the class finds hard and each learner's results. A row or a bar opens the course in
+ * the Studio on that question ({@link edu.learnsphere.app.ui.Destination.Studio#question}). Accuracy comes from
+ * the class when it has answered a question, otherwise from the creator's own answers.
  */
 final class CreatorSection {
 
@@ -51,8 +52,14 @@ final class CreatorSection {
 
     /** What the section can do. */
     interface Actions {
-        /** Opens a question in the Studio. */
+        /** Opens the course in the Studio on one of its questions. */
         void openQuestion(String itemId);
+
+        /** Opens the course in the Studio. */
+        void openStudio();
+
+        /** Opens the Studio's review queue, where drafts are approved. */
+        void openReviewQueue();
 
         /** Opens the Studio's Publish and share tab, where class progress is imported. */
         void publishAndShare();
@@ -94,20 +101,19 @@ final class CreatorSection {
     static VBox of(CreatorStats stats, Actions actions, boolean primaryFree) {
         Objects.requireNonNull(actions, "actions");
         List<Answered> answered = answered(stats.items());
-        SectionHeader header = SectionHeader.large("Your questions").subtitle(stats.items().isEmpty()
-                ? "Questions you approve appear here with how often they're answered correctly."
-                : "How each question is answered, hardest first. Open one to change it in the Studio.");
+        SectionHeader header = SectionHeader.large("Your questions");
         VBox section = new VBox(16, header);
         section.getStyleClass().add("creator-section");
 
         if (stats.items().isEmpty() || answered.isEmpty()) {
+            // The card below says what will appear and how to get there; a subtitle would only repeat it.
             EmptyState empty = stats.items().isEmpty()
                     ? new EmptyState(EmptyIllustration.Kind.QUESTIONS, "No questions to study yet",
                             "Approve questions in the review queue, then see here how they're answered.")
                     : new EmptyState(EmptyIllustration.Kind.QUESTIONS, "No answers yet",
                             "Try your questions yourself, or import your class's progress, to see which ones are missed most.");
             if (stats.items().isEmpty()) {
-                button(empty, primaryFree, "Open the review queue", () -> actions.openQuestion(null));
+                button(empty, primaryFree, "Open the review queue", actions::openReviewQueue);
             } else {
                 button(empty, primaryFree, "Study it yourself", actions::studyCourse);
                 empty.secondary("Publish and share", actions::publishAndShare);
@@ -119,6 +125,7 @@ final class CreatorSection {
             return section;
         }
 
+        header.subtitle("How each question is answered, hardest first.").action("Open in the Studio", actions::openStudio);
         section.getChildren().add(mostMissed(answered, stats, actions));
         section.getChildren().add(accuracyChart(answered, stats.items().size(), actions));
         section.getChildren().add(stats.hasClass() ? classCard(stats.classInsights()) : classHint(actions));
@@ -197,7 +204,7 @@ final class CreatorSection {
         row.getStyleClass().add("question-row");
         row.setFocusTraversable(true);
         row.setAccessibleRole(AccessibleRole.BUTTON);
-        row.setAccessibleText(s.prompt() + ". " + Formats.percent(a.accuracy()) + " right. Open in the Studio.");
+        row.setAccessibleText(s.prompt() + ". " + Formats.percent(a.accuracy()) + " right. Opens the course in the Studio.");
         row.setOnMouseClicked(event -> actions.openQuestion(s.itemId()));
         row.setOnKeyPressed(event -> {
             if (event.getCode() == KeyCode.ENTER || event.getCode() == KeyCode.SPACE) {
@@ -257,18 +264,17 @@ final class CreatorSection {
         fill.accept(false);
 
         int unanswered = total - answered.size();
-        List<String> notes = new ArrayList<>();
-        if (unanswered > 0) {
-            notes.add(Formats.count(unanswered, "question", "questions") + " not answered yet");
+        boolean more = answered.size() > CHART_LIMIT;
+        if (unanswered == 0 && !more) {
+            return card;
         }
-        notes.add("Click a question to open it in the Studio");
-        Label note = new Label(String.join(" · ", notes));
+        Label note = new Label(unanswered > 0 ? Formats.count(unanswered, "question", "questions") + " not answered yet" : "");
         note.getStyleClass().add("text-caption");
         Region gap = new Region();
         HBox.setHgrow(gap, Priority.ALWAYS);
         HBox footer = new HBox(12, note, gap);
         footer.setAlignment(Pos.CENTER_LEFT);
-        if (answered.size() > CHART_LIMIT) {
+        if (more) {
             Button toggle = new Button("Show all " + answered.size() + " questions", Icons.of(Feather.CHEVRON_DOWN, 14));
             toggle.getStyleClass().addAll("quiet", "small", "show-all");
             toggle.setContentDisplay(ContentDisplay.RIGHT);

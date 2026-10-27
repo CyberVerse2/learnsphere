@@ -1,6 +1,5 @@
 package edu.learnsphere.app.ui.progress;
 
-import edu.learnsphere.core.model.ItemStatus;
 import edu.learnsphere.core.service.ClassInsightSummary;
 import edu.learnsphere.core.service.ConceptMastery;
 import edu.learnsphere.core.service.CourseFilter;
@@ -85,9 +84,7 @@ record ProgressData(CourseProgress progress, double retentionGoal, List<DayActiv
         CourseSummary course = ws.courses().summary(courseId);
         CreatorStats creator = null;
         if (course.createdHere()) {
-            List<ItemStats> approved = ws.progress().itemStats(courseId).stream()
-                    .filter(item -> item.status() == ItemStatus.APPROVED).toList();
-            creator = new CreatorStats(approved, classInsights(ws, courseId));
+            creator = new CreatorStats(ws.progress().itemStats(courseId), classInsights(ws, courseId));
         }
         return new ProgressData(progress, goal, List.of(), ws.courses().list(CourseFilter.studying()), course, Map.of(),
                 creator);

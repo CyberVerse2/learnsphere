@@ -2,7 +2,10 @@ package edu.learnsphere.app.ui.components.charts;
 
 import edu.learnsphere.app.theme.Motion;
 import edu.learnsphere.app.theme.Typography;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.function.IntConsumer;
 import javafx.animation.Animation;
@@ -85,6 +88,20 @@ public abstract class CanvasChart extends Region {
     private static final double TIP_OVERHANG = 28;
     /** Tooltips wrap beyond this width. */
     static final double MAX_TIP_WIDTH = 280;
+    /** Text widths remembered by {@link #textWidth(String, Font)}. */
+    static final int WIDTH_CACHE_SIZE = 1024;
+
+    private record WidthKey(String text, Font font) {
+    }
+
+    /** The most recently measured widths, least recently used dropped first. */
+    private static final Map<WidthKey, Double> WIDTHS = Collections.synchronizedMap(
+            new LinkedHashMap<>(256, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<WidthKey, Double> eldest) {
+                    return size() > WIDTH_CACHE_SIZE;
+                }
+            });
 
     private static final StyleablePropertyFactory<CanvasChart> FACTORY =
             new StyleablePropertyFactory<>(Region.getClassCssMetaData());
@@ -244,23 +261,53 @@ public abstract class CanvasChart extends Region {
         return sansMedium(12);
     }
 
-    /** The width of {@code value} in {@code font}. */
+    /**
+     * The width of {@code value} in {@code font}. Widths are remembered (the most recent
+     * {@value #WIDTH_CACHE_SIZE}), as charts measure the same labels again on every frame of their entrance.
+     */
     protected static double textWidth(String value, Font font) {
+        WidthKey key = new WidthKey(value, font);
+        Double known = WIDTHS.get(key);
+        if (known != null) {
+            return known;
+        }
         Text t = new Text(value);
         t.setFont(font);
-        return t.getLayoutBounds().getWidth();
+        double width = t.getLayoutBounds().getWidth();
+        WIDTHS.put(key, width);
+        return width;
     }
 
-    /** {@code value} shortened with an ellipsis to fit {@code width} (unchanged when it fits). */
+    /**
+     * {@code value} shortened with an ellipsis to fit {@code width} (unchanged when it fits): the longest start
+     * of it that fits, found by halving the range, so a long label costs a handful of measurements.
+     */
     static String fit(String value, Font font, double width) {
-        if (textWidth(value, font) <= width) {
+        if (value.isEmpty() || textWidth(value, font) <= width) {
             return value;
         }
-        String shortened = value;
-        while (shortened.length() > 1 && textWidth(shortened.strip() + "…", font) > width) {
-            shortened = shortened.substring(0, shortened.length() - 1);
+        int low = 1;
+        int high = value.length() - 1;
+        int best = 1;
+        while (low <= high) {
+            int middle = (low + high) >>> 1;
+            if (textWidth(start(value, middle) + "…", font) <= width) {
+                best = middle;
+                low = middle + 1;
+            } else {
+                high = middle - 1;
+            }
         }
-        return shortened.strip() + "…";
+        return start(value, best) + "…";
+    }
+
+    /** The first {@code length} characters of {@code value} without trailing space, never half a character. */
+    private static String start(String value, int length) {
+        int end = length;
+        if (end < value.length() && Character.isHighSurrogate(value.charAt(end - 1))) {
+            end = end > 1 ? end - 1 : end + 1;
+        }
+        return value.substring(0, end).strip();
     }
 
     /** {@code position} moved onto the middle of a pixel, where a 1 px line is sharp. */

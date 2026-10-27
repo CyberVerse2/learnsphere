@@ -31,6 +31,8 @@ final class MasterySection {
 
     /** Concepts shown before "Show all". */
     static final int LIMIT = 8;
+    /** How far the footer moves up into the card's spacing. */
+    private static final double FOOTER_PULL = -18;
 
     private final List<ConceptMastery> measured;
     private final long unmeasured;
@@ -132,8 +134,9 @@ final class MasterySection {
         HBox footer = new HBox(12, note, gap);
         footer.setAlignment(Pos.CENTER_LEFT);
         footer.getStyleClass().add("mastery-footer");
-        // The marker's label already leaves room under the bars.
-        VBox.setMargin(footer, new Insets(-8, 0, 0, 0));
+        // The marker's label already leaves room under the bars, and the footer's text sits in the middle of
+        // a button-high row: pull it up so the note follows the "60%" at the card's usual rhythm.
+        VBox.setMargin(footer, new Insets(FOOTER_PULL, 0, 0, 0));
         if (more) {
             Button toggle = new Button();
             toggle.getStyleClass().addAll("quiet", "small", "show-all");

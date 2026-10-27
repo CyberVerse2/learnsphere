@@ -218,6 +218,25 @@ class ChartInteractionTest {
         assertThat(fitted).endsWith("…").hasSizeLessThan(name.length());
         assertThat(CanvasChart.textWidth(fitted, font)).isLessThanOrEqualTo(120);
         assertThat(CanvasChart.fit("Paging", font, 120)).isEqualTo("Paging");
+        assertThat(CanvasChart.fit("", font, 0)).isEmpty();
+        assertThat(CanvasChart.fit("Paging", font, 1)).as("at least one letter").isEqualTo("P…");
+    }
+
+    @Test
+    void shorteningKeepsTheLongestStartThatFits(FxRobot robot) {
+        Font font = CanvasChart.sans(13);
+        String prompt = "Which scheduling algorithm can starve long processes when short ones keep arriving, and why?";
+        for (double width : new double[] {40, 96, 160, 233, 320}) {
+            // Every start of the prompt, longest first, as a plain search would try them.
+            String expected = null;
+            for (int length = prompt.length() - 1; length >= 1 && expected == null; length--) {
+                String candidate = prompt.substring(0, length).strip() + "…";
+                if (CanvasChart.textWidth(candidate, font) <= width) {
+                    expected = candidate;
+                }
+            }
+            assertThat(CanvasChart.fit(prompt, font, width)).as("at %s px", width).isEqualTo(expected);
+        }
     }
 
     @Test

@@ -3,6 +3,7 @@ package edu.learnsphere.app.ui.components.charts;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import javafx.geometry.Point2D;
 import javafx.geometry.VPos;
 import javafx.scene.canvas.GraphicsContext;
@@ -12,6 +13,9 @@ import javafx.scene.text.TextAlignment;
  * A small strip of the last seven days: each day is a rounded pill that fills from the bottom with the
  * reviews done that day, the count written above and the weekday initial below. Today is outlined in the
  * accent. Days with no reviews show an empty pill, so gaps in a streak are easy to see.
+ *
+ * <p>A day without its own {@link Day#tip() tooltip} is named from its place before today ("Today",
+ * "Yesterday", "3 days ago"), as a one-letter label can't tell Tuesday from Thursday.
  */
 public final class WeekStrip extends CanvasChart {
 
@@ -21,7 +25,7 @@ public final class WeekStrip extends CanvasChart {
      * @param label short day label, e.g. "M"
      * @param count reviews done that day
      * @param today true for today
-     * @param tip   the tooltip, or null for the label and the count
+     * @param tip   the tooltip, or null to name the day from its place before today
      */
     public record Day(String label, int count, boolean today, Tip tip) {
         public Day {
@@ -34,10 +38,26 @@ public final class WeekStrip extends CanvasChart {
         public Day(String label, int count, boolean today) {
             this(label, count, today, null);
         }
+    }
 
-        Tip tooltip() {
-            return tip != null ? tip : new Tip(label, count == 1 ? "1 review" : count + " reviews");
+    /**
+     * The tooltip of day {@code index} of {@code days}: its own, else its place before today, or its label
+     * when no day is today.
+     */
+    static Tip tipOf(List<Day> days, int index) {
+        Day day = days.get(index);
+        if (day.tip() != null) {
+            return day.tip();
         }
+        String value = day.count() == 0 ? "No reviews" : day.count() == 1 ? "1 review" : day.count() + " reviews";
+        int today = -1;
+        for (int i = 0; i < days.size() && today < 0; i++) {
+            today = days.get(i).today() ? i : -1;
+        }
+        int before = today - index;
+        String when = today < 0 || before < 0 ? day.label()
+                : before == 0 ? "Today" : before == 1 ? "Yesterday" : before + " days ago";
+        return new Tip(when, value);
     }
 
     static final double PILL_WIDTH = 22;
@@ -147,11 +167,12 @@ public final class WeekStrip extends CanvasChart {
 
     @Override
     protected Tip tipOf(int index) {
-        return days.get(index).tooltip();
+        return tipOf(days, index);
     }
 
     @Override
     protected String describe() {
-        return days.stream().map(d -> d.label() + " " + d.count()).collect(Collectors.joining(", "));
+        return IntStream.range(0, days.size()).mapToObj(i -> tipOf(days, i))
+                .map(tip -> tip.title() + " " + tip.value()).collect(Collectors.joining(", "));
     }
 }

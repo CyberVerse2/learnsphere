@@ -87,15 +87,31 @@ public sealed interface Destination {
      * The Studio.
      *
      * @param courseId the course being edited, or null for the list of courses created here
+     * @param itemId   one question of the course to show in the {@link StudioTab#REVIEW review queue},
+     *                 whatever its status (approved, draft, rejected or retired), or null
      */
-    record Studio(String courseId, StudioTab tab) implements Destination {
+    record Studio(String courseId, StudioTab tab, String itemId) implements Destination {
         public Studio {
             Objects.requireNonNull(tab, "tab");
+            if (itemId != null && courseId == null) {
+                throw new IllegalArgumentException("A question is shown within its course");
+            }
+        }
+
+        /** A tab of a course, or the list of courses created here when {@code courseId} is null. */
+        public Studio(String courseId, StudioTab tab) {
+            this(courseId, tab, null);
         }
 
         /** The list of courses created here. */
         public static Studio courses() {
             return new Studio(null, StudioTab.DETAILS);
+        }
+
+        /** One question of a course in the review queue, to read and change whatever its status. */
+        public static Studio question(String courseId, String itemId) {
+            return new Studio(Objects.requireNonNull(courseId, "courseId"), StudioTab.REVIEW,
+                    Objects.requireNonNull(itemId, "itemId"));
         }
 
         @Override
