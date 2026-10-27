@@ -94,6 +94,15 @@ class RuntimeDiscoveryTest {
     }
 
     @Test
+    void readingWindowsMemoryElsewhereReportsUnknown() {
+        if (System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("windows")) {
+            assertThat(HardwareProbe.fromGlobalMemoryStatus()).isGreaterThan(HardwareProbe.GIB);
+        } else {
+            assertThat(HardwareProbe.fromGlobalMemoryStatus()).isZero();
+        }
+    }
+
+    @Test
     void probingThisComputerNeverFails() {
         HardwareProbe.Hardware here = HardwareProbe.probe();
         assertThat(here.processors()).isPositive();
@@ -157,8 +166,9 @@ class RuntimeDiscoveryTest {
 
         ModelCatalog unknown = ModelCatalog.scan(Optional.of(runtime),
                 new HardwareProbe.Hardware(Optional.of(TestRuntime.PLATFORM), 0, 8));
-        assertThat(unknown.availableModels()).contains(ModelChoice.CHAT_9B);
+        assertThat(unknown.availableModels()).containsExactly(ModelChoice.CHAT_4B);
         assertThat(unknown.recommendedModel()).isEqualTo(ModelChoice.CHAT_4B);
+        assertThat(unknown.problem(ModelChoice.CHAT_9B)).hasValueSatisfying(p -> assertThat(p).contains("memory"));
     }
 
     @Test

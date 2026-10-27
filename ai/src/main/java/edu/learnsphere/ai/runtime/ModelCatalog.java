@@ -33,7 +33,8 @@ import org.slf4j.LoggerFactory;
  * </pre>
  *
  * <p>Model choice: a chat model is available when its files, the server, and the embedding and reranking
- * models exist; the 9B model also needs {@value #MIN_GIB_9B} GiB of memory (or unknown memory).
+ * models exist; the 9B model also needs at least {@value #MIN_GIB_9B} GiB of memory, so it is not offered when
+ * memory is unknown.
  * {@link ModelChoice#AUTO} resolves to the 9B model only with {@value #RECOMMEND_GIB_9B} GiB or more,
  * otherwise to the 4B model.
  */
@@ -151,7 +152,7 @@ public final class ModelCatalog {
         if (chat4b.isPresent()) {
             available.add(ModelChoice.CHAT_4B);
         }
-        if (chat9b.isPresent() && (!hardware.memoryKnown() || hardware.hasAtLeastGib(MIN_GIB_9B))) {
+        if (chat9b.isPresent() && hardware.hasAtLeastGib(MIN_GIB_9B)) {
             available.add(ModelChoice.CHAT_9B);
         }
         return available;

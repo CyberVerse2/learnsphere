@@ -1,6 +1,15 @@
 package edu.learnsphere.ai.runtime;
 
 import java.io.IOException;
+import java.lang.foreign.Arena;
+import java.lang.foreign.FunctionDescriptor;
+import java.lang.foreign.Linker;
+import java.lang.foreign.MemoryLayout;
+import java.lang.foreign.MemorySegment;
+import java.lang.foreign.StructLayout;
+import java.lang.foreign.SymbolLookup;
+import java.lang.foreign.ValueLayout;
+import java.lang.invoke.MethodHandle;
 import java.lang.management.ManagementFactory;
 import java.lang.management.OperatingSystemMXBean;
 import java.lang.reflect.Method;
@@ -19,13 +28,27 @@ import org.slf4j.LoggerFactory;
  * Reads what the computer offers for running models: platform, total memory and processor count.
  *
  * <p>Total memory comes from the JDK's operating-system bean when the {@code jdk.management} module is
- * present, otherwise from {@code sysctl hw.memsize} (macOS) or {@code /proc/meminfo} (Linux). When none of
- * these works it is reported as 0 (unknown), and model choice falls back to the smaller model.
+ * present, otherwise from {@code sysctl hw.memsize} (macOS), {@code /proc/meminfo} (Linux) or
+ * {@code GlobalMemoryStatusEx} in kernel32 through the foreign function API (Windows; needs native access,
+ * which the app enables). When none of these works it is reported as 0 (unknown), and only the smaller
+ * model is offered.
  */
 public final class HardwareProbe {
 
     private static final Logger LOG = LoggerFactory.getLogger(HardwareProbe.class);
     private static final Pattern MEMINFO_TOTAL = Pattern.compile("MemTotal:\\s+(\\d+)\\s+kB");
+
+    /** {@code MEMORYSTATUSEX} from the Windows API; {@code ullTotalPhys} is physical memory in bytes. */
+    private static final StructLayout MEMORY_STATUS = MemoryLayout.structLayout(
+            ValueLayout.JAVA_INT.withName("dwLength"),
+            ValueLayout.JAVA_INT.withName("dwMemoryLoad"),
+            ValueLayout.JAVA_LONG.withName("ullTotalPhys"),
+            ValueLayout.JAVA_LONG.withName("ullAvailPhys"),
+            ValueLayout.JAVA_LONG.withName("ullTotalPageFile"),
+            ValueLayout.JAVA_LONG.withName("ullAvailPageFile"),
+            ValueLayout.JAVA_LONG.withName("ullTotalVirtual"),
+            ValueLayout.JAVA_LONG.withName("ullAvailVirtual"),
+            ValueLayout.JAVA_LONG.withName("ullAvailExtendedVirtual"));
 
     /** One gibibyte in bytes. */
     public static final long GIB = 1024L * 1024 * 1024;
@@ -83,7 +106,42 @@ public final class HardwareProbe {
         if (os.contains("linux")) {
             return fromMeminfo(Path.of("/proc/meminfo"));
         }
+        if (os.contains("windows")) {
+            return fromGlobalMemoryStatus();
+        }
         return 0;
+    }
+
+    /** {@code BOOL GlobalMemoryStatusEx(LPMEMORYSTATUSEX)} in kernel32, called through the foreign function API. */
+    @SuppressWarnings("restricted")
+    static long fromGlobalMemoryStatus() {
+        try (Arena arena = Arena.ofConfined()) {
+            Linker linker = Linker.nativeLinker();
+            MemorySegment function = SymbolLookup.libraryLookup("kernel32", arena)
+                    .find("GlobalMemoryStatusEx")
+                    .orElse(null);
+            if (function == null) {
+                return 0;
+            }
+            MethodHandle globalMemoryStatusEx = linker.downcallHandle(function,
+                    FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+            MemorySegment status = arena.allocate(MEMORY_STATUS);
+            status.set(ValueLayout.JAVA_INT, MEMORY_STATUS.byteOffset(MemoryLayout.PathElement.groupElement("dwLength")),
+                    (int) MEMORY_STATUS.byteSize());
+            int ok = (int) globalMemoryStatusEx.invokeExact(status);
+            if (ok == 0) {
+                return 0;
+            }
+            long total = status.get(ValueLayout.JAVA_LONG,
+                    MEMORY_STATUS.byteOffset(MemoryLayout.PathElement.groupElement("ullTotalPhys")));
+            return Math.max(total, 0);
+        } catch (VirtualMachineError e) {
+            throw e;
+        } catch (Throwable e) {
+            // Not Windows, native access disabled, or the call unavailable: memory stays unknown.
+            LOG.debug("GlobalMemoryStatusEx failed", e);
+            return 0;
+        }
     }
 
     /** {@code com.sun.management.OperatingSystemMXBean#getTotalMemorySize}, looked up reflectively. */
