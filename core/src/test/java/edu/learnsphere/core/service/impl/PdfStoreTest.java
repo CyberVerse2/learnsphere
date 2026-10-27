@@ -91,6 +91,27 @@ class PdfStoreTest {
         assertThat(store.contains(kept.fileSha256())).isFalse();
     }
 
+    @Test
+    void deletesCopiesAnEarlierRunLeftHalfWritten() throws IOException {
+        Document document = document(PdfStore.sha256(source));
+        Path stored = Files.writeString(store.file(document.fileSha256()), "abc");
+        Path image = Files.writeString(store.renderFile(document.id(), 1, 1f), "png");
+        Path halfImported = Files.writeString(paths.filesDir().resolve(PdfStore.IMPORT_PREFIX + "123"
+                + PdfStore.PARTIAL_SUFFIX), "ab");
+        Path halfRendered = Files.writeString(image.resolveSibling(PdfStore.RENDER_PREFIX + "456"
+                + PdfStore.PARTIAL_SUFFIX), "pn");
+        Path unrelated = Files.writeString(paths.filesDir().resolve("notes.partial"), "keep");
+
+        PdfStore reopened = new PdfStore(paths, t.repos.documents());
+
+        assertThat(halfImported).doesNotExist();
+        assertThat(halfRendered).doesNotExist();
+        assertThat(stored).hasContent("abc");
+        assertThat(image).hasContent("png");
+        assertThat(unrelated).exists();
+        assertThat(reopened.removeLeftovers()).isZero();
+    }
+
     private Document document(String sha) {
         Course course = t.course("Biology " + Ids.newId());
         Document document = Document.queued(course.id(), null, "Notes", "Notes.pdf", sha, 3, t.now());

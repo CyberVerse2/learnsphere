@@ -9,8 +9,10 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.DirectoryStream;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.security.DigestInputStream;
@@ -38,6 +40,11 @@ import org.slf4j.LoggerFactory;
  * removes the files no document uses any more. So a file is never deleted while a document that needs it is
  * being added.
  *
+ * <p>Copies in progress are written under temporary names ({@code files/.import-*.partial} and
+ * {@code renders/<documentId>/.render-*.partial}) and moved into place when complete. Copies left behind by a
+ * run that stopped part-way are deleted when the store is created, as the profile opens, so they are never
+ * kept or backed up.
+ *
  * <p>Thread-safe.
  */
 public final class PdfStore {
@@ -49,13 +56,25 @@ public final class PdfStore {
 
     static final UserMessage COPY_FAILED = UserMessage.of("This PDF couldn't be added. Try again.");
 
+    /** Name prefix of a PDF being copied into {@code files/}. */
+    static final String IMPORT_PREFIX = ".import-";
+    /** Name prefix of a page image being written under {@code renders/<documentId>/}. */
+    static final String RENDER_PREFIX = ".render-";
+    /** Name suffix of every copy in progress. */
+    static final String PARTIAL_SUFFIX = ".partial";
+
     private final AppPaths.ProfilePaths paths;
     private final DocumentRepository documents;
     private final ReentrantLock lock = new ReentrantLock();
 
+    /**
+     * The store of an opened profile. Deletes copies a previous run left half-written (see the class
+     * description); create it before anything adds documents or renders pages.
+     */
     public PdfStore(AppPaths.ProfilePaths paths, DocumentRepository documents) {
         this.paths = Objects.requireNonNull(paths, "paths");
         this.documents = Objects.requireNonNull(documents, "documents");
+        removeLeftovers();
     }
 
     /**
@@ -106,7 +125,7 @@ public final class PdfStore {
         try {
             long size = Files.size(source);
             requireSpace(folder, size);
-            copy = Files.createTempFile(folder, ".import-", ".partial");
+            copy = Files.createTempFile(folder, IMPORT_PREFIX, PARTIAL_SUFFIX);
             MessageDigest digest = sha256Digest();
             long copied;
             try (InputStream in = new DigestInputStream(Files.newInputStream(source), digest);
@@ -213,6 +232,46 @@ public final class PdfStore {
         return hex(digest.digest());
     }
 
+    /**
+     * Deletes half-written copies left by a run that stopped part-way: {@code files/.import-*.partial} and
+     * {@code renders/<documentId>/.render-*.partial}. Problems are logged, never thrown. Returns how many
+     * files were deleted.
+     */
+    int removeLeftovers() {
+        int removed = 0;
+        try {
+            removed += removePartials(paths.filesDir(), IMPORT_PREFIX);
+            try (DirectoryStream<Path> folders = Files.newDirectoryStream(paths.rendersDir(),
+                    path -> Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS))) {
+                for (Path folder : folders) {
+                    try {
+                        removed += removePartials(folder, RENDER_PREFIX);
+                    } catch (IOException e) {
+                        LOG.warn("Could not look for unfinished page images in {}", folder, e);
+                    }
+                }
+            }
+        } catch (IOException | UncheckedIOException e) {
+            LOG.warn("Could not look for unfinished copies in the profile folder", e);
+        }
+        if (removed > 0) {
+            LOG.info("Deleted {} unfinished copies left by an earlier run", removed);
+        }
+        return removed;
+    }
+
+    private static int removePartials(Path folder, String prefix) throws IOException {
+        int removed = 0;
+        try (DirectoryStream<Path> partials = Files.newDirectoryStream(folder, prefix + "*" + PARTIAL_SUFFIX)) {
+            for (Path partial : partials) {
+                if (Files.isRegularFile(partial, LinkOption.NOFOLLOW_LINKS) && deleteQuietly(partial)) {
+                    removed++;
+                }
+            }
+        }
+        return removed;
+    }
+
     private void deleteUnused(Set<String> hashes) {
         for (String sha : hashes) {
             if (documents.countBySha(sha) == 0) {
@@ -260,14 +319,16 @@ public final class PdfStore {
         return java.util.HexFormat.of().formatHex(bytes);
     }
 
-    private static void deleteQuietly(Path file) {
+    /** Deletes {@code file} if it exists; true when it was deleted. Problems are logged. */
+    private static boolean deleteQuietly(Path file) {
         if (file == null) {
-            return;
+            return false;
         }
         try {
-            Files.deleteIfExists(file);
+            return Files.deleteIfExists(file);
         } catch (IOException e) {
             LOG.warn("Could not delete {}", file, e);
+            return false;
         }
     }
 }
