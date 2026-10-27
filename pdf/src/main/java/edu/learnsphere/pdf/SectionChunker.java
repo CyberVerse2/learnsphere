@@ -15,11 +15,11 @@ import java.util.Objects;
  *   <li><b>Sections.</b> Headings are found with {@link HeadingDetector} (larger or bold type than the
  *       document's body text, section numbers such as "3.2", Markdown headings on pages read from images). A
  *       passage starts at each heading, which is kept as the passage's first line, and every passage carries
- *       the heading it falls under as its section title: the nearest heading above the passage's first line
- *       (or, for text before the first heading, the first heading in the passage). A section too short to
- *       stand alone (under a quarter of the target) runs on into the next one in the same passage. A short end
- *       of a long section is added to the section's last passage instead, so the next section starts
- *       cleanly.</li>
+ *       the heading it falls under as its section title: the nearest heading above the passage's first
+ *       sentence (or, for text before the first heading, the first heading in the passage). A section too
+ *       short to stand alone (under a quarter of the target) runs on into the next one in the same passage. A
+ *       short end of a long section is added to the section's last passage instead, so the next section
+ *       starts cleanly.</li>
  *   <li><b>Size.</b> Passages grow sentence by sentence to about {@code targetTokens} (measured with
  *       {@link TokenEstimator}) and never end inside a sentence. A sentence longer than the target is cut at
  *       word boundaries, preferring a comma or semicolon. The next passage repeats the previous one's last
@@ -420,10 +420,20 @@ public final class SectionChunker implements Chunker {
         }
 
         /**
-         * The heading in force where the passage starts; for text before the document's first heading, the
-         * first heading inside the passage, if any.
+         * The heading in force where the passage's text starts: the nearest heading above its first sentence,
+         * so a passage that opens with "Chapter 1" and "1.1 Membranes" is named "1.1 Membranes". For text
+         * before the document's first heading (or a passage of headings only), the first heading in the
+         * passage, if any.
          */
         private static String sectionTitle(List<Unit> units) {
+            for (Unit unit : units) {
+                if (unit.kind == Kind.TEXT) {
+                    if (unit.section != null) {
+                        return unit.section;
+                    }
+                    break;
+                }
+            }
             for (Unit unit : units) {
                 if (unit.section != null) {
                     return unit.section;
