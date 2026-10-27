@@ -56,6 +56,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
@@ -614,5 +615,25 @@ class PracticeServiceImplTest {
         assertThat(there.courseId()).isEqualTo(other.id());
         assertThat(practice.studyNext(null).newCount()).isEqualTo(1);
         assertThat(practice.studyNext(null).courseId()).isNull();
+    }
+
+    @Test
+    void nextReviewsPreviewEachRatingWithoutRecordingIt() {
+        LearningItem card = item(ItemType.FLASHCARD, "Where is the DNA kept?");
+        StudySession session = start(SessionRequest.flashcards(course.id(), null));
+
+        Map<Rating, Long> preview = practice.nextReviews(card.id());
+
+        assertThat(preview).containsOnlyKeys(Rating.values());
+        assertThat(preview.get(Rating.AGAIN)).isLessThan(preview.get(Rating.GOOD));
+        assertThat(preview.get(Rating.GOOD)).isLessThan(preview.get(Rating.EASY));
+        assertThat(t.repos.reviews().find(card.id())).as("nothing recorded").isEmpty();
+        assertThat(t.repos.sessions().listAttemptsForSession(session.id())).isEmpty();
+
+        Feedback rated = practice.submit(session.id(), Response.flashcard(card.id(), Rating.GOOD, 1_000));
+        assertThat(rated.nextDueAt()).isEqualTo(preview.get(Rating.GOOD));
+        assertThat(practice.nextReviews(card.id()).get(Rating.GOOD)).as("follows the new review state")
+                .isGreaterThan(preview.get(Rating.GOOD));
+        assertThatThrownBy(() -> practice.nextReviews(Ids.newId())).isInstanceOf(NotFoundException.class);
     }
 }

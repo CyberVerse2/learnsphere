@@ -3,6 +3,8 @@ package edu.learnsphere.core.service;
 import edu.learnsphere.core.error.InvalidInputException;
 import edu.learnsphere.core.error.NotFoundException;
 import edu.learnsphere.core.error.UnavailableException;
+import edu.learnsphere.core.model.Rating;
+import java.util.Map;
 
 /**
  * Study sessions, grading and spaced-review scheduling (FSRS-6). Recording answers publishes
@@ -47,6 +49,19 @@ public interface PracticeService {
 
     /** Finishes the session and summarizes it. Unanswered items stay as they were. */
     SessionSummary finish(String sessionId);
+
+    /**
+     * When an item would come back for each rating, without recording anything: what the flashcard rating
+     * buttons show ("Good · 4 days"). Computed from the item's review state now, exactly as {@link #submit}
+     * would schedule it.
+     *
+     * <p>The default returns an empty map, and the rating buttons then show no times.
+     *
+     * @return the due time (epoch millis) for each rating
+     */
+    default Map<Rating, Long> nextReviews(String itemId) {
+        return Map.of();
+    }
 
     /**
      * Disputes an AI grade: the attempt is re-rated Good and marked disputed, and the item rescheduled.

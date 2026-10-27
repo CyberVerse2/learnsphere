@@ -55,6 +55,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -413,6 +414,21 @@ public final class PracticeServiceImpl implements PracticeService {
         }
         changes.sort(Comparator.comparingDouble(ConceptChange::delta).reversed().thenComparing(ConceptChange::name));
         return changes;
+    }
+
+    // ---- next reviews -------------------------------------------------------------------------
+
+    @Override
+    public Map<Rating, Long> nextReviews(String itemId) {
+        LearningItem item = repos.items().get(itemId);
+        long now = clock.millis();
+        ReviewState current = repos.reviews().find(item.id()).orElse(ReviewState.newItem(item.id(), now));
+        FsrsScheduler scheduler = scheduler();
+        Map<Rating, Long> due = new EnumMap<>(Rating.class);
+        for (Rating rating : Rating.values()) {
+            due.put(rating, scheduler.review(current, rating, now).dueAt());
+        }
+        return Collections.unmodifiableMap(due);
     }
 
     // ---- dispute ------------------------------------------------------------------------------

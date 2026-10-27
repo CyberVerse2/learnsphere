@@ -1,0 +1,781 @@
+/*
+ * The study session (focus mode). Added to the study page's root, after the theme stylesheet, so a rule here
+ * wins over a theme rule of the same specificity. Only -ls-* tokens; font faces come from the Typography face
+ * classes set in code (.medium, .semibold, .serif, .serif-medium, .serif-italic).
+ *
+ * The look: the question is the page. Chrome is a slim bar, a quiet top line and a key legend at the foot.
+ * Explanations sit as a gloss in the margin of the material (a thin rule beside reading type), and a
+ * flashcard is an index card with its header rule.
+ */
+
+/* ---- Frame ---------------------------------------------------------------------------------------- */
+
+.study-page {
+    -fx-background-color: -ls-bg;
+}
+
+.study-top {
+    -fx-padding: 10px 24px 0 16px;
+    -fx-min-height: 52px;
+    -fx-spacing: 16px;
+}
+
+.study-where {
+    -fx-font-size: 13px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.study-counter {
+    -fx-font-size: 13px;
+    -fx-text-fill: -ls-text-muted;
+    -fx-padding: 0 8px 0 0;
+}
+
+.button.quiet.study-leave {
+    -fx-text-fill: -ls-text-muted;
+}
+
+.button.quiet.study-leave:hover {
+    -fx-text-fill: -ls-text;
+}
+
+.button.quiet.study-leave .ikonli-font-icon {
+    -fx-icon-color: -ls-text-muted;
+}
+
+.study-centring {
+    -fx-padding: 40px 48px 64px 48px;
+}
+
+.study-stage {
+    -fx-spacing: 32px;
+}
+
+.study-footer {
+    -fx-padding: 10px 24px 14px 24px;
+    -fx-min-height: 44px;
+    -fx-alignment: center;
+}
+
+/* Key caps: in the legend, beside buttons, on options. */
+.study-key {
+    -fx-background-color: -ls-border-strong, -ls-surface;
+    -fx-background-insets: 0, 1px 1px 2px 1px;
+    -fx-background-radius: 6px, 5px;
+    -fx-padding: 2px 7px 3px 7px;
+    -fx-min-width: 22px;
+    -fx-alignment: center;
+    -fx-font-size: 11px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.study-legend {
+    -fx-spacing: 22px;
+}
+
+.study-legend-action {
+    -fx-font-size: 12px;
+    -fx-text-fill: -ls-text-faint;
+}
+
+/* ---- The question --------------------------------------------------------------------------------- */
+
+.study-overline-row {
+    -fx-spacing: 12px;
+}
+
+.study-overline {
+    -fx-text-fill: -ls-accent;
+}
+
+.study-tag {
+    -fx-background-radius: 999px;
+    -fx-padding: 2px 10px 3px 10px;
+    -fx-font-size: 12px;
+    -fx-graphic-text-gap: 6px;
+}
+
+.study-tag.comeback {
+    -fx-background-color: -ls-warning-soft;
+    -fx-text-fill: -ls-warning-text;
+}
+
+.study-tag.comeback .ikonli-font-icon {
+    -fx-icon-color: -ls-warning-text;
+}
+
+.study-tag.first-time {
+    -fx-background-color: -ls-accent-soft;
+    -fx-text-fill: -ls-accent;
+}
+
+.study-prompt {
+    -fx-line-spacing: 4px;
+}
+
+/* Multiple choice: big rows. The chosen row is :chosen. */
+.study-options {
+    -fx-spacing: 12px;
+}
+
+.study-option:chosen {
+    -fx-background-color: -ls-accent, -ls-accent-soft;
+    -fx-background-insets: 0, 1.5px;
+    -fx-background-radius: 14px, 12.5px;
+    -fx-effect: null;
+}
+
+.study-option:chosen:focus-visible {
+    -fx-background-color: -ls-focus, -ls-accent, -ls-accent-soft;
+    -fx-background-insets: -4px, 0, 1.5px;
+    -fx-background-radius: 18px, 14px, 12.5px;
+}
+
+.study-option:chosen .option-key {
+    -fx-background-color: -ls-accent;
+    -fx-text-fill: -ls-on-accent;
+}
+
+.study-option.ruled-out {
+    -fx-opacity: 0.4;
+    -fx-effect: null;
+    -fx-cursor: default;
+    -fx-background-color: -ls-border, -ls-bg;
+}
+
+.study-option.ruled-out .option-text .text {
+    -fx-strikethrough: true;
+}
+
+.option-mark {
+    -fx-min-width: 24px;
+    -fx-min-height: 24px;
+}
+
+/* True or false: two tiles. */
+.study-tiles {
+    -fx-spacing: 16px;
+}
+
+.study-option.tile {
+    -fx-min-height: 96px;
+    -fx-padding: 20px 24px 20px 20px;
+}
+
+.study-option.tile .option-text {
+    -fx-font-size: 26px;
+}
+
+.study-check {
+    -fx-fill: transparent;
+    -fx-stroke: -ls-success;
+    -fx-stroke-width: 2.5px;
+    -fx-stroke-line-cap: round;
+    -fx-stroke-line-join: round;
+}
+
+/* Fill in the blank: the field sits in the sentence, underlined like a blank on paper. */
+.cloze-text {
+    -fx-font-size: 34px;
+    -fx-fill: -ls-text;
+}
+
+.text-field.study-input.cloze-field {
+    -fx-font-size: 28px;
+    -fx-text-fill: -ls-accent;
+    -fx-prompt-text-fill: -ls-text-faint;
+    -fx-background-color: -ls-border-strong, -ls-surface-sunken;
+    -fx-background-insets: 0, 0 0 2px 0;
+    -fx-background-radius: 6px 6px 0 0, 6px 6px 0 0;
+    -fx-padding: 0 10px 2px 10px;
+    -fx-min-height: 48px;
+    -fx-pref-height: 48px;
+    -fx-translate-y: 8px;
+}
+
+.text-field.study-input.cloze-field:focused {
+    -fx-background-color: -ls-accent, -ls-accent-soft;
+    -fx-background-insets: 0, 0 0 2px 0;
+}
+
+.text-field.study-input.cloze-field.correct {
+    -fx-text-fill: -ls-success-text;
+    -fx-background-color: -ls-success, -ls-success-soft;
+    -fx-background-insets: 0, 0 0 2px 0;
+    -fx-background-radius: 6px 6px 0 0, 6px 6px 0 0;
+}
+
+.text-field.study-input.cloze-field.wrong {
+    -fx-text-fill: -ls-danger-text;
+    -fx-background-color: -ls-danger, -ls-danger-soft;
+    -fx-background-insets: 0, 0 0 2px 0;
+    -fx-background-radius: 6px 6px 0 0, 6px 6px 0 0;
+}
+
+.text-field.study-input.cloze-field.wrong .text {
+    -fx-strikethrough: true;
+}
+
+.cloze-answer {
+    -fx-font-size: 28px;
+    -fx-text-fill: -ls-success-text;
+    -fx-padding: 0 4px 0 14px;
+    -fx-graphic-text-gap: 8px;
+    -fx-translate-y: 6px;
+}
+
+.cloze-answer .ikonli-font-icon {
+    -fx-icon-color: -ls-success;
+    -fx-icon-size: 20px;
+}
+
+/* Short answer. */
+.text-area.study-input.short-answer-input {
+    -fx-font-size: 18px;
+}
+
+.text-area.study-input.short-answer-input .content {
+    -fx-padding: 14px 18px 14px 18px;
+}
+
+.text-area.study-input.short-answer-input.correct,
+.text-area.study-input.short-answer-input.correct .content {
+    -fx-background-color: -ls-success-soft;
+}
+
+.text-area.study-input.short-answer-input.correct {
+    -fx-background-color: -ls-success, -ls-success-soft;
+    -fx-background-insets: 0, 1.5px;
+    -fx-background-radius: 6px, 4.5px;
+}
+
+.text-area.study-input.short-answer-input.partial {
+    -fx-background-color: -ls-warning, -ls-warning-soft;
+    -fx-background-insets: 0, 1.5px;
+    -fx-background-radius: 6px, 4.5px;
+}
+
+.text-area.study-input.short-answer-input.partial .content {
+    -fx-background-color: -ls-warning-soft;
+}
+
+.text-area.study-input.short-answer-input.wrong {
+    -fx-background-color: -ls-danger, -ls-danger-soft;
+    -fx-background-insets: 0, 1.5px;
+    -fx-background-radius: 6px, 4.5px;
+}
+
+.text-area.study-input.short-answer-input.wrong .content {
+    -fx-background-color: -ls-danger-soft;
+}
+
+.study-help {
+    -fx-text-fill: -ls-text-faint;
+}
+
+/* How sure, the hint and "Check answer". */
+.answer-row {
+    -fx-spacing: 22px;
+}
+
+.confidence-label {
+    -fx-font-size: 13px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.study-actions {
+    -fx-spacing: 12px;
+}
+
+.button.quiet.hint-button {
+    -fx-text-fill: -ls-text-muted;
+}
+
+.button.quiet.hint-button:hover {
+    -fx-text-fill: -ls-text;
+}
+
+.button.quiet.hint-button .ikonli-font-icon {
+    -fx-icon-color: -ls-text-muted;
+}
+
+.hint-callout {
+    -fx-background-color: -ls-warning-soft;
+    -fx-background-radius: 10px;
+    -fx-padding: 14px 20px 16px 20px;
+}
+
+.hint-title {
+    -fx-font-size: 12px;
+    -fx-text-fill: -ls-warning-text;
+    -fx-graphic-text-gap: 6px;
+}
+
+.hint-title .ikonli-font-icon {
+    -fx-icon-color: -ls-warning-text;
+}
+
+.hint-text {
+    -fx-text-fill: -ls-text;
+}
+
+.hint-cost {
+    -fx-text-fill: -ls-text-muted;
+}
+
+.checking {
+    -fx-min-height: 48px;
+}
+
+.checking-label {
+    -fx-font-size: 14px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.check-error {
+    -fx-font-size: 13px;
+    -fx-text-fill: -ls-danger-text;
+}
+
+/* ---- Feedback ------------------------------------------------------------------------------------- */
+
+.feedback-view {
+    -fx-spacing: 24px;
+}
+
+.feedback-panel {
+    -fx-background-color: -ls-border, -ls-surface;
+    -fx-background-insets: 0, 1px;
+    -fx-background-radius: 14px, 13px;
+    -fx-padding: 22px 28px 22px 24px;
+    -fx-spacing: 18px;
+}
+
+.feedback-panel.correct {
+    -fx-background-color: -ls-success-soft;
+    -fx-background-insets: 0;
+    -fx-background-radius: 14px;
+}
+
+.feedback-panel.wrong {
+    -fx-background-color: -ls-danger-soft;
+    -fx-background-insets: 0;
+    -fx-background-radius: 14px;
+}
+
+.feedback-panel.partial {
+    -fx-background-color: -ls-warning-soft;
+    -fx-background-insets: 0;
+    -fx-background-radius: 14px;
+}
+
+.graded-by {
+    -fx-font-size: 12px;
+    -fx-text-fill: -ls-text-muted;
+    -fx-graphic-text-gap: 6px;
+}
+
+.graded-by .ikonli-font-icon {
+    -fx-icon-color: -ls-text-muted;
+}
+
+/* The verdict: a ringed mark and the word. */
+.verdict-mark {
+    -fx-min-width: 28px;
+    -fx-min-height: 28px;
+    -fx-pref-width: 28px;
+    -fx-pref-height: 28px;
+    -fx-max-width: 28px;
+    -fx-max-height: 28px;
+    -fx-background-radius: 999px;
+    -fx-background-insets: 0, 1.5px;
+    -fx-background-color: -ls-border-strong, -ls-surface;
+}
+
+.feedback-panel.correct .verdict-mark {
+    -fx-background-color: -ls-success, -ls-success-soft;
+}
+
+.feedback-panel.wrong .verdict-mark {
+    -fx-background-color: -ls-danger, -ls-danger-soft;
+}
+
+.feedback-panel.partial .verdict-mark {
+    -fx-background-color: -ls-warning, -ls-warning-soft;
+}
+
+.verdict-icon .ikonli-font-icon {
+    -fx-icon-color: -ls-text-muted;
+    -fx-icon-size: 16px;
+}
+
+.feedback-panel.wrong .verdict-icon .ikonli-font-icon {
+    -fx-icon-color: -ls-danger;
+}
+
+.feedback-panel.partial .verdict-icon .ikonli-font-icon {
+    -fx-icon-color: -ls-warning;
+}
+
+.feedback-panel.correct .verdict-icon .ikonli-font-icon {
+    -fx-icon-color: -ls-success;
+}
+
+.verdict {
+    -fx-text-fill: -ls-text;
+}
+
+.feedback-panel.correct .verdict {
+    -fx-text-fill: -ls-success-text;
+}
+
+.feedback-panel.wrong .verdict {
+    -fx-text-fill: -ls-danger-text;
+}
+
+.feedback-panel.partial .verdict {
+    -fx-text-fill: -ls-warning-text;
+}
+
+.score {
+    -fx-background-color: -ls-surface;
+    -fx-background-radius: 999px;
+    -fx-padding: 3px 10px 3px 10px;
+    -fx-font-size: 13px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.grader-feedback {
+    -fx-font-size: 17px;
+    -fx-line-spacing: 5px;
+    -fx-text-fill: -ls-text;
+}
+
+.block-title {
+    -fx-font-size: 12px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.missing-points {
+    -fx-spacing: 6px;
+}
+
+.missing-dot {
+    -fx-text-fill: -ls-warning;
+    -fx-font-size: 15px;
+}
+
+.missing-point {
+    -fx-font-size: 15px;
+    -fx-text-fill: -ls-text;
+}
+
+.answer-block {
+    -fx-background-color: -ls-surface;
+    -fx-background-radius: 10px;
+    -fx-padding: 14px 18px 16px 18px;
+    -fx-spacing: 6px;
+}
+
+/* The gloss: an explanation (or a quoted passage) set beside a thin rule, like a note in the margin. */
+.gloss {
+    -fx-spacing: 16px;
+}
+
+.gloss-rule {
+    -fx-min-width: 2px;
+    -fx-pref-width: 2px;
+    -fx-max-width: 2px;
+    -fx-background-color: -ls-accent-muted;
+    -fx-background-radius: 1px;
+}
+
+.feedback-panel.correct .gloss-rule {
+    -fx-background-color: -ls-success;
+    -fx-opacity: 0.55;
+}
+
+.feedback-panel.wrong .gloss-rule {
+    -fx-background-color: -ls-danger;
+    -fx-opacity: 0.55;
+}
+
+.feedback-panel.partial .gloss-rule {
+    -fx-background-color: -ls-warning;
+    -fx-opacity: 0.55;
+}
+
+.explanation {
+    -fx-text-fill: -ls-text;
+}
+
+.feedback-meta {
+    -fx-spacing: 6px;
+}
+
+.button.quiet.source-link {
+    -fx-padding: 0 8px 0 0;
+    -fx-min-height: 28px;
+    -fx-pref-height: 28px;
+    -fx-text-fill: -ls-accent;
+}
+
+.button.quiet.source-link:hover {
+    -fx-background-color: transparent;
+    -fx-underline: true;
+}
+
+.button.quiet.source-link:focus-visible {
+    -fx-background-color: -ls-focus, transparent;
+    -fx-background-insets: -3px, 0;
+    -fx-background-radius: 8px, 6px;
+}
+
+.next-review {
+    -fx-font-size: 13px;
+    -fx-text-fill: -ls-text-muted;
+    -fx-graphic-text-gap: 8px;
+}
+
+.next-review .ikonli-font-icon {
+    -fx-icon-color: -ls-text-muted;
+}
+
+.dispute {
+    -fx-padding: 4px 0 0 0;
+}
+
+.feedback-actions {
+    -fx-spacing: 12px;
+    -fx-alignment: center-left;
+}
+
+/* ---- Flashcards: an index card with its header rule ----------------------------------------------- */
+
+.flashcard-view {
+    -fx-spacing: 28px;
+}
+
+.flashcard {
+    -fx-background-color: -ls-border, -ls-surface, -ls-accent-muted, -ls-surface;
+    -fx-background-insets: 0, 1px, 52px 1px 1px 1px, 54px 1px 1px 1px;
+    -fx-background-radius: 14px, 13px, 0 0 13px 13px, 0 0 13px 13px;
+    -fx-padding: 76px 56px 56px 56px;
+    -fx-min-height: 320px;
+    -fx-alignment: center;
+    -fx-effect: dropshadow(gaussian, -ls-shadow, 24, 0, 0, 8);
+}
+
+.flashcard.turned {
+    -fx-background-color: -ls-border, -ls-surface, -ls-accent-muted,
+        linear-gradient(from 0px 0px to 0px 34px, repeat, -ls-surface 0%, -ls-surface 95%, -ls-track 95%, -ls-track 100%);
+}
+
+.flashcard-face {
+    -fx-spacing: 20px;
+}
+
+.flashcard-front {
+    -fx-font-size: 32px;
+    -fx-text-alignment: center;
+}
+
+.flashcard-nudge {
+    -fx-text-fill: -ls-text-faint;
+    -fx-font-size: 13px;
+}
+
+.flashcard-front-small {
+    -fx-font-size: 17px;
+    -fx-text-fill: -ls-text-muted;
+    -fx-text-alignment: center;
+}
+
+.flashcard-rule {
+    -fx-min-width: 40px;
+    -fx-max-width: 40px;
+    -fx-min-height: 2px;
+    -fx-max-height: 2px;
+    -fx-background-color: -ls-accent;
+    -fx-background-radius: 1px;
+}
+
+.flashcard-back {
+    -fx-font-size: 22px;
+    -fx-line-spacing: 6px;
+    -fx-text-alignment: center;
+    -fx-text-fill: -ls-text;
+}
+
+.rating-question {
+    -fx-text-fill: -ls-text;
+}
+
+.rating-row {
+    -fx-spacing: 12px;
+}
+
+.button.rating-button {
+    -fx-min-height: 68px;
+    -fx-pref-height: 68px;
+    -fx-padding: 10px 16px 10px 14px;
+    -fx-alignment: center-left;
+    -fx-background-radius: 12px, 11px;
+}
+
+.button.rating-button:focus-visible {
+    -fx-background-radius: 15px, 12px, 11px;
+}
+
+.rating-name {
+    -fx-font-size: 15px;
+}
+
+.rating-interval {
+    -fx-font-size: 12px;
+    -fx-text-fill: -ls-text-muted;
+    -fx-padding: 0 0 0 30px;
+}
+
+.rating-again .rating-name {
+    -fx-text-fill: -ls-danger-text;
+}
+
+.rating-hard .rating-name {
+    -fx-text-fill: -ls-warning-text;
+}
+
+.rating-good .rating-name {
+    -fx-text-fill: -ls-success-text;
+}
+
+.rating-easy .rating-name {
+    -fx-text-fill: -ls-accent;
+}
+
+.button.rating-button.rated {
+    -fx-background-color: -ls-accent, -ls-accent-soft;
+    -fx-background-insets: 0, 1.5px;
+}
+
+.button.rating-button.dimmed {
+    -fx-opacity: 0.45;
+}
+
+/* ---- Summary -------------------------------------------------------------------------------------- */
+
+.summary {
+    -fx-spacing: 40px;
+}
+
+.summary-recap {
+    -fx-text-fill: -ls-text-muted;
+}
+
+.summary-results {
+    -fx-background-color: -ls-border, -ls-surface;
+    -fx-background-insets: 0, 1px;
+    -fx-background-radius: 14px, 13px;
+    -fx-padding: 28px 36px 28px 32px;
+    -fx-effect: dropshadow(gaussian, -ls-shadow, 24, 0, 0, 8);
+}
+
+.summary-stats {
+    -fx-hgap: 56px;
+    -fx-vgap: 22px;
+}
+
+.summary-percent {
+    -fx-font-size: 34px;
+}
+
+.summary-section {
+    -fx-spacing: 14px;
+}
+
+.improved-list {
+    -fx-spacing: 14px;
+}
+
+.improved-name {
+    -fx-font-size: 15px;
+    -fx-text-fill: -ls-text;
+}
+
+.improved-values {
+    -fx-font-size: 13px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.summary-ready {
+    -fx-text-fill: -ls-text;
+}
+
+.summary-coming {
+    -fx-text-fill: -ls-text-muted;
+}
+
+.summary-actions {
+    -fx-spacing: 12px;
+}
+
+/* ---- "From your material" beside the session ------------------------------------------------------ */
+
+.source-scrim {
+    -fx-background-color: -ls-scrim;
+}
+
+.source-sheet {
+    -fx-background-color: -ls-border, -ls-raised;
+    -fx-background-insets: 0, 0 0 0 1px;
+    -fx-padding: 24px 32px 0 32px;
+    -fx-spacing: 8px;
+    -fx-effect: dropshadow(gaussian, -ls-shadow-pop, 40, 0, -8, 0);
+}
+
+.source-overline {
+    -fx-text-fill: -ls-accent;
+}
+
+.source-title {
+    -fx-font-size: 22px;
+}
+
+.source-pager {
+    -fx-padding: 4px 0 8px 0;
+    -fx-spacing: 4px;
+}
+
+.source-page-label {
+    -fx-font-size: 13px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.source-content {
+    -fx-padding: 8px 0 32px 0;
+    -fx-spacing: 24px;
+}
+
+.source-quote {
+    -fx-text-fill: -ls-text;
+}
+
+.source-paper {
+    -fx-background-color: -ls-border, -ls-surface;
+    -fx-background-insets: -1px, 0;
+    -fx-effect: dropshadow(gaussian, -ls-shadow-hover, 18, 0, 0, 4);
+}
+
+.source-error-box {
+    -fx-spacing: 12px;
+    -fx-padding: 16px 0 0 0;
+}
+
+.source-error {
+    -fx-text-fill: -ls-danger-text;
+    -fx-graphic-text-gap: 8px;
+}
+
+.source-error .ikonli-font-icon {
+    -fx-icon-color: -ls-danger;
+}
