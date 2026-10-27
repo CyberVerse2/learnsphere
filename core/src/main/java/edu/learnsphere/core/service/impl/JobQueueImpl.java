@@ -51,7 +51,8 @@ import org.sqlite.SQLiteException;
  * when a job of the same kind with a higher priority is queued while a background job runs, the background
  * job's token is cancelled and, once its handler returns, it goes back to the queue (handlers are idempotent,
  * so it continues where it stopped after the waiting work is done). Work the user started is never
- * interrupted this way.
+ * interrupted this way. Enqueuing a {@linkplain JobSpec#unique() unique} spec whose job is already active
+ * with a lower priority raises that job's priority, with the same effect as queuing it at the new one.
  *
  * <p><b>Retries.</b> A handler failure caused by an {@link UnavailableException} (something needed is not
  * ready yet, such as the study assistant while it starts) or by a busy database is tried again after a
@@ -65,6 +66,12 @@ import org.sqlite.SQLiteException;
  * never interrupted: an interrupt would close Lucene and NIO channels under the handler). Jobs stopped by
  * the close, and jobs waiting to be tried again, stay in the queue, so they run again next time.
  *
+ * <p><b>Worker failures.</b> When recording a job's outcome fails (for example the database stays busy), the
+ * job is put back in the queue rather than left marked running with no worker, and the queue looks for work
+ * again after {@link #WORKER_RESTART_DELAY} (one second), first putting back any job still marked running
+ * that no worker runs. A job whose outcome could not be recorded {@link #MAX_WORKER_FAILURES} times is
+ * marked failed.
+ *
  * <p>Thread-safe.
  */
 public final class JobQueueImpl implements JobQueue, AutoCloseable {
@@ -74,8 +81,11 @@ public final class JobQueueImpl implements JobQueue, AutoCloseable {
     /** How long {@link #close()} waits for running handlers. */
     public static final Duration CLOSE_TIMEOUT = Duration.ofSeconds(10);
 
-    /** How long a worker that hit an unexpected error waits before the queue looks for work again. */
-    private static final Duration WORKER_RESTART_DELAY = Duration.ofSeconds(1);
+    /** How long the queue waits after a worker failed before it looks for work again. */
+    static final Duration WORKER_RESTART_DELAY = Duration.ofSeconds(1);
+
+    /** Times a job's outcome may fail to be recorded before the job is marked failed. */
+    static final int MAX_WORKER_FAILURES = 3;
 
     /**
      * How failures marked retryable are tried again.
@@ -115,6 +125,7 @@ public final class JobQueueImpl implements JobQueue, AutoCloseable {
     private final EventBus events;
     private final Clock clock;
     private final RetryPolicy retryPolicy;
+    private final Duration workerRestartDelay;
     private final ExecutorService workers = Executors.newThreadPerTaskExecutor(
             Thread.ofPlatform().name("learnsphere-job-", 0).daemon(true).factory());
     private final ScheduledExecutorService timer;
@@ -125,6 +136,7 @@ public final class JobQueueImpl implements JobQueue, AutoCloseable {
     private final Map<String, Run> running = new HashMap<>();
     private final Map<String, ScheduledFuture<?>> waitingToRetry = new HashMap<>();
     private final Map<String, Integer> retries = new HashMap<>();
+    private final Map<String, Integer> workerFailures = new HashMap<>();
     private volatile boolean closing;
 
     /** A queue with the {@link RetryPolicy#DEFAULT default retries}. */
@@ -134,10 +146,16 @@ public final class JobQueueImpl implements JobQueue, AutoCloseable {
 
     /** A queue with its own retry policy (tests use short delays). */
     public JobQueueImpl(JobRepository jobs, EventBus events, Clock clock, RetryPolicy retryPolicy) {
+        this(jobs, events, clock, retryPolicy, WORKER_RESTART_DELAY);
+    }
+
+    /** As the public constructors, with another delay after a worker failed (tests use a short one). */
+    JobQueueImpl(JobRepository jobs, EventBus events, Clock clock, RetryPolicy retryPolicy, Duration workerRestartDelay) {
         this.jobs = Objects.requireNonNull(jobs, "jobs");
         this.events = Objects.requireNonNull(events, "events");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.retryPolicy = Objects.requireNonNull(retryPolicy, "retryPolicy");
+        this.workerRestartDelay = Objects.requireNonNull(workerRestartDelay, "workerRestartDelay");
         ScheduledThreadPoolExecutor scheduler = new ScheduledThreadPoolExecutor(1,
                 Thread.ofPlatform().name("learnsphere-job-timer").daemon(true).factory());
         scheduler.setRemoveOnCancelPolicy(true);
@@ -153,34 +171,50 @@ public final class JobQueueImpl implements JobQueue, AutoCloseable {
         pump();
     }
 
+    /**
+     * Queues a job. For a unique spec whose job is already queued or running, returns that job instead,
+     * after raising its priority to the spec's when it was lower.
+     */
     @Override
     public JobUpdate enqueue(JobSpec spec) {
         Objects.requireNonNull(spec, "spec");
         JobUpdate update;
         synchronized (lock) {
-            if (spec.unique()) {
-                Optional<Job> existing = jobs.findActive(spec.kind(), spec.subjectId());
-                if (existing.isPresent()) {
-                    return JobUpdate.of(existing.get());
+            Optional<Job> existing = spec.unique() ? jobs.findActive(spec.kind(), spec.subjectId()) : Optional.empty();
+            Job job;
+            if (existing.isPresent()) {
+                Job active = existing.get();
+                if (active.priority() >= spec.priority() || !jobs.raisePriority(active.id(), spec.priority())) {
+                    return JobUpdate.of(active);
                 }
+                LOG.debug("Job {} raised from priority {} to {}", active.id(), active.priority(), spec.priority());
+                job = jobs.find(active.id()).orElse(active);
+                Run run = running.get(job.id());
+                if (run != null) {
+                    run.priority = spec.priority();
+                }
+            } else {
+                job = Job.queued(spec.kind(), spec.subjectId(), spec.payloadJson(), spec.priority(), clock.millis());
+                jobs.insert(job);
             }
-            Job job = Job.queued(spec.kind(), spec.subjectId(), spec.payloadJson(), spec.priority(), clock.millis());
-            jobs.insert(job);
             update = JobUpdate.of(job);
-            makeWayFor(job);
+            makeWayFor(job.id(), job.kind(), spec.priority());
         }
         events.publish(new JobProgress(update));
         pump();
         return update;
     }
 
-    /** Stops running background jobs of the same kind with a lower priority, so {@code job} runs next. */
-    private void makeWayFor(Job job) {
+    /**
+     * Stops running background jobs of {@code kind} with a priority below {@code priority}, so the job
+     * {@code jobId} runs next.
+     */
+    private void makeWayFor(String jobId, JobKind kind, int priority) {
         for (Run run : running.values()) {
             Job current = run.job;
-            if (current.kind() == job.kind() && current.priority() < JobSpec.USER_PRIORITY
-                    && current.priority() < job.priority() && !run.token.isCancelled()) {
-                LOG.debug("Job {} makes way for {}", current.id(), job.id());
+            if (current.kind() == kind && !current.id().equals(jobId) && run.priority < JobSpec.USER_PRIORITY
+                    && run.priority < priority && !run.token.isCancelled()) {
+                LOG.debug("Job {} makes way for {}", current.id(), jobId);
                 run.preempted = true;
                 run.token.cancel();
             }
@@ -202,6 +236,7 @@ public final class JobQueueImpl implements JobQueue, AutoCloseable {
                 retry.cancel(false);
             }
             retries.remove(jobId);
+            workerFailures.remove(jobId);
             cancelledQueued = jobs.markCancelled(jobId);
         }
         if (cancelledQueued) {
@@ -224,19 +259,30 @@ public final class JobQueueImpl implements JobQueue, AutoCloseable {
 
     @Override
     public int resumeUnfinished() {
-        List<String> requeued = new ArrayList<>();
+        List<String> requeued;
         int waiting;
         synchronized (lock) {
-            for (Job job : jobs.listByStatus(Set.of(JobStatus.RUNNING))) {
-                if (!running.containsKey(job.id()) && jobs.requeue(job.id())) {
-                    requeued.add(job.id());
-                }
-            }
+            requeued = requeueOrphans();
             waiting = jobs.listByStatus(Set.of(JobStatus.QUEUED)).size();
         }
         requeued.forEach(this::publish);
         pump();
         return waiting;
+    }
+
+    /**
+     * Puts the jobs marked running that no worker of this queue runs back in the queue (left by an earlier
+     * run of the app, or by a worker that failed); returns their ids. Call while holding {@code lock}, which
+     * claiming a job also holds, so a job being claimed is never taken for one left behind.
+     */
+    private List<String> requeueOrphans() {
+        List<String> requeued = new ArrayList<>();
+        for (Job job : jobs.listByStatus(Set.of(JobStatus.RUNNING))) {
+            if (!running.containsKey(job.id()) && jobs.requeue(job.id())) {
+                requeued.add(job.id());
+            }
+        }
+        return requeued;
     }
 
     @Override
@@ -283,10 +329,15 @@ public final class JobQueueImpl implements JobQueue, AutoCloseable {
     private void drain(JobKind kind) {
         boolean crashed = false;
         try {
-            while (!closing) {
+            while (true) {
                 Run run;
                 JobHandler handler;
                 synchronized (lock) {
+                    // Checked under the lock close() holds while it cancels the running jobs: a job claimed
+                    // here is either cancelled by close() or never claimed.
+                    if (closing) {
+                        return;
+                    }
                     Optional<Job> next = jobs.claimNext(kind, waitingToRetry.keySet());
                     if (next.isEmpty()) {
                         // Released under the lock that enqueue also takes, so no new job is missed.
@@ -300,6 +351,9 @@ public final class JobQueueImpl implements JobQueue, AutoCloseable {
                 try {
                     publish(run.job.id());
                     execute(run, handler);
+                } catch (RuntimeException e) {
+                    putBackAfterWorkerFailure(run, e);
+                    throw e;
                 } finally {
                     synchronized (lock) {
                         running.remove(run.job.id());
@@ -317,30 +371,80 @@ public final class JobQueueImpl implements JobQueue, AutoCloseable {
         }
         if (crashed) {
             // Look again a little later rather than spinning on a database that keeps failing.
-            schedule(this::pump, WORKER_RESTART_DELAY);
+            schedule(this::restartWorkers, workerRestartDelay);
         } else {
             pump();
         }
     }
 
+    /**
+     * The worker running {@code run} failed while recording its outcome: puts the job back in the queue so it
+     * is not left marked running with no worker (a job the user cancelled is marked cancelled, and one that
+     * failed this way {@link #MAX_WORKER_FAILURES} times is marked failed). Best effort: when the database
+     * still fails, {@link #restartWorkers} puts the job back later. While closing, {@link #close()} does it.
+     */
+    private void putBackAfterWorkerFailure(Run run, RuntimeException error) {
+        if (closing) {
+            return;
+        }
+        String id = run.job.id();
+        try {
+            if (run.cancelledByUser) {
+                jobs.markCancelled(id);
+                forget(id);
+            } else {
+                int failures;
+                synchronized (lock) {
+                    failures = workerFailures.merge(id, 1, Integer::sum);
+                }
+                if (failures >= MAX_WORKER_FAILURES) {
+                    LOG.warn("Job {} ({}) is marked failed: its outcome could not be recorded {} times", id,
+                            run.job.kind().code(), failures);
+                    jobs.markFailed(id, LearnSphereException.userMessageOf(error));
+                    forget(id);
+                } else {
+                    jobs.requeue(id);
+                }
+            }
+        } catch (RuntimeException e) {
+            LOG.warn("Could not put job {} back in the queue after its worker failed", id, e);
+            return;
+        }
+        publish(id);
+    }
+
+    /** After a worker failed: puts back jobs left marked running with no worker, then starts workers. */
+    private void restartWorkers() {
+        if (closing) {
+            return;
+        }
+        List<String> requeued;
+        synchronized (lock) {
+            requeued = requeueOrphans();
+        }
+        requeued.forEach(this::publish);
+        pump();
+    }
+
+    /**
+     * Runs the handler, then records the outcome. Only the handler's own failures fail the job; a failure to
+     * record the outcome (the database) propagates to {@link #drain}, which puts the job back.
+     */
     private void execute(Run run, JobHandler handler) {
         Job job = run.job;
         Context context = new Context(job, run.token);
+        Throwable failure = null;
         try {
             handler.run(context);
-            if (run.token.isCancelled()) {
-                stopped(run);
-            } else {
-                succeeded(job, context.result);
-            }
-        } catch (CancellationException e) {
-            stopped(run);
         } catch (Throwable e) {
-            if (run.token.isCancelled()) {
-                stopped(run);
-            } else if (!(isRetryable(e) && retryLater(job, e))) {
-                failed(job, e);
-            }
+            failure = e;
+        }
+        if (run.token.isCancelled() || failure instanceof CancellationException) {
+            stopped(run);
+        } else if (failure == null) {
+            succeeded(job, context.result);
+        } else if (!(isRetryable(failure) && retryLater(job, failure))) {
+            failed(job, failure);
         }
     }
 
@@ -353,13 +457,13 @@ public final class JobQueueImpl implements JobQueue, AutoCloseable {
             return;
         }
         jobs.markDone(job.id(), resultJson);
-        forgetRetries(job.id());
+        forget(job.id());
     }
 
     private void failed(Job job, Throwable error) {
         LOG.warn("Job {} ({}) failed", job.id(), job.kind().code(), error);
         jobs.markFailed(job.id(), LearnSphereException.userMessageOf(error));
-        forgetRetries(job.id());
+        forget(job.id());
     }
 
     /**
@@ -370,23 +474,28 @@ public final class JobQueueImpl implements JobQueue, AutoCloseable {
         String id = run.job.id();
         if (run.cancelledByUser) {
             jobs.markCancelled(id);
-            forgetRetries(id);
+            forget(id);
         } else if (closing) {
             return;
         } else if (run.preempted) {
             jobs.requeue(id);
         } else {
             jobs.markCancelled(id);
-            forgetRetries(id);
+            forget(id);
         }
     }
 
-    /** Puts a job that failed for a passing reason back in the queue after a delay; false when out of retries. */
+    /**
+     * Puts a job that failed for a passing reason back in the queue after a delay; false when out of retries.
+     * While closing, the job goes straight back to the queue for the next start.
+     */
     private boolean retryLater(Job job, Throwable error) {
         String id = job.id();
         synchronized (lock) {
             if (closing) {
-                return false;
+                LOG.info("Job {} ({}) stays queued for the next start: {}", id, job.kind().code(), error.toString());
+                jobs.requeue(id);
+                return true;
             }
             int retry = retries.merge(id, 1, Integer::sum);
             if (retry > retryPolicy.maxRetries()) {
@@ -413,9 +522,11 @@ public final class JobQueueImpl implements JobQueue, AutoCloseable {
         }
     }
 
-    private void forgetRetries(String jobId) {
+    /** Forgets the retry and worker-failure counts of a job that finished. */
+    private void forget(String jobId) {
         synchronized (lock) {
             retries.remove(jobId);
+            workerFailures.remove(jobId);
         }
     }
 
@@ -496,6 +607,8 @@ public final class JobQueueImpl implements JobQueue, AutoCloseable {
 
         final Job job;
         final CancellationToken token;
+        /** Its current priority: the job's, unless it was raised while running. */
+        volatile int priority;
         /** The user cancelled it. */
         volatile boolean cancelledByUser;
         /** It was stopped to make way for a job with a higher priority. */
@@ -504,6 +617,7 @@ public final class JobQueueImpl implements JobQueue, AutoCloseable {
         Run(Job job, CancellationToken token) {
             this.job = job;
             this.token = token;
+            this.priority = job.priority();
         }
     }
 

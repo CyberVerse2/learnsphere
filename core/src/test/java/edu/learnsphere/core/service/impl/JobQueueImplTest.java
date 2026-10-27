@@ -2,6 +2,7 @@ package edu.learnsphere.core.service.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import edu.learnsphere.core.db.JobRepository;
 import edu.learnsphere.core.error.InvalidInputException;
 import edu.learnsphere.core.error.LearnSphereException;
 import edu.learnsphere.core.error.UnavailableException;
@@ -20,11 +21,13 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.Mockito;
 
 class JobQueueImplTest {
 
@@ -98,6 +101,77 @@ class JobQueueImplTest {
         assertThat(again.jobId()).isEqualTo(first.jobId());
         assertThat(duplicate.jobId()).isNotEqualTo(first.jobId());
         assertThat(queue.active()).hasSize(2);
+    }
+
+    @Test
+    void enqueuingAUniqueSpecAgainRaisesThePriorityOfItsQueuedJob() throws InterruptedException {
+        JobUpdate resumed = queue.enqueue(
+                JobSpec.of(JobKind.INGEST_DOCUMENT, "doc", null).withPriority(JobSpec.BACKGROUND_PRIORITY));
+        t.clock.advance(Duration.ofMillis(1));
+        queue.enqueue(JobSpec.of(JobKind.INGEST_DOCUMENT, "other", null).withPriority(JobSpec.BACKGROUND_PRIORITY + 1));
+        assertThat(queue.active()).extracting(JobUpdate::subjectId).containsExactly("other", "doc");
+
+        JobUpdate again = queue.enqueue(JobSpec.of(JobKind.INGEST_DOCUMENT, "doc", null));
+        JobUpdate lower = queue.enqueue(
+                JobSpec.of(JobKind.INGEST_DOCUMENT, "doc", null).withPriority(JobSpec.BACKGROUND_PRIORITY));
+
+        assertThat(again.jobId()).isEqualTo(resumed.jobId());
+        assertThat(lower.jobId()).isEqualTo(resumed.jobId());
+        assertThat(t.repos.jobs().find(resumed.jobId())).get().extracting(Job::priority).isEqualTo(JobSpec.USER_PRIORITY);
+        assertThat(queue.active()).extracting(JobUpdate::subjectId).containsExactly("doc", "other");
+        events.awaitIdle(Duration.ofSeconds(5));
+        assertThat(published).filteredOn(u -> u.jobId().equals(resumed.jobId())).extracting(JobUpdate::status)
+                .containsExactly(JobStatus.QUEUED, JobStatus.QUEUED);
+
+        // A raised job makes a running background job of its kind give way, as if it had been queued at once.
+        CountDownLatch started = new CountDownLatch(1);
+        List<String> order = new CopyOnWriteArrayList<>();
+        queue.register(JobKind.GENERATE_ITEMS, job -> {
+            order.add(job.job().subjectId());
+            if (job.job().subjectId().equals("slow") && order.size() == 1) {
+                started.countDown();
+                while (!job.isCancelled()) {
+                    Thread.onSpinWait();
+                }
+                job.token().throwIfCancelled();
+            }
+        });
+        JobUpdate slow = queue.enqueue(JobSpec.of(JobKind.GENERATE_ITEMS, "slow", null).withPriority(JobSpec.BACKGROUND_PRIORITY));
+        assertThat(started.await(5, TimeUnit.SECONDS)).isTrue();
+        JobUpdate waiting = queue.enqueue(
+                JobSpec.of(JobKind.GENERATE_ITEMS, "waiting", null).withPriority(JobSpec.BACKGROUND_PRIORITY));
+        assertThat(queue.find(waiting.jobId())).get().extracting(JobUpdate::status).isEqualTo(JobStatus.QUEUED);
+        queue.enqueue(JobSpec.of(JobKind.GENERATE_ITEMS, "waiting", null));
+
+        awaitStatus(slow.jobId(), JobStatus.DONE);
+        awaitStatus(waiting.jobId(), JobStatus.DONE);
+        assertThat(order).containsExactly("slow", "waiting", "slow");
+    }
+
+    @Test
+    void aRunningJobWhosePriorityWasRaisedNoLongerMakesWay() throws InterruptedException {
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        List<Boolean> cancelledSeen = new CopyOnWriteArrayList<>();
+        queue.register(JobKind.INGEST_DOCUMENT, job -> {
+            if (job.job().subjectId().equals("resumed")) {
+                started.countDown();
+                release.await(5, TimeUnit.SECONDS);
+                cancelledSeen.add(job.isCancelled());
+            }
+        });
+        JobUpdate resumed = queue.enqueue(
+                JobSpec.of(JobKind.INGEST_DOCUMENT, "resumed", null).withPriority(JobSpec.BACKGROUND_PRIORITY));
+        assertThat(started.await(5, TimeUnit.SECONDS)).isTrue();
+
+        assertThat(queue.enqueue(JobSpec.of(JobKind.INGEST_DOCUMENT, "resumed", null)).jobId()).isEqualTo(resumed.jobId());
+        JobUpdate imported = queue.enqueue(JobSpec.of(JobKind.INGEST_DOCUMENT, "imported", null));
+        release.countDown();
+
+        awaitStatus(resumed.jobId(), JobStatus.DONE);
+        awaitStatus(imported.jobId(), JobStatus.DONE);
+        assertThat(cancelledSeen).containsExactly(false);
+        assertThat(t.repos.jobs().find(resumed.jobId())).get().extracting(Job::attempts).isEqualTo(1);
     }
 
     @Test
@@ -415,6 +489,92 @@ class JobQueueImplTest {
         JobUpdate job = queue.enqueue(JobSpec.of(JobKind.IMPORT_PACKAGE, null, null));
 
         assertThat(awaitStatus(job.jobId(), JobStatus.FAILED).failure()).isEqualTo(UserMessage.SOMETHING_WENT_WRONG);
+    }
+
+    @Test
+    void aJobWhoseOutcomeCouldNotBeRecordedGoesBackToTheQueue() {
+        JobRepository flakyJobs = Mockito.spy(t.repos.jobs());
+        AtomicInteger doneCalls = new AtomicInteger();
+        Mockito.doAnswer(call -> {
+            if (doneCalls.getAndIncrement() == 0) {
+                throw new IllegalStateException("database is locked");
+            }
+            return call.callRealMethod();
+        }).when(flakyJobs).markDone(Mockito.anyString(), Mockito.any());
+        JobQueueImpl flaky = new JobQueueImpl(flakyJobs, events, t.clock, JobQueueImpl.RetryPolicy.NONE,
+                Duration.ofMillis(20));
+        try {
+            List<String> runs = new CopyOnWriteArrayList<>();
+            flaky.register(JobKind.GENERATE_ITEMS, job -> runs.add(job.job().id()));
+
+            JobUpdate job = flaky.enqueue(JobSpec.of(JobKind.GENERATE_ITEMS, "course", null));
+
+            awaitStatus(flaky, job.jobId(), JobStatus.DONE);
+            assertThat(runs).hasSize(2);
+            events.awaitIdle(Duration.ofSeconds(5));
+            assertThat(published).filteredOn(u -> u.jobId().equals(job.jobId())).extracting(JobUpdate::status)
+                    .containsSubsequence(JobStatus.RUNNING, JobStatus.QUEUED, JobStatus.RUNNING, JobStatus.DONE);
+        } finally {
+            flaky.close();
+        }
+    }
+
+    @Test
+    void aJobLeftMarkedRunningByAFailedWorkerIsPutBackWhenTheQueueLooksAgain() {
+        JobRepository flakyJobs = Mockito.spy(t.repos.jobs());
+        AtomicInteger doneCalls = new AtomicInteger();
+        AtomicInteger requeueCalls = new AtomicInteger();
+        Mockito.doAnswer(call -> {
+            if (doneCalls.getAndIncrement() == 0) {
+                throw new IllegalStateException("database is locked");
+            }
+            return call.callRealMethod();
+        }).when(flakyJobs).markDone(Mockito.anyString(), Mockito.any());
+        Mockito.doAnswer(call -> {
+            if (requeueCalls.getAndIncrement() == 0) {
+                throw new IllegalStateException("database is locked");
+            }
+            return call.callRealMethod();
+        }).when(flakyJobs).requeue(Mockito.anyString());
+        JobQueueImpl flaky = new JobQueueImpl(flakyJobs, events, t.clock, JobQueueImpl.RetryPolicy.NONE,
+                Duration.ofMillis(20));
+        try {
+            List<String> runs = new CopyOnWriteArrayList<>();
+            flaky.register(JobKind.GENERATE_ITEMS, job -> runs.add(job.job().id()));
+
+            JobUpdate job = flaky.enqueue(JobSpec.of(JobKind.GENERATE_ITEMS, "course", null));
+
+            awaitStatus(flaky, job.jobId(), JobStatus.DONE);
+            assertThat(runs).hasSize(2);
+            assertThat(requeueCalls).hasValue(2);
+        } finally {
+            flaky.close();
+        }
+    }
+
+    @Test
+    void aJobWhoseOutcomeKeepsFailingToBeRecordedIsMarkedFailed() {
+        JobRepository flakyJobs = Mockito.spy(t.repos.jobs());
+        Mockito.doThrow(new IllegalStateException("disk I/O error"))
+                .when(flakyJobs).markDone(Mockito.anyString(), Mockito.any());
+        JobQueueImpl flaky = new JobQueueImpl(flakyJobs, events, t.clock, JobQueueImpl.RetryPolicy.NONE,
+                Duration.ofMillis(20));
+        try {
+            List<String> runs = new CopyOnWriteArrayList<>();
+            flaky.register(JobKind.GENERATE_ITEMS, job -> runs.add(job.job().id()));
+            JobUpdate job = flaky.enqueue(JobSpec.of(JobKind.GENERATE_ITEMS, "course", null));
+
+            assertThat(awaitStatus(flaky, job.jobId(), JobStatus.FAILED).failure())
+                    .isEqualTo(UserMessage.SOMETHING_WENT_WRONG);
+            assertThat(runs).hasSize(JobQueueImpl.MAX_WORKER_FAILURES);
+
+            // The worker carries on with other work.
+            Mockito.doCallRealMethod().when(flakyJobs).markDone(Mockito.anyString(), Mockito.any());
+            JobUpdate next = flaky.enqueue(JobSpec.of(JobKind.GENERATE_ITEMS, "next", null));
+            awaitStatus(flaky, next.jobId(), JobStatus.DONE);
+        } finally {
+            flaky.close();
+        }
     }
 
     @Test

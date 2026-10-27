@@ -175,6 +175,18 @@ public final class JobRepository {
                 .bind("id", id).bind("now", clock.millis()).execute()) > 0;
     }
 
+    /**
+     * Raises the priority of a queued or running job to {@code priority}; returns false when the job is not
+     * active or already has that priority or a higher one.
+     */
+    public boolean raisePriority(String id, int priority) {
+        return db.withHandle(h -> h.createUpdate("""
+                        UPDATE jobs SET priority = :p, updated_at = :now
+                        WHERE id = :id AND priority < :p AND status IN ('queued', 'running')
+                        """)
+                .bind("id", id).bind("p", priority).bind("now", clock.millis()).execute()) > 0;
+    }
+
     /** Puts jobs left running by an interrupted run back in the queue; returns how many. */
     public int requeueRunning() {
         return db.withHandle(h -> h.createUpdate("UPDATE jobs SET status = 'queued', updated_at = :now WHERE status = 'running'")
