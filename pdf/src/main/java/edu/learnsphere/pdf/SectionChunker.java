@@ -19,7 +19,8 @@ import java.util.Objects;
  *       passage starts at each heading, which is kept as the passage's first line, and every passage carries
  *       the heading it falls under as its section title. A section too short to stand alone (under a quarter
  *       of the target) runs on into the next one; its passage takes the title of the section that fills most
- *       of it.</li>
+ *       of it. A short end of a long section is added to the section's last passage instead, so the next
+ *       section starts cleanly.</li>
  *   <li><b>Size.</b> Passages grow sentence by sentence to about {@code targetTokens} (measured with
  *       {@link TokenEstimator}) and never end inside a sentence. A sentence longer than the target is cut at
  *       word boundaries, preferring a comma or semicolon. The next passage repeats the previous one's last
@@ -80,15 +81,27 @@ public final class SectionChunker implements Chunker {
                 if (heading != null) {
                     heading = clean(heading);
                     section = heading;
-                    units.add(new Unit(Kind.HEADING, heading, pageNumber, section, true, false, false));
+                    units.add(new Unit(Kind.HEADING, heading, pageNumber, pageNumber, section, true, false));
                     continue;
                 }
                 boolean continues = !units.isEmpty() && continuesParagraph(units.getLast(), text);
                 boolean first = true;
                 for (SentenceSplitter.Sentence sentence : SentenceSplitter.split(text)) {
+                    if (first && continues) {
+                        // The sentence cut by the page or column break becomes one unit again.
+                        Unit cut = units.removeLast();
+                        boolean firstPiece = true;
+                        for (String piece : splitLong(joinAcrossBreak(cut.text, sentence.text()), targetTokens)) {
+                            units.add(new Unit(Kind.TEXT, piece, cut.firstPage, pageNumber, section,
+                                    firstPiece && cut.startsBlock, firstPiece && cut.lineBreak));
+                            firstPiece = false;
+                        }
+                        first = false;
+                        continue;
+                    }
                     for (String piece : splitLong(sentence.text(), targetTokens)) {
-                        units.add(new Unit(Kind.TEXT, piece, pageNumber, section, first && !continues,
-                                first && continues, !first && sentence.afterLineBreak()));
+                        units.add(new Unit(Kind.TEXT, piece, pageNumber, pageNumber, section, first,
+                                !first && sentence.afterLineBreak()));
                         first = false;
                     }
                 }
@@ -107,6 +120,14 @@ public final class SectionChunker implements Chunker {
             return false;
         }
         return Character.isLowerCase(next.charAt(0));
+    }
+
+    /** {@code before} and {@code after} a page or column break, with a word hyphenated across it mended. */
+    static String joinAcrossBreak(String before, String after) {
+        int n = before.length();
+        boolean brokenWord = n >= 2 && TextNormalizer.isHyphen(before.charAt(n - 1)) && Character.isLetter(before.charAt(n - 2))
+                && !after.isEmpty() && Character.isLowerCase(after.charAt(0));
+        return brokenWord ? before.substring(0, n - 1) + after : before + " " + after;
     }
 
     /** Pieces of {@code sentence} of at most {@code maxTokens}, cut between words where possible. */
@@ -214,11 +235,12 @@ public final class SectionChunker implements Chunker {
     /**
      * A heading or a sentence (or piece of one).
      *
+     * @param firstPage    page the unit starts on
+     * @param lastPage     page the unit ends on (later than {@code firstPage} for a sentence cut by a page break)
      * @param startsBlock  first unit of a block: rendered after a blank line
-     * @param continues    first unit of a block that carries on the previous block's paragraph
      * @param lineBreak    the source had a line break before this sentence
      */
-    private record Unit(Kind kind, String text, int page, String section, boolean startsBlock, boolean continues,
+    private record Unit(Kind kind, String text, int firstPage, int lastPage, String section, boolean startsBlock,
                         boolean lineBreak) {
 
         int tokens() {
@@ -251,7 +273,7 @@ public final class SectionChunker implements Chunker {
                 if (unit.kind == Kind.HEADING) {
                     if (freshTokens >= minTokens) {
                         flush(false);
-                    } else if (freshUnits == 0) {
+                    } else if (freshUnits == 0 || foldIntoPrevious()) {
                         clear(); // no overlap into a new section
                     }
                 } else if (freshUnits > 0 && tokens + unitTokens > target) {
@@ -323,25 +345,33 @@ public final class SectionChunker implements Chunker {
         }
 
         private void finish() {
-            if (freshUnits == 0) {
-                return;
+            if (freshUnits > 0 && !foldIntoPrevious()) {
+                emit(List.copyOf(current), out.size());
+            }
+            clear();
+        }
+
+        /**
+         * Appends the text added since the last passage to that passage when it is a short end of the same
+         * section (under a quarter of the target, no heading) and the passage stays within 5/4 of the target.
+         * Returns true when it did; the caller then clears the current passage.
+         */
+        private boolean foldIntoPrevious() {
+            if (freshUnits == 0 || freshTokens >= minTokens || out.isEmpty() || lastUnits.isEmpty()) {
+                return false;
             }
             List<Unit> fresh = current.subList(current.size() - freshUnits, current.size());
-            boolean hasHeading = fresh.stream().anyMatch(u -> u.kind == Kind.HEADING);
-            if (!out.isEmpty() && !hasHeading && freshTokens < minTokens) {
-                ChunkDraft previous = out.getLast();
-                if (Objects.equals(previous.sectionTitle(), fresh.getFirst().section)
-                        && previous.tokenEstimate() + freshTokens <= target * 5 / 4) {
-                    List<Unit> merged = new ArrayList<>(lastUnits);
-                    merged.addAll(fresh);
-                    out.removeLast();
-                    emit(merged, out.size());
-                    clear();
-                    return;
-                }
+            if (fresh.stream().anyMatch(u -> u.kind == Kind.HEADING)
+                    || !Objects.equals(lastUnits.getLast().section, fresh.getFirst().section)
+                    || out.getLast().tokenEstimate() + freshTokens > target * 5 / 4) {
+                return false;
             }
-            emit(List.copyOf(current), out.size());
-            clear();
+            List<Unit> merged = new ArrayList<>(lastUnits);
+            merged.addAll(fresh);
+            out.removeLast();
+            emit(merged, out.size());
+            lastUnits = merged;
+            return true;
         }
 
         private void emit(List<Unit> units, int ordinal) {
@@ -352,8 +382,8 @@ public final class SectionChunker implements Chunker {
             int pageStart = Integer.MAX_VALUE;
             int pageEnd = 0;
             for (Unit unit : units) {
-                pageStart = Math.min(pageStart, unit.page);
-                pageEnd = Math.max(pageEnd, unit.page);
+                pageStart = Math.min(pageStart, unit.firstPage);
+                pageEnd = Math.max(pageEnd, unit.lastPage);
             }
             out.add(new ChunkDraft(ordinal, pageStart, pageEnd, sectionTitle(units), text, TokenEstimator.estimate(text)));
         }
@@ -392,8 +422,6 @@ public final class SectionChunker implements Chunker {
                         text.append("\n\n");
                     } else if (unit.lineBreak) {
                         text.append('\n');
-                    } else if (unit.continues && endsWithBrokenWord(text) && Character.isLowerCase(unit.text.charAt(0))) {
-                        text.setLength(text.length() - 1); // "mem-" + "brane" across a page break
                     } else {
                         text.append(' ');
                     }
@@ -402,11 +430,6 @@ public final class SectionChunker implements Chunker {
                 previous = unit;
             }
             return text.toString();
-        }
-
-        private static boolean endsWithBrokenWord(CharSequence text) {
-            int n = text.length();
-            return n >= 2 && TextNormalizer.isHyphen(text.charAt(n - 1)) && Character.isLetter(text.charAt(n - 2));
         }
     }
 }
