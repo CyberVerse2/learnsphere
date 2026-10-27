@@ -182,7 +182,7 @@ public final class StudioPage extends PageView {
             case DETAILS -> details(w.detail());
             case MODULES -> modules(w.detail().modules());
             case DOCUMENTS -> documents(w.documents());
-            case REVIEW -> review(w.queue(), w.counts());
+            case REVIEW -> edu.learnsphere.app.ui.studio.review.ReviewQueueTab.hostIn(page(), disposer, context, navigator, destination.courseId());
             case PAGES -> pages(w.scanned());
             case PUBLISH -> publishing(w.detail(), w.counts(), w.versions());
         };
