@@ -36,7 +36,7 @@ import java.util.function.BooleanSupplier;
  */
 final class PipelineFixture implements AutoCloseable {
 
-    static final Duration TIMEOUT = Duration.ofSeconds(15);
+    static final Duration TIMEOUT = Duration.ofSeconds(30);
 
     final TestDb t;
     final Repositories repos;

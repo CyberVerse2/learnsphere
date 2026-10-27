@@ -235,7 +235,7 @@ final class FakePdf implements PdfInspector, PdfTextExtractor, PageRenderer {
         return ("PNG page " + pageNumber + " at " + scale).getBytes(StandardCharsets.UTF_8);
     }
 
-    /** One passage per page: the first heading is its section title, its text is every block of the page. */
+    /** One passage per page: the first heading is its section title, its text is the page's other blocks. */
     static final class PageChunker implements Chunker {
 
         @Override
@@ -244,7 +244,8 @@ final class FakePdf implements PdfInspector, PdfTextExtractor, PageRenderer {
             for (PageText page : pages) {
                 String section = page.blocks().stream().filter(TextBlock::bold).map(TextBlock::text).findFirst()
                         .orElse(null);
-                String text = page.text();
+                List<String> body = page.blocks().stream().filter(block -> !block.bold()).map(TextBlock::text).toList();
+                String text = body.isEmpty() ? page.text() : String.join("\n\n", body);
                 drafts.add(new ChunkDraft(drafts.size(), page.pageNumber(), page.pageNumber(), section, text,
                         text.split("\\s+").length));
             }
