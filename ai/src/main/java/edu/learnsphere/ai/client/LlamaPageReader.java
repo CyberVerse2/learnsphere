@@ -32,6 +32,8 @@ public final class LlamaPageReader implements PageReader {
 
     private static final Pattern ILLEGIBLE = Pattern.compile("\\[illegible(?:\\s*[:\\-–]\\s*([^\\]]*))?]",
             Pattern.CASE_INSENSITIVE);
+    private static final Pattern PAGE_NUMBER = Pattern.compile(
+            "(?i)\\s*(page\\s+|p\\.\\s*)?[-–—]?\\s*\\d{1,4}\\s*[-–—]?(\\s*(of|/)\\s*\\d{1,4})?\\s*");
 
     private final LocalChat chat;
 
@@ -56,7 +58,7 @@ public final class LlamaPageReader implements PageReader {
 
     static PageTranscription toTranscription(String reply, boolean truncated) {
         List<String> spans = new ArrayList<>();
-        String markdown = stripFence(reply == null ? "" : reply.strip());
+        String markdown = dropPageNumbers(stripFence(reply == null ? "" : reply.strip()));
         String looped = removeLoops(markdown);
         if (!looped.equals(markdown)) {
             spans.add(REPEATED);
@@ -71,6 +73,21 @@ public final class LlamaPageReader implements PageReader {
             spans.add(CUT_OFF);
         }
         return new PageTranscription(markdown.strip(), spans);
+    }
+
+    /**
+     * Removes a page number standing alone on the first or last line ("17", "- 17 -", "Page 17", "17 of 40"),
+     * which the model sometimes copies even though the prompt asks it not to.
+     */
+    static String dropPageNumbers(String text) {
+        List<String> lines = new ArrayList<>(text.strip().lines().toList());
+        if (lines.size() > 1 && PAGE_NUMBER.matcher(lines.getLast()).matches()) {
+            lines.removeLast();
+        }
+        if (lines.size() > 1 && PAGE_NUMBER.matcher(lines.getFirst()).matches()) {
+            lines.removeFirst();
+        }
+        return String.join("\n", lines).strip();
     }
 
     static String stripFence(String text) {

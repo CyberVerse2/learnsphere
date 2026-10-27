@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.regex.Pattern;
 
 /**
  * {@link ShortAnswerGrader} on the chat model at {@link ChatPriority#INTERACTIVE}.
@@ -21,7 +22,8 @@ import java.util.Objects;
  * covered, partly covered or missing, and lists wrong statements ({@code grade-system.txt}); the score is
  * computed from that: covered points count 1, partly covered ½, and each wrong statement takes off
  * {@value #ERROR_PENALTY} (at most two). The verdict follows {@link GradeResult#verdictFor}. Missing
- * points are the points not fully covered. A blank answer scores 0 without asking the model. Thread-safe.
+ * points are the points not fully covered. Feedback sentences about spelling are dropped, since spelling
+ * never counts. A blank answer scores 0 without asking the model. Thread-safe.
  */
 public final class LlamaShortAnswerGrader implements ShortAnswerGrader {
 
@@ -29,6 +31,9 @@ public final class LlamaShortAnswerGrader implements ShortAnswerGrader {
     public static final double ERROR_PENALTY = 0.25;
     /** Longest learner answer sent, in characters. */
     public static final int MAX_ANSWER_CHARS = 4_000;
+
+    private static final Pattern SPELLING_TALK = Pattern.compile(
+            "(?i)\\b(spell\\w*|misspel\\w*|typos?|hyphen\\w*|punctuation)\\b");
 
     private final LocalChat chat;
 
@@ -90,7 +95,7 @@ public final class LlamaShortAnswerGrader implements ShortAnswerGrader {
         double score = Math.max(0, Math.min(1, coverage - ERROR_PENALTY * Math.min(errors, 2)));
         score = Math.round(score * 100) / 100.0;
         GradeResult.Verdict verdict = GradeResult.verdictFor(score);
-        String feedback = TextCleanup.oneLine(reply.path("feedback").asText(""));
+        String feedback = withoutSpellingNotes(TextCleanup.oneLine(reply.path("feedback").asText("")));
         if (feedback.isEmpty()) {
             feedback = switch (verdict) {
                 case CORRECT -> "That covers the key points.";
@@ -99,6 +104,17 @@ public final class LlamaShortAnswerGrader implements ShortAnswerGrader {
             };
         }
         return new GradeResult(score, verdict, feedback, missing);
+    }
+
+    /** Drops feedback sentences about spelling or punctuation, which grading deliberately ignores. */
+    static String withoutSpellingNotes(String feedback) {
+        StringBuilder kept = new StringBuilder();
+        for (String sentence : feedback.split("(?<=[.!?])\\s+")) {
+            if (!SPELLING_TALK.matcher(sentence).find()) {
+                kept.append(kept.isEmpty() ? "" : " ").append(sentence);
+            }
+        }
+        return kept.toString().strip();
     }
 
     private static void addPoint(List<String> missing, String text) {

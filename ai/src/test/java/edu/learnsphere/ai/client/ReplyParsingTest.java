@@ -60,6 +60,29 @@ class ReplyParsingTest {
     }
 
     @Test
+    void feedbackNeverTalksAboutSpelling() {
+        GradeResult result = grade("""
+                {"points":[{"point":"Mutual exclusion","status":"covered"}],"errors":[],
+                 "feedback":"Great job naming all four conditions! Just polish the spelling of 'exclusion' and the hyphenation."}""");
+        assertThat(result.feedback()).isEqualTo("Great job naming all four conditions!");
+        assertThat(LlamaShortAnswerGrader.withoutSpellingNotes("Watch your spelling.")).isEmpty();
+        assertThat(grade("""
+                {"points":[{"point":"x","status":"covered"}],"errors":[],"feedback":"Mind the typos."}""").feedback())
+                .isEqualTo("That covers the key points.");
+    }
+
+    @Test
+    void lonePageNumbersAtTheEdgesAreDropped() {
+        assertThat(LlamaPageReader.toTranscription("# Title\n\nText.\n\n17", false).markdown())
+                .isEqualTo("# Title\n\nText.");
+        assertThat(LlamaPageReader.dropPageNumbers("- 4 -\nText\nPage 5 of 40")).isEqualTo("Text");
+        assertThat(LlamaPageReader.dropPageNumbers("1. First step\n2. Second step")).isEqualTo(
+                "1. First step\n2. Second step");
+        assertThat(LlamaPageReader.dropPageNumbers("42")).isEqualTo("42");
+        assertThat(LlamaPageReader.dropPageNumbers("| a | 1 |\n| b | 2 |")).isEqualTo("| a | 1 |\n| b | 2 |");
+    }
+
+    @Test
     void pageRepliesLoseTheirCodeFence() {
         PageTranscription page = LlamaPageReader.toTranscription("```markdown\n# Title\n\nBody text.\n```", false);
         assertThat(page.markdown()).isEqualTo("# Title\n\nBody text.");
