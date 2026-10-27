@@ -188,7 +188,7 @@ public final class NewCourseDialog {
         card.getStyleClass().addAll("card", "flat", "course-card", "new-course-preview");
         card.setMouseTransparent(true);
         card.setFocusTraversable(false);
-        Label caption = new Label("Preview");
+        Label caption = new Label("PREVIEW");
         caption.getStyleClass().addAll("text-overline", "new-course-preview-caption");
         VBox box = new VBox(8, caption, card);
         box.setMinWidth(280);

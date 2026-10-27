@@ -17,12 +17,12 @@ import edu.learnsphere.app.ui.components.SegmentedControl;
 import edu.learnsphere.app.ui.components.Skeleton;
 import edu.learnsphere.app.ui.components.ToggleChip;
 import edu.learnsphere.core.events.CourseChanged;
+import edu.learnsphere.core.events.ItemsChanged;
 import edu.learnsphere.core.events.ProgressChanged;
 import edu.learnsphere.core.model.Course;
 import edu.learnsphere.core.service.CourseFilter;
 import edu.learnsphere.core.service.CourseScope;
 import edu.learnsphere.core.service.CourseSummary;
-import edu.learnsphere.core.util.Cancellable;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -112,9 +112,8 @@ public final class LibraryPage extends PageView {
     private final VBox body = new VBox(32);
     private final CourseActions actions;
     private final List<LibraryCard> cards = new ArrayList<>();
+    private final LiveLoad<List<CourseSummary>> load;
     private List<CourseSummary> courses;
-    private Cancellable loading;
-    private boolean reloadAgain;
     private final Runnable focusSearch = this::focusSearch;
     private final Runnable newCourse = this::openNewCourse;
 
@@ -123,6 +122,11 @@ public final class LibraryPage extends PageView {
         page().getStylesheets().add(LibraryStyles.URL);
         page().getStyleClass().add("library-page");
         actions = new CourseActions(context, navigator, this::page, disposer);
+        load = new LiveLoad<>(() -> workspace().courses().list(new CourseFilter(CourseScope.ALL, null, true)),
+                list -> {
+                    courses = list;
+                    render();
+                }, this::showError, disposer);
 
         Button importCourse = new Button("Import course", Icons.of(Feather.DOWNLOAD));
         importCourse.setOnAction(event -> startImport());
@@ -239,6 +243,7 @@ public final class LibraryPage extends PageView {
         refresh();
         on(CourseChanged.class, event -> refresh());
         on(ProgressChanged.class, event -> refresh());
+        on(ItemsChanged.class, event -> refresh());
         Scene scene = page().getScene();
         if (scene != null) {
             scene.getAccelerators().put(SEARCH_SHORTCUT, focusSearch);
@@ -279,25 +284,7 @@ public final class LibraryPage extends PageView {
 
     /** Loads every course (archived included) once; shelves, search and sort work on that list. */
     private void refresh() {
-        if (loading != null && !loading.isCancelled()) {
-            reloadAgain = true;
-            return;
-        }
-        reloadAgain = false;
-        loading = disposer.add(edu.learnsphere.app.ui.UiTasks.run(
-                () -> workspace().courses().list(new CourseFilter(CourseScope.ALL, null, true)),
-                list -> {
-                    loading = null;
-                    courses = list;
-                    render();
-                    if (reloadAgain) {
-                        refresh();
-                    }
-                },
-                message -> {
-                    loading = null;
-                    showError(message);
-                }));
+        load.request();
     }
 
     private void render() {
