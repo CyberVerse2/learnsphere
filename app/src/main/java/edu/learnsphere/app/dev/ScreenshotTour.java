@@ -8,6 +8,7 @@ import edu.learnsphere.app.ui.Destination;
 import edu.learnsphere.app.ui.MainWindow;
 import edu.learnsphere.app.ui.StudioTab;
 import edu.learnsphere.app.ui.UiExecutors;
+import edu.learnsphere.app.ui.ask.AskPage;
 import edu.learnsphere.app.ui.library.LibraryPage;
 import edu.learnsphere.app.ui.study.StudyPage;
 import edu.learnsphere.core.model.Citation;
@@ -95,6 +96,12 @@ public final class ScreenshotTour {
                     window.navigator().navigate(new Destination.Course(os));
                 }),
                 new Shot("ask", window -> window.navigator().reset(askWithSource(window, os))),
+                Shot.of("ask-new", Destination.Ask.newThread(os)),
+                new Shot("ask-wide", window -> window.navigator().reset(askThread(window, os))),
+                new Shot("ask-streaming", window -> window.navigator().reset(Destination.Ask.newThread(os)),
+                        window -> askOnScreen(window, "How does round robin decide which process runs next?")),
+                new Shot("ask-scanned", window -> window.navigator().reset(askScannedPage(window, chemistry))),
+                new Shot("ask-many", window -> window.navigator().reset(askWithManyThreads(window, os))),
                 Shot.of("study", new Destination.Study(SessionRequest.studyNext())),
                 new Shot("study-feedback", window -> window.navigator().reset(new Destination.Study(SessionRequest.studyNext())),
                         ScreenshotTour::answerCurrentQuestion),
@@ -121,6 +128,39 @@ public final class ScreenshotTour {
         var thread = ask.threads(courseId).getFirst();
         Citation first = ask.messages(thread.id()).stream().flatMap(m -> m.citations().stream()).findFirst().orElse(null);
         return new Destination.Ask(courseId, thread.id(), first);
+    }
+
+    /** The demo conversation about {@code courseId}, with the source viewer closed. */
+    private static Destination askThread(MainWindow window, String courseId) {
+        return new Destination.Ask(courseId, window.context().workspace().ask().threads(courseId).getFirst().id(), null);
+    }
+
+    /** Asks {@code question} from the question box of the Ask screen on show (the answer is caught mid-way). */
+    private static void askOnScreen(MainWindow window, String question) {
+        if (window.navigator().currentView() instanceof AskPage ask) {
+            ask.askFromBox(question);
+        }
+    }
+
+    /** A new conversation about {@code courseId} with page 2 of its scanned handout open in the source viewer. */
+    private static Destination askScannedPage(MainWindow window, String courseId) {
+        var documents = window.context().workspace().documents();
+        var scanned = documents.list(courseId).stream().filter(d -> d.title().contains("scanned")).findFirst().orElseThrow();
+        String text = documents.page(scanned.id(), 2).text();
+        String firstParagraph = text.split("\n+")[0];
+        return new Destination.Ask(courseId, null, new Citation(1, null, scanned.id(), scanned.title(), 2, 2, firstParagraph));
+    }
+
+    /** The demo conversation about {@code courseId} among many others, to show a long list of conversations. */
+    private static Destination askWithManyThreads(MainWindow window, String courseId) {
+        var ask = window.context().workspace().ask();
+        String current = ask.threads(courseId).getFirst().id();
+        for (String title : List.of("Deadlock conditions", "Semaphores versus mutexes", "Virtual memory basics",
+                "What a page fault costs", "Shortest job first", "Priority inversion", "Disk scheduling",
+                "Inodes and directories", "Why preemption matters", "Copy on write")) {
+            ask.createThread(courseId, title);
+        }
+        return new Destination.Ask(courseId, current, null);
     }
 
     /**
