@@ -47,7 +47,7 @@ final class ExchangeView extends VBox {
 
     /** How often the streamed preview is set again while words arrive. */
     static final Duration PREVIEW_INTERVAL = Duration.millis(45);
-    /** What the card says when the course's material doesn't cover a question. */
+    /** What the card says when the answer gives no explanation of its own. */
     static final String NOT_COVERED = "Your material doesn't cover this. Try rephrasing, or add a document that does.";
     /** How long "Copied" shows after copying. */
     private static final Duration COPIED_DURATION = Duration.seconds(2);
@@ -212,16 +212,16 @@ final class ExchangeView extends VBox {
     }
 
     /** The calm card saying the material doesn't cover the question, with what to try next. */
-    void showInsufficient() {
+    void showInsufficient(String explanation) {
         finish(State.INSUFFICIENT);
-        text = NOT_COVERED;
+        text = explanation == null || explanation.isBlank() ? NOT_COVERED : explanation.strip();
         citations = List.of();
         StackPane icon = new StackPane(Icons.of(Feather.BOOK_OPEN, 18));
         icon.getStyleClass().add("ask-insufficient-icon");
         icon.setMinSize(40, 40);
         icon.setMaxSize(40, 40);
         Label message = new Label(text);
-        message.getStyleClass().add("ask-insufficient-text");
+        message.getStyleClass().addAll("ask-insufficient-text", "serif");
         message.setWrapText(true);
         message.setMinHeight(Region.USE_PREF_SIZE);
         VBox content = new VBox(message);
@@ -333,7 +333,7 @@ final class ExchangeView extends VBox {
     void showStored(ChatMessage message, boolean last) {
         switch (message.status()) {
             case COMPLETE -> showAnswer(message.content(), message.citations());
-            case INSUFFICIENT -> showInsufficient();
+            case INSUFFICIENT -> showInsufficient(message.content());
             case ERROR -> showError(message.content().isBlank() ? UserMessage.SOMETHING_WENT_WRONG
                     : UserMessage.of(message.content()), last);
             case CANCELLED -> showStopped(message.content(), message.citations(), last);

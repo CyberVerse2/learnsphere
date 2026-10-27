@@ -433,8 +433,16 @@ public final class AskPage implements View {
         }
         markActive(openCitation);
         loadPassages(messages.stream().flatMap(m -> m.citations().stream()).toList());
-        stickToBottom = true;
-        scrollToEnd();
+        ExchangeView cited = liveHere || openCitation == null ? null : exchanges().stream()
+                .filter(exchange -> exchange.citations().contains(openCitation)).findFirst().orElse(null);
+        if (cited != null) {
+            // Opened onto a citation: show the answer it belongs to.
+            stickToBottom = false;
+            scrollToShow(cited);
+        } else {
+            stickToBottom = true;
+            scrollToEnd();
+        }
     }
 
     private boolean isLiveQuestion(ChatMessage message, boolean lastMessage) {
@@ -588,6 +596,25 @@ public final class AskPage implements View {
             scrolling = true;
             scroller.layout();
             scroller.setVvalue(scroller.getVmax());
+            scrolling = false;
+        });
+    }
+
+    /** Scrolls so {@code node} starts near the top of the conversation. */
+    private void scrollToShow(Node node) {
+        Platform.runLater(() -> {
+            if (node.getScene() == null || scroller.getContent() == null) {
+                return;
+            }
+            scrolling = true;
+            scroller.applyCss();
+            scroller.layout();
+            Node content = scroller.getContent();
+            double contentHeight = content.getLayoutBounds().getHeight();
+            double viewport = scroller.getViewportBounds().getHeight();
+            double top = content.sceneToLocal(node.localToScene(0, 0)).getY() - 24;
+            double range = contentHeight - viewport;
+            scroller.setVvalue(range <= 0 ? 0 : Math.max(0, Math.min(1, top / range)) * scroller.getVmax());
             scrolling = false;
         });
     }
@@ -817,7 +844,7 @@ public final class AskPage implements View {
         @Override
         public void onInsufficientEvidence(Answer answer) {
             Fx.run(() -> {
-                run.exchange.showInsufficient();
+                run.exchange.showInsufficient(answer.text());
                 finished(run);
             });
         }

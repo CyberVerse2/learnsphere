@@ -109,6 +109,7 @@ final class Composer extends VBox {
         HBox field = new HBox(8, input, buttons);
         field.getStyleClass().add("ask-field");
         field.setAlignment(Pos.BOTTOM_LEFT);
+        field.setFillHeight(false);
 
         statusText.getStyleClass().add("ask-composer-status-text");
         statusText.setWrapText(true);
@@ -227,7 +228,7 @@ final class Composer extends VBox {
     private void fitHeight() {
         double width = input.getWidth() - BOX_PADDING;
         if (width <= 0) {
-            input.setPrefHeight(LINE_HEIGHT + BOX_PADDING);
+            setInputHeight(LINE_HEIGHT + BOX_PADDING);
             return;
         }
         measure.setFont(input.getFont());
@@ -236,6 +237,12 @@ final class Composer extends VBox {
         measure.setText(text.endsWith("\n") ? text + "X" : text);
         double lineHeight = Math.max(LINE_HEIGHT, input.getFont().getSize() * 1.45);
         int rows = (int) Math.max(1, Math.round(measure.getLayoutBounds().getHeight() / (input.getFont().getSize() * 1.32)));
-        input.setPrefHeight(Math.min(MAX_ROWS, rows) * lineHeight + BOX_PADDING);
+        setInputHeight(Math.min(MAX_ROWS, rows) * lineHeight + BOX_PADDING);
+    }
+
+    private void setInputHeight(double height) {
+        input.setMinHeight(height);
+        input.setPrefHeight(height);
+        input.setMaxHeight(height);
     }
 }

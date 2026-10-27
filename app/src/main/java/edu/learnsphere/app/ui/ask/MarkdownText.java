@@ -6,6 +6,7 @@ import java.util.Objects;
 import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
@@ -44,7 +45,7 @@ import org.commonmark.parser.Parser;
  * <p>Style classes: {@code md} on the returned box, {@code md-paragraph}, {@code md-heading md-h1…md-h3},
  * {@code md-list}, {@code md-marker}, {@code md-quote}, {@code md-codeblock}, {@code md-rule} on blocks;
  * {@code md-text} (with {@code serif-italic} or {@code serif-medium} for emphasis), {@code md-code} and
- * {@code md-code-text} on text.
+ * {@code md-code-text} on text; {@code md-chips} on a run of chips with the punctuation that follows it.
  */
 final class MarkdownText {
 
@@ -207,34 +208,75 @@ final class MarkdownText {
         }
     }
 
-    /** Adds {@code literal}, turning held markers into chips. */
+    /**
+     * Adds {@code literal}, turning held markers into chips. Markers that follow each other, and the
+     * punctuation right after them, stay together as one inline run so a line never breaks inside it.
+     */
     private void text(String literal, TextFlow flow, Style style) {
         Matcher held = HELD.matcher(literal);
-        int last = 0;
-        while (held.find()) {
-            addText(literal.substring(last, held.start()), flow, style);
-            Citation citation = AnswerText.find(citations, Integer.parseInt(held.group(1)));
-            if (citation != null) {
-                Node chip = chips.apply(citation);
-                if (chip != null) {
-                    if (!flow.getChildren().isEmpty() && flow.getChildren().getLast().getProperties().containsKey(CHIP)) {
-                        addText(" ", flow, style);
-                    }
-                    chip.getProperties().put(CHIP, Boolean.TRUE);
-                    flow.getChildren().add(chip);
-                }
+        int position = 0;
+        while (held.find(position)) {
+            String before = literal.substring(position, held.start());
+            HBox run = new HBox();
+            run.getStyleClass().add("md-chips");
+            run.setAlignment(Pos.BASELINE_LEFT);
+            addChip(held.group(1), run);
+            int end = held.end();
+            int next = skipSpaces(literal, end);
+            while (held.find(next) && held.start() == next) {
+                addChip(held.group(1), run);
+                end = held.end();
+                next = skipSpaces(literal, end);
             }
-            last = held.end();
+            if (run.getChildren().isEmpty()) {
+                // Markers without a citation are left out, with the space before them.
+                addText(before.stripTrailing(), flow, style);
+                position = end;
+                continue;
+            }
+            addText(before, flow, style);
+            Matcher punctuation = TRAILING_PUNCTUATION.matcher(literal).region(end, literal.length());
+            if (punctuation.lookingAt()) {
+                Text mark = textNode(punctuation.group(), style);
+                HBox.setMargin(mark, new Insets(0, 0, 0, 1));
+                run.getChildren().add(mark);
+                end = punctuation.end();
+            }
+            flow.getChildren().add(run);
+            position = end;
         }
-        addText(literal.substring(last), flow, style);
+        addText(literal.substring(position), flow, style);
     }
 
-    private static final String CHIP = MarkdownText.class.getName() + ".chip";
+    /** Punctuation that belongs to the text before a run of chips. */
+    private static final Pattern TRAILING_PUNCTUATION = Pattern.compile("[.,;:!?)\\]]+");
+
+    private void addChip(String number, HBox run) {
+        Citation citation = AnswerText.find(citations, Integer.parseInt(number));
+        Node chip = citation == null ? null : chips.apply(citation);
+        if (chip != null) {
+            if (!run.getChildren().isEmpty()) {
+                HBox.setMargin(chip, new Insets(0, 0, 0, 4));
+            }
+            run.getChildren().add(chip);
+        }
+    }
+
+    private static int skipSpaces(String text, int from) {
+        int i = from;
+        while (i < text.length() && text.charAt(i) == ' ') {
+            i++;
+        }
+        return i;
+    }
 
     private static void addText(String value, TextFlow flow, Style style) {
-        if (value.isEmpty()) {
-            return;
+        if (!value.isEmpty()) {
+            flow.getChildren().add(textNode(value, style));
         }
+    }
+
+    private static Text textNode(String value, Style style) {
         Text text = new Text(value);
         text.getStyleClass().add("md-text");
         if (style.heading() || style.strong()) {
@@ -250,7 +292,7 @@ final class MarkdownText {
         if (style.emphasis()) {
             text.getStyleClass().add("emphasis");
         }
-        flow.getChildren().add(text);
+        return text;
     }
 
     /** Puts back markers held inside code, where they are just text. */

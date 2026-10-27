@@ -521,7 +521,6 @@ final class SourceViewer extends VBox {
         zoomOut.setDisable(!hasCitation || zoomIndex == 0 || image == null);
         zoomIn.setDisable(!hasCitation || zoomIndex == ZOOMS.length - 1 || image == null);
         zoomLabel.setText(Math.round(ZOOMS[zoomIndex] * 100) + "%");
-        zoomLabel.setDisable(zoomIndex == 0);
     }
 
     // ---- layout and marks -----------------------------------------------------------------------
