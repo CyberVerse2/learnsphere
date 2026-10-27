@@ -34,6 +34,15 @@ configurations.configureEach {
     }
 }
 
+// The version the About section shows.
+tasks.processResources {
+    val shownVersion = project.version.toString()
+    inputs.property("version", shownVersion)
+    filesMatching("edu/learnsphere/app/app.properties") {
+        expand(mapOf("version" to shownVersion))
+    }
+}
+
 // JVM options of every way the app runs: run, runDemo, screenshots and the packaged app (packaging.gradle.kts).
 val appJvmArgs = listOf(
     "--enable-native-access=ALL-UNNAMED",
@@ -76,6 +85,10 @@ tasks.register<JavaExec>("screenshots") {
     // Renders off screen: image writing needs no desktop AWT.
     jvmArgs("-Djava.awt.headless=true")
     systemProperty("learnsphere.demo", "true")
+    // -Pshots=settings,profiles renders only the shots whose names start with those words.
+    systemProperty("learnsphere.shots", providers.gradleProperty("shots").getOrElse(""))
+    // The home below is made for this run; the tour deletes it when it ends.
+    systemProperty("learnsphere.temporaryHome", "true")
     val outputDir = layout.buildDirectory.dir("screenshots")
     outputs.dir(outputDir)
     outputs.upToDateWhen { false }
@@ -83,6 +96,30 @@ tasks.register<JavaExec>("screenshots") {
     doFirst {
         val home = Files.createTempDirectory("learnsphere-screens")
         (this as JavaExec).systemProperty("learnsphere.home", home.toString())
+    }
+}
+
+tasks.register<JavaExec>("realRun") {
+    description = "Opens a new profile against the real study assistant off screen, waits until it is ready, " +
+        "quits and checks no assistant process is left (timings in the output, PNGs in build/real-run)."
+    group = ApplicationPlugin.APPLICATION_GROUP
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass = "edu.learnsphere.app.dev.RealRun"
+    jvmArgs(appJvmArgs)
+    jvmArgs("-Djava.awt.headless=true")
+    // -Pruntime=/path/to/runtime; the project's own runtime folder otherwise.
+    systemProperty("learnsphere.runtime",
+        providers.gradleProperty("runtime").getOrElse(rootProject.layout.projectDirectory.dir("runtime").asFile.absolutePath))
+    // The home below is made for this run; the run deletes it once every step passed (kept for its logs otherwise).
+    systemProperty("learnsphere.temporaryHome", "true")
+    val outputDir = layout.buildDirectory.dir("real-run")
+    outputs.dir(outputDir)
+    outputs.upToDateWhen { false }
+    argumentProviders.add(CommandLineArgumentProvider { listOf(outputDir.get().asFile.absolutePath) })
+    doFirst {
+        val home = Files.createTempDirectory("learnsphere-real-run")
+        (this as JavaExec).systemProperty("learnsphere.home", home.toString())
+        logger.lifecycle("Real run home: $home")
     }
 }
 

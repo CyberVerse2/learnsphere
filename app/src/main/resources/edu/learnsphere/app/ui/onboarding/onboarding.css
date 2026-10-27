@@ -1,0 +1,145 @@
+/*
+ * First run and adding a profile (full screen). Card and step dots live in learnsphere.css. Sizes follow the
+ * type roles of DESIGN.md (Heading 15, Body 14, Caption 12) and spacing stays on its scale.
+ */
+
+.onboarding-card {
+    -fx-padding: 32px;
+}
+
+.onboarding-step-body {
+    -fx-spacing: 24px;
+}
+
+.onboarding-step-body.welcome {
+    -fx-spacing: 24px;
+}
+
+.onboarding-lead {
+    -fx-text-fill: -ls-text-muted;
+}
+
+.onboarding-body {
+    -fx-font-size: 14px;
+    -fx-line-spacing: 4px;
+    -fx-text-fill: -ls-text-muted;
+    -fx-padding: 4px 0 0 0;
+}
+
+.onboarding-fields {
+    -fx-spacing: 16px;
+}
+
+.form-field-hint {
+    -fx-font-size: 12px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.onboarding-error {
+    -fx-font-size: 14px;
+    -fx-text-fill: -ls-danger-text;
+}
+
+.onboarding-actions {
+    -fx-padding: 8px 0 0 0;
+}
+
+/* The readiness well: orbit drawing beside the status. */
+.onboarding-status {
+    -fx-background-color: -ls-surface-sunken;
+    -fx-background-radius: 12px;
+    -fx-padding: 16px 24px 16px 16px;
+}
+
+.onboarding-status-title {
+    -fx-font-size: 15px;
+    -fx-text-fill: -ls-text;
+}
+
+.onboarding-status-detail {
+    -fx-font-size: 14px;
+    -fx-line-spacing: 4px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.onboarding-restart {
+    -fx-translate-y: 4px;
+}
+
+.onboarding-privacy {
+    -fx-font-size: 14px;
+    -fx-line-spacing: 4px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.onboarding-privacy-icon {
+    -fx-icon-color: -ls-text-muted;
+}
+
+/* ---- Assistant orbit ---------------------------------------------------------------------------- */
+
+.assistant-orbit .orbit-line {
+    -fx-fill: transparent;
+    -fx-stroke: -ls-illo-line;
+    -fx-stroke-width: 1.5px;
+}
+
+/* The far half of the orbit, behind the sphere. */
+.assistant-orbit .orbit-line.back {
+    -fx-opacity: 0.55;
+}
+
+/* While it gets ready the orbit takes the accent, so the travelling moon reads as progress. */
+.assistant-orbit.starting .orbit-line {
+    -fx-stroke: -ls-accent;
+    -fx-opacity: 0.55;
+}
+
+.assistant-orbit.starting .orbit-line.back {
+    -fx-opacity: 0.3;
+}
+
+.assistant-orbit .orbit-sphere {
+    -fx-fill: -ls-accent-soft;
+    -fx-stroke: -ls-accent-muted;
+    -fx-stroke-width: 1px;
+}
+
+.assistant-orbit .orbit-moon {
+    -fx-fill: -ls-accent;
+}
+
+/* On the far side the moon is further away: dimmer, and hidden while it passes behind the sphere. */
+.assistant-orbit .orbit-moon.far {
+    -fx-opacity: 0.6;
+}
+
+.assistant-orbit .orbit-icon {
+    -fx-icon-color: -ls-accent;
+}
+
+.assistant-orbit.ready .orbit-sphere {
+    -fx-fill: -ls-success-soft;
+    -fx-stroke: -ls-success;
+}
+
+.assistant-orbit.ready .orbit-moon {
+    -fx-fill: -ls-success;
+}
+
+.assistant-orbit.ready .orbit-icon {
+    -fx-icon-color: -ls-success-text;
+}
+
+.assistant-orbit.unavailable .orbit-sphere {
+    -fx-fill: -ls-warning-soft;
+    -fx-stroke: -ls-warning;
+}
+
+.assistant-orbit.unavailable .orbit-moon {
+    -fx-fill: -ls-text-faint;
+}
+
+.assistant-orbit.unavailable .orbit-icon {
+    -fx-icon-color: -ls-warning-text;
+}

@@ -21,6 +21,9 @@ public final class Main {
         configureLogging();
         logUncaughtExceptions();
         Application.launch(LearnSphereApp.class, args);
+        // launch returns after LearnSphereApp.stop() closed the profile and stopped the study assistant;
+        // exiting here also ends any library thread that would otherwise keep the process alive.
+        System.exit(0);
     }
 
     /** Sends exceptions nobody caught, including those thrown by event handlers on the FX thread, to the app log. */

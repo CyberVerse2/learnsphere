@@ -13,15 +13,20 @@ import edu.learnsphere.app.ui.home.HomePage;
 import edu.learnsphere.app.ui.library.LibraryPage;
 import edu.learnsphere.app.ui.onboarding.OnboardingPage;
 import edu.learnsphere.app.ui.profiles.ProfilesPage;
+import edu.learnsphere.app.ui.profiles.UnlockPage;
 import edu.learnsphere.app.ui.progress.ProgressPage;
 import edu.learnsphere.app.ui.settings.SettingsPage;
 import edu.learnsphere.app.ui.studio.StudioPage;
 import edu.learnsphere.app.ui.study.StudyPage;
 import edu.learnsphere.core.events.CourseChanged;
+import edu.learnsphere.core.service.ProfileSummary;
 import edu.learnsphere.core.service.Workspace;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.function.Supplier;
 import java.util.concurrent.ConcurrentHashMap;
 import javafx.animation.KeyFrame;
 import javafx.animation.KeyValue;
@@ -62,6 +67,9 @@ public final class MainWindow extends StackPane {
     private Disposer crumbScope = new Disposer();
     /** Subscriptions to the open profile's events; replaced when the profile changes. */
     private Disposer workspaceScope = new Disposer();
+    /** The computer's file dialogs and file manager; tests and the screenshot tour put in their own. */
+    private SystemFiles systemFiles = SystemFiles.standard();
+    private final Supplier<SystemFiles> files = () -> systemFiles;
 
     public MainWindow(AppContext context) {
         this.context = context;
@@ -105,12 +113,22 @@ public final class MainWindow extends StackPane {
         navigator.reset(startDestination(context));
     }
 
-    /** Where the window opens: Home with a profile open, otherwise the profile choice or first-run welcome. */
+    /**
+     * Where the window opens: Home with a profile open; the welcome when there are no profiles yet; the
+     * password screen when the profile used last time has a password; otherwise the profile choice.
+     */
     public static Destination startDestination(AppContext context) {
         if (context.workspace() != null) {
             return Destination.HOME;
         }
-        return context.profiles().list().isEmpty() ? Destination.ONBOARDING : Destination.PROFILES;
+        if (context.profiles().list().isEmpty()) {
+            return Destination.ONBOARDING;
+        }
+        Optional<ProfileSummary> last = context.lastProfile();
+        if (last.isPresent() && last.get().passwordProtected()) {
+            return new Destination.Unlock(last.get().id());
+        }
+        return Destination.PROFILES;
     }
 
     private void register(AppContext context) {
@@ -121,9 +139,11 @@ public final class MainWindow extends StackPane {
         navigator.register(Destination.Study.class, d -> new StudyPage(context, navigator, d));
         navigator.register(Destination.Progress.class, d -> new ProgressPage(context, navigator, d));
         navigator.register(Destination.Studio.class, d -> new StudioPage(context, navigator, d));
-        navigator.register(Destination.Settings.class, d -> new SettingsPage(context, navigator));
+        navigator.register(Destination.Settings.class, d -> new SettingsPage(context, navigator, files));
         navigator.register(Destination.Onboarding.class, d -> new OnboardingPage(context, navigator));
-        navigator.register(Destination.Profiles.class, d -> new ProfilesPage(context, navigator));
+        navigator.register(Destination.AddProfile.class, d -> new OnboardingPage(context, navigator, true));
+        navigator.register(Destination.Profiles.class, d -> new ProfilesPage(context, navigator, files));
+        navigator.register(Destination.Unlock.class, d -> new UnlockPage(context, navigator, d));
         if (context.isDemo()) {
             navigator.register(Destination.Gallery.class, d -> new ComponentGallery());
         }
@@ -152,6 +172,16 @@ public final class MainWindow extends StackPane {
 
     public Overlays overlays() {
         return overlays;
+    }
+
+    /** The file dialogs and file manager the profile and settings screens use. */
+    public SystemFiles systemFiles() {
+        return systemFiles;
+    }
+
+    /** Replaces the file dialogs and file manager (tests and the screenshot tour). */
+    public void setSystemFiles(SystemFiles value) {
+        systemFiles = Objects.requireNonNull(value, "value");
     }
 
     /** True while the sidebar is (or is becoming) visible. */

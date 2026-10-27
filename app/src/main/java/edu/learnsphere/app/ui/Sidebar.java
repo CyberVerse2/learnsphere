@@ -53,6 +53,9 @@ public final class Sidebar extends VBox {
     private final VBox studying = new VBox(2);
     private final HBox chip = new HBox();
     private final ChangeListener<Workspace> workspaceListener = (obs, old, workspace) -> showWorkspace(workspace);
+    /** The chip follows renames, colour and password changes of the open profile. */
+    private final ChangeListener<ProfileSummary> profileListener = (obs, old, profile) -> profileChanged(profile);
+    private boolean severalProfiles;
     private Disposer workspaceScope = new Disposer();
 
     public Sidebar(AppContext context, Navigator navigator) {
@@ -102,12 +105,14 @@ public final class Sidebar extends VBox {
         });
         navigator.currentProperty().addListener((obs, old, destination) -> select(destination));
         context.workspaceProperty().addListener(workspaceListener);
+        context.profileProperty().addListener(profileListener);
         showWorkspace(context.workspace());
     }
 
     /** Stops following the open profile (window closing). */
     public void dispose() {
         context.workspaceProperty().removeListener(workspaceListener);
+        context.profileProperty().removeListener(profileListener);
         workspaceScope.dispose();
     }
 
@@ -159,9 +164,11 @@ public final class Sidebar extends VBox {
             return;
         }
         Disposer scope = workspaceScope;
-        scope.add(UiTasks.run(() -> context.profiles().list().size(),
-                count -> showChip(workspace.profile(), count > 1),
-                message -> showChip(workspace.profile(), false)));
+        showChip(openProfile(workspace), severalProfiles);
+        scope.add(UiTasks.run(() -> context.profiles().list().size(), count -> {
+            severalProfiles = count > 1;
+            showChip(openProfile(workspace), severalProfiles);
+        }, message -> showChip(openProfile(workspace), severalProfiles)));
         AtomicReference<Cancellable> pending = new AtomicReference<>();
         scope.onDispose(() -> pending.get().cancel());
         Runnable load = () -> {
@@ -241,6 +248,18 @@ public final class Sidebar extends VBox {
                 .filter(node -> node instanceof ToggleButton)
                 .map(node -> ((ToggleButton) node).getAccessibleText())
                 .toList();
+    }
+
+    private void profileChanged(ProfileSummary profile) {
+        if (profile != null && context.workspace() != null) {
+            showChip(profile, severalProfiles);
+        }
+    }
+
+    /** The open profile as last published (it follows renames), else as the workspace opened it. */
+    private ProfileSummary openProfile(Workspace workspace) {
+        ProfileSummary current = context.profile();
+        return current != null && current.id().equals(workspace.profile().id()) ? current : workspace.profile();
     }
 
     private void showChip(ProfileSummary profile, boolean several) {
