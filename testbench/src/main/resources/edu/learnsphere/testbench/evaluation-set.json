@@ -1,0 +1,336 @@
+{
+  "description": "Ground truth for the LearnSphere testbench. Pages refer to the sample chapters in material/ (os = operating systems, 20 pages; rm = research methods, 10 pages; scan = the scanned copy of rm pages 4, 6 and 9). 'evidence' is a phrase that must appear on one of the listed pages; 'keyTerms' are facts a correct answer mentions ('a|b' lists alternatives); 'wrongAnswer' is a plausible but false answer used to test the support checker.",
+  "scan": { "source": "rm", "pages": [4, 6, 9] },
+  "covered": [
+    {
+      "id": "os-01", "document": "os", "pages": [2],
+      "question": "What is the difference between a program and a process?",
+      "answer": "A program is a passive entity, a file of instructions stored on disk; a process is an active entity, a program in execution with a program counter and resources such as open files and memory.",
+      "wrongAnswer": "A program is a running copy of a process, and a process is the executable file stored on disk.",
+      "keyTerms": ["passive", "execution|executing"],
+      "evidence": "A program is a passive entity"
+    },
+    {
+      "id": "os-02", "document": "os", "pages": [3],
+      "question": "What is the process control block called in Linux?",
+      "answer": "In Linux the process control block is a C structure named task_struct.",
+      "wrongAnswer": "In Linux the process control block is called the inode table.",
+      "keyTerms": ["task_struct"],
+      "evidence": "In Linux the process control block is a C structure named task_struct"
+    },
+    {
+      "id": "os-03", "document": "os", "pages": [4],
+      "question": "Which state does a waiting process move to when the I/O it was waiting for completes?",
+      "answer": "It moves back to the ready state, not directly to the running state, and competes for the CPU again.",
+      "wrongAnswer": "It moves directly back to the running state and continues executing at once.",
+      "keyTerms": ["ready"],
+      "evidence": "the process moves back to the ready state, not directly to the running state"
+    },
+    {
+      "id": "os-04", "document": "os", "pages": [5],
+      "question": "What does fork() return in the newly created child process?",
+      "answer": "fork() returns zero in the child process; the parent receives the child's nonzero process identifier.",
+      "wrongAnswer": "fork() returns the parent's process identifier in the child process.",
+      "keyTerms": ["zero|0"],
+      "evidence": "the return code of fork() is zero in the new (child) process"
+    },
+    {
+      "id": "os-05", "document": "os", "pages": [5],
+      "question": "What is a zombie process?",
+      "answer": "A process that has terminated but whose parent has not yet called wait(), so its entry stays in the process table to hold its exit status.",
+      "wrongAnswer": "A process whose parent has terminated, so it keeps running without a parent until the system shuts down.",
+      "keyTerms": ["wait", "terminated|finished|exit"],
+      "evidence": "is known as a zombie process"
+    },
+    {
+      "id": "os-06", "document": "os", "pages": [6],
+      "question": "Which threading model do Linux and Windows implement?",
+      "answer": "Linux and Windows both implement the one-to-one model, which maps each user thread to a kernel thread.",
+      "wrongAnswer": "Linux and Windows both implement the many-to-one model, which maps all user threads to a single kernel thread.",
+      "keyTerms": ["one-to-one"],
+      "evidence": "Linux and Windows both implement the one-to-one model"
+    },
+    {
+      "id": "os-07", "document": "os", "pages": [7],
+      "question": "What is dispatch latency?",
+      "answer": "The time it takes for the dispatcher to stop one process and start another running.",
+      "wrongAnswer": "The time a process spends waiting in the ready queue before it is first admitted to memory.",
+      "keyTerms": ["dispatcher", "stop|start"],
+      "evidence": "is known as the dispatch latency"
+    },
+    {
+      "id": "os-08", "document": "os", "pages": [8],
+      "question": "Under FCFS scheduling, what is the average waiting time for processes with CPU bursts of 24 ms, 3 ms and 3 ms that arrive in that order?",
+      "answer": "The waiting times are 0, 24 and 27 ms, so the average waiting time is 17 ms.",
+      "wrongAnswer": "The waiting times are 0, 3 and 6 ms, so the average waiting time is 3 ms.",
+      "keyTerms": ["17"],
+      "evidence": "so the average waiting time is (0 + 24 + 27)/3 = 17 ms"
+    },
+    {
+      "id": "os-09", "document": "os", "pages": [20],
+      "question": "What is thrashing?",
+      "answer": "Thrashing is very high paging activity: a process is thrashing when it spends more time paging than executing, because it does not have enough frames for the pages it actively uses.",
+      "wrongAnswer": "Thrashing is when the CPU switches between threads so often that the cache overheats.",
+      "keyTerms": ["paging", "executing|execution"],
+      "evidence": "a process is thrashing if it is spending more time paging than executing"
+    },
+    {
+      "id": "os-10", "document": "os", "pages": [9],
+      "question": "Using exponential averaging with alpha = 1/2, an initial prediction of 10 ms and a measured CPU burst of 6 ms, what is the next predicted burst length?",
+      "answer": "The next prediction is 0.5 * 6 + 0.5 * 10 = 8 ms.",
+      "wrongAnswer": "The next prediction is 6 ms, because only the most recent burst is used.",
+      "keyTerms": ["8"],
+      "evidence": "the next prediction is 0.5 * 6 + 0.5 * 10 = 8 ms"
+    },
+    {
+      "id": "os-11", "document": "os", "pages": [10],
+      "question": "In the shortest-remaining-time-first example, what is the average waiting time?",
+      "answer": "The average waiting time under SRTF is 26/4 = 6.5 ms, compared with 7.75 ms for nonpreemptive SJF.",
+      "wrongAnswer": "The average waiting time under SRTF is 7.75 ms, the same as nonpreemptive SJF.",
+      "keyTerms": ["6.5"],
+      "evidence": "= 26/4 = 6.5 ms"
+    },
+    {
+      "id": "os-12", "document": "os", "pages": [11],
+      "question": "What is aging in priority scheduling?",
+      "answer": "Aging gradually increases the priority of processes that wait in the system for a long time, so low-priority processes are not starved.",
+      "wrongAnswer": "Aging gradually lowers the priority of processes that have used a lot of CPU time.",
+      "keyTerms": ["increas", "starv|wait"],
+      "evidence": "Aging involves gradually increasing the priority of processes that wait in the system for a long time"
+    },
+    {
+      "id": "os-13", "document": "os", "pages": [12],
+      "question": "In the three-queue multilevel feedback queue example, what time quantum does queue 1 give a process?",
+      "answer": "Queue 1 gives a process a time quantum of 16 milliseconds (queue 0 gives 8 ms and queue 2 runs FCFS).",
+      "wrongAnswer": "Queue 1 gives a process a time quantum of 8 milliseconds.",
+      "keyTerms": ["16"],
+      "evidence": "where it receives a quantum of 16 milliseconds"
+    },
+    {
+      "id": "os-14", "document": "os", "pages": [13],
+      "question": "According to Table 3.1, which CPU scheduling algorithms can starve processes?",
+      "answer": "SJF, SRTF and priority scheduling (unless aging is used) can starve processes; the multilevel feedback queue rarely does when it uses aging. FCFS and round robin cannot.",
+      "wrongAnswer": "Only FCFS and round robin can starve processes.",
+      "keyTerms": ["SJF|shortest-job", "priority"],
+      "evidence": "Comparison of CPU scheduling algorithms"
+    },
+    {
+      "id": "os-15", "document": "os", "pages": [14],
+      "question": "What are the four necessary conditions for deadlock?",
+      "answer": "Mutual exclusion, hold and wait, no preemption and circular wait (the Coffman conditions).",
+      "wrongAnswer": "Mutual exclusion, progress, bounded waiting and starvation.",
+      "keyTerms": ["mutual exclusion", "hold and wait", "no preemption", "circular wait"],
+      "evidence": "often called the Coffman conditions"
+    },
+    {
+      "id": "os-16", "document": "os", "pages": [15],
+      "question": "If the base register holds 300040 and the limit register holds 120900, what is the highest address the program can legally access?",
+      "answer": "The program can access addresses 300040 through 420939 inclusive, so the highest legal address is 420939.",
+      "wrongAnswer": "The highest legal address is 120900.",
+      "keyTerms": ["420939|420,939"],
+      "evidence": "all addresses from 300040 through 420939 inclusive"
+    },
+    {
+      "id": "os-17", "document": "os", "pages": [16],
+      "question": "What does the 50-percent rule say about first-fit allocation?",
+      "answer": "Given N allocated blocks, another 0.5 N blocks will be lost to external fragmentation, so one-third of memory may be unusable.",
+      "wrongAnswer": "Half of every allocated block is wasted by internal fragmentation.",
+      "keyTerms": ["0.5|half", "fragmentation"],
+      "evidence": "This property is known as the 50-percent rule"
+    },
+    {
+      "id": "os-18", "document": "os", "pages": [17],
+      "question": "With 32-bit logical addresses and 4 KB pages, how many bits are used for the page offset?",
+      "answer": "The page offset takes 12 bits (4 KB = 2^12 bytes), leaving 20 bits for the page number.",
+      "wrongAnswer": "The page offset takes 20 bits, leaving 12 bits for the page number.",
+      "keyTerms": ["12"],
+      "evidence": "the page offset takes 12 bits and the page number the remaining 20 bits"
+    },
+    {
+      "id": "os-19", "document": "os", "pages": [18],
+      "question": "With an 80 percent TLB hit ratio and a 10 ns memory access time, what is the effective memory-access time?",
+      "answer": "0.80 x 10 + 0.20 x 20 = 12 nanoseconds, a 20 percent slowdown.",
+      "wrongAnswer": "0.80 x 10 + 0.20 x 10 = 10 nanoseconds, with no slowdown.",
+      "keyTerms": ["12"],
+      "evidence": "The effective memory-access time is then 0.80 x 10 + 0.20 x 20 = 12 nanoseconds"
+    },
+    {
+      "id": "os-20", "document": "os", "pages": [19],
+      "question": "What is Belady's anomaly?",
+      "answer": "For some page-replacement algorithms such as FIFO, the page-fault rate may increase as the number of allocated frames increases.",
+      "wrongAnswer": "For LRU replacement, the page-fault rate always decreases when the page size increases.",
+      "keyTerms": ["FIFO|first-in", "increase|more"],
+      "evidence": "It also suffers from Belady's anomaly"
+    },
+    {
+      "id": "rm-01", "document": "rm", "pages": [1],
+      "question": "What is the difference between research methods and research methodology?",
+      "answer": "Research methods are the specific techniques used to collect and analyse data; research methodology is the overall strategy and the justification for why those methods were chosen.",
+      "wrongAnswer": "Research methodology is the list of statistical tests used, while research methods are the overall philosophy of the study.",
+      "keyTerms": ["techniques", "strategy|justif"],
+      "evidence": "Research methodology is the overall strategy and its justification"
+    },
+    {
+      "id": "rm-02", "document": "rm", "pages": [2],
+      "question": "Which research paradigm assumes that reality is socially constructed?",
+      "answer": "Interpretivism assumes that reality is socially constructed and that research should understand the meanings people attach to situations.",
+      "wrongAnswer": "Positivism assumes that reality is socially constructed.",
+      "keyTerms": ["interpretivism"],
+      "evidence": "Interpretivism assumes that reality is socially constructed"
+    },
+    {
+      "id": "rm-03", "document": "rm", "pages": [3],
+      "question": "What do the FINER criteria for a research question stand for?",
+      "answer": "Feasible, Interesting, Novel, Ethical and Relevant.",
+      "wrongAnswer": "Factual, Independent, Numerical, Empirical and Replicable.",
+      "keyTerms": ["feasible", "interesting", "novel", "ethical", "relevant"],
+      "evidence": "A widely used checklist is the FINER criteria"
+    },
+    {
+      "id": "rm-04", "document": "rm", "pages": [4],
+      "question": "What is snowball sampling?",
+      "answer": "A non-probability technique in which initial participants recruit further participants from among their contacts, useful for hard-to-reach groups.",
+      "wrongAnswer": "A probability technique in which every kth member of the sampling frame is selected after a random start.",
+      "keyTerms": ["recruit", "contacts|hard-to-reach"],
+      "evidence": "Snowball sampling: initial participants recruit further participants from among their contacts"
+    },
+    {
+      "id": "rm-05", "document": "rm", "pages": [5],
+      "question": "How are order effects controlled in a within-subjects experiment?",
+      "answer": "By counterbalancing: half the participants experience condition A first and half condition B first, or orders are rotated with a Latin square.",
+      "wrongAnswer": "By giving each participant only one condition, so that different groups are compared.",
+      "keyTerms": ["counterbalanc"],
+      "evidence": "These order effects are controlled by counterbalancing"
+    },
+    {
+      "id": "rm-06", "document": "rm", "pages": [6],
+      "question": "Which statistic is commonly used to report inter-rater reliability?",
+      "answer": "Cohen's kappa, where values above about 0.6 indicate substantial agreement.",
+      "wrongAnswer": "Cronbach's alpha, where values above 0.9 indicate agreement between raters.",
+      "keyTerms": ["kappa"],
+      "evidence": "it is commonly reported with Cohen's kappa"
+    },
+    {
+      "id": "rm-07", "document": "rm", "pages": [7],
+      "question": "What is the average System Usability Scale score across published studies?",
+      "answer": "The average SUS score is 68, so a system scoring above 68 is above average.",
+      "wrongAnswer": "The average SUS score is 50, because the scale runs from 0 to 100.",
+      "keyTerms": ["68"],
+      "evidence": "the average score across hundreds of published studies is 68"
+    },
+    {
+      "id": "rm-08", "document": "rm", "pages": [8],
+      "question": "Which test is the non-parametric alternative to the independent-samples t-test?",
+      "answer": "The Mann-Whitney U test, used when data are not normally distributed or are ordinal.",
+      "wrongAnswer": "The chi-square test of independence.",
+      "keyTerms": ["Mann-Whitney|Mann Whitney"],
+      "evidence": "The Mann-Whitney U test is the non-parametric alternative to the independent-samples t-test"
+    },
+    {
+      "id": "rm-09", "document": "rm", "pages": [9],
+      "question": "When must ethics approval be obtained for a project with human participants?",
+      "answer": "Before any data are collected, including data from pilot studies; retrospective approval is never granted.",
+      "wrongAnswer": "After the data have been collected but before the dissertation is submitted.",
+      "keyTerms": ["before"],
+      "evidence": "Ethics approval must be obtained from the school's research ethics committee before any data are collected"
+    },
+    {
+      "id": "rm-10", "document": "rm", "pages": [10],
+      "question": "Which referencing style does the course use?",
+      "answer": "The Harvard author-date style, citing the author's surname and year in the text.",
+      "wrongAnswer": "The IEEE numbered style, citing sources by number in square brackets.",
+      "keyTerms": ["Harvard"],
+      "evidence": "This course uses the Harvard author-date referencing style"
+    }
+  ],
+  "scanned": [
+    {
+      "id": "scan-01", "document": "scan", "pages": [1],
+      "question": "About how many survey responses give a margin of error of plus or minus 5 percent at a 95 percent confidence level?",
+      "answer": "About 385 responses, for a large population.",
+      "wrongAnswer": "About 100 responses, for any population size.",
+      "keyTerms": ["385"],
+      "evidence": "about 385 responses give a margin of error of plus or minus 5 percent"
+    },
+    {
+      "id": "scan-02", "document": "scan", "pages": [2],
+      "question": "What value of Cronbach's alpha is conventionally taken as acceptable?",
+      "answer": "A value of 0.7 or above.",
+      "wrongAnswer": "A value of 0.3 or above.",
+      "keyTerms": ["0.7"],
+      "evidence": "a value of 0.7 or above is conventionally taken as acceptable"
+    },
+    {
+      "id": "scan-03", "document": "scan", "pages": [3],
+      "question": "What is the difference between anonymity and confidentiality?",
+      "answer": "Data are anonymous when no one, not even the researcher, can link them to the person; they are confidential when the researcher knows who provided them but promises not to reveal it.",
+      "wrongAnswer": "Anonymity means data are encrypted, while confidentiality means data are deleted after the study.",
+      "keyTerms": ["researcher", "reveal|identity|link"],
+      "evidence": "Anonymity and confidentiality are different"
+    }
+  ],
+  "uncovered": [
+    { "id": "none-01", "question": "How does the Linux Completely Fair Scheduler use a red-black tree to choose the next task?", "note": "On topic for scheduling, but the chapter does not cover CFS." },
+    { "id": "none-02", "question": "What is the difference between a hard link and a symbolic link in a file system?", "note": "Operating systems, but file systems are not in the chapter." },
+    { "id": "none-03", "question": "How does the TCP three-way handshake establish a connection?", "note": "Computing, but networking is not covered." },
+    { "id": "none-04", "question": "Why do database indexes commonly use B+ trees?", "note": "Computing, but databases are not covered." },
+    { "id": "none-05", "question": "How do you calculate Spearman's rank correlation coefficient?", "note": "Statistics, but correlation is not in the research-methods chapter." },
+    { "id": "none-06", "question": "What is the Delphi method and when would a researcher use it?", "note": "Research methods, but the Delphi method is not covered." },
+    { "id": "none-07", "question": "How does RAID 5 keep data available when a disk fails?", "note": "Storage is not covered." },
+    { "id": "none-08", "question": "Who won the 2018 FIFA World Cup?", "note": "Off topic." },
+    { "id": "none-09", "question": "How does garbage collection work in the Java virtual machine?", "note": "Memory management of a different kind; the chapter covers operating-system memory only." },
+    { "id": "none-10", "question": "What are the stages of the waterfall model of software development?", "note": "Software engineering is not covered." }
+  ],
+  "shortAnswers": [
+    {
+      "id": "sa-01", "document": "os", "page": 8,
+      "question": "Explain the convoy effect in first-come, first-served scheduling.",
+      "modelAnswer": "Under FCFS, short processes queue behind one long CPU-bound process and must wait until it releases the CPU. This raises the average waiting time and leaves the CPU and I/O devices under-used.",
+      "responses": [
+        { "label": "correct", "expected": "CORRECT", "text": "When one long CPU-bound process gets the CPU first, all the short processes behind it in the queue have to wait for it to finish, so average waiting time goes up and the I/O devices sit idle." },
+        { "label": "partial", "expected": "PARTIAL", "text": "Short processes have to wait behind a long process in the queue." },
+        { "label": "wrong", "expected": "INCORRECT", "text": "It is when the time quantum is too small, so the CPU spends most of its time switching between processes." }
+      ]
+    },
+    {
+      "id": "sa-02", "document": "os", "page": 14,
+      "question": "What is a race condition?",
+      "modelAnswer": "A race condition occurs when several processes access and change the same data at the same time and the result depends on the order in which the accesses happen.",
+      "responses": [
+        { "label": "correct", "expected": "CORRECT", "text": "It happens when two or more processes read and update shared data concurrently, so the final value depends on the exact order in which their instructions interleave." },
+        { "label": "partial", "expected": "PARTIAL", "text": "Two processes use the same shared variable at the same time." },
+        { "label": "wrong", "expected": "INCORRECT", "text": "It is when each process waits forever for a resource that another process is holding." }
+      ]
+    },
+    {
+      "id": "sa-03", "document": "os", "page": 19,
+      "question": "Why is the optimal (OPT) page-replacement algorithm used mainly for comparison studies?",
+      "modelAnswer": "OPT replaces the page that will not be used for the longest time, which needs future knowledge of the reference string that a real system does not have. It gives the lowest possible fault rate, so other algorithms are compared against it.",
+      "responses": [
+        { "label": "correct", "expected": "CORRECT", "text": "Because it needs to know which page will not be used for the longest time in the future, which the OS cannot know, so it cannot be implemented; but since it has the lowest fault rate it is a benchmark for other algorithms." },
+        { "label": "partial", "expected": "PARTIAL", "text": "Because it has the lowest page-fault rate of all algorithms." },
+        { "label": "wrong", "expected": "INCORRECT", "text": "Because it suffers from Belady's anomaly, so adding frames makes it worse." }
+      ]
+    },
+    {
+      "id": "sa-04", "document": "rm", "page": 6,
+      "question": "What is the difference between internal validity and external validity?",
+      "modelAnswer": "Internal validity is the degree to which a study establishes a genuine cause-and-effect relationship between the independent and dependent variables, free from confounding variables. External validity is the degree to which the findings generalise to other people, settings and times.",
+      "responses": [
+        { "label": "correct", "expected": "CORRECT", "text": "Internal validity is about whether the study really shows that the independent variable caused the change, without confounding factors; external validity is about whether the results generalise to other people, places and times." },
+        { "label": "partial", "expected": "PARTIAL", "text": "Internal validity means the study really shows cause and effect without confounding variables." },
+        { "label": "wrong", "expected": "INCORRECT", "text": "Internal validity is getting the same results when you repeat a test, and external validity is when two raters agree." }
+      ]
+    },
+    {
+      "id": "sa-05", "document": "rm", "page": 9,
+      "question": "What does informed consent require?",
+      "modelAnswer": "Participants agree to take part voluntarily after being told in plain language what the study is about, what they will do, the risks and how their data will be used, and they are told they can withdraw at any time without giving a reason.",
+      "responses": [
+        { "label": "correct", "expected": "CORRECT", "text": "People must be told clearly what the study involves, its risks and how their data will be used, agree freely to take part, and know they can withdraw at any time without giving a reason." },
+        { "label": "partial", "expected": "PARTIAL", "text": "Participants have to agree to take part before the study starts." },
+        { "label": "wrong", "expected": "INCORRECT", "text": "The researcher must keep the names of the participants secret from everyone." }
+      ]
+    }
+  ]
+}

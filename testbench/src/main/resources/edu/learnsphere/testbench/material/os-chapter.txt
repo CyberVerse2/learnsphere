@@ -1,0 +1,329 @@
+% Operating-systems chapter of the testbench's sample course. One "@page" per printed page: the evaluation
+% set names these pages, so moving text between pages means updating evaluation-set.json.
+@header CS2040 Operating Systems - Lecture Notes, Chapter 3
+@title Chapter 3: Processes, Scheduling and Memory Management
+
+## Learning outcomes
+
+After working through this chapter you should be able to:
+- explain the difference between a program and a process, and describe what the operating system records about each process;
+- trace a process through the states of its life cycle and explain what causes each change of state;
+- compare CPU scheduling algorithms and calculate average waiting and turnaround times for a set of processes;
+- explain how paging and virtual memory let many processes share physical memory safely and efficiently.
+
+# 3.1 Introduction
+
+A modern computer appears to run dozens of programs at once: a web browser, a music player, a compiler and a handful of background services all make progress side by side. Yet a laptop has only a few processor cores and a fixed amount of main memory. The operating system creates the illusion of many independent machines by dividing these resources among the programs that need them, many times every second.
+
+Two ideas underpin this illusion. Multiprogramming keeps several jobs in memory at the same time so that, when one job has to wait for a slow device such as a disk, the CPU can be switched to another job instead of sitting idle. Time sharing extends multiprogramming by switching between jobs so frequently that every interactive user receives a prompt response and feels that the machine is theirs alone.
+
+This chapter studies the three mechanisms that make both ideas work. We first look at the process, the unit of work that the operating system manages. We then study CPU scheduling, which decides which process runs next and for how long. Finally we examine memory management, which decides where each process lives in main memory and protects processes from one another.
+
+@page
+# 3.2 Processes
+
+A program is a passive entity: a file containing a list of instructions, stored on disk and often called an executable file. A process is an active entity: a program in execution, with a program counter that specifies the next instruction to execute and a set of associated resources such as open files and memory. A program becomes a process when its executable file is loaded into memory, for example when a user double-clicks its icon or types its name at a command prompt.
+
+Although two processes may be associated with the same program, they are nevertheless considered two separate execution sequences. Several users may be running copies of the same text editor, or one user may start many copies of a web browser. Each of these is a separate process; the code may be shared, but the data, heap and stack sections vary from one process to the next.
+
+## 3.2.1 The address space of a process
+
+The memory layout of a process is typically divided into four sections. The text section holds the executable code. The data section holds global and static variables. The heap is memory that is dynamically allocated while the program runs, for example by calls to malloc in C or by creating objects with new in Java. The stack provides temporary storage for function calls: each call pushes an activation record containing the function parameters, the return address and the local variables, and the record is popped when the function returns.
+
+The sizes of the text and data sections are fixed when the program is loaded, but the heap and the stack grow and shrink while the program runs. The heap grows upward toward higher addresses as memory is allocated, while the stack grows downward toward lower addresses as functions are called. The operating system must ensure that the two never overlap; a program that recurses too deeply exhausts the space between them and fails with a stack overflow.
+
+The data the operating system keeps about a process lives outside this address space, in kernel memory where the process cannot change it. The next section describes that record.
+
+@page
+## 3.2.2 The process control block
+
+Each process is represented in the operating system by a process control block (PCB), also called a task control block. The PCB is the repository for all the data needed to start, or restart, a process, along with some accounting data. In Linux the process control block is a C structure named task_struct, and all active processes are kept in a doubly linked list of these structures. A PCB contains many pieces of information, including the following.
+
+- Process state: the state may be new, ready, running, waiting or terminated.
+- Program counter: the address of the next instruction to be executed for this process.
+- CPU registers: accumulators, index registers, stack pointers and general-purpose registers, together with any condition-code information. Their values must be saved when an interrupt occurs so that the process can be continued correctly afterwards.
+- CPU-scheduling information: the process priority, pointers to scheduling queues and any other scheduling parameters.
+- Memory-management information: the values of the base and limit registers or the page tables, depending on the memory system used by the operating system.
+- Accounting information: the amount of CPU time used, time limits, account numbers and the process identifier (PID).
+- I/O status information: the list of I/O devices allocated to the process and the list of open files.
+
+The PCB therefore serves as the place where the context of a process is kept while it is not running. When the process is switched out, its register values are written into the PCB; when it is switched back in, they are loaded again, and the process continues exactly where it stopped.
+
+The operating system organises PCBs into scheduling queues. Processes that are residing in main memory and are ready to execute are kept in the ready queue, generally stored as a linked list whose header points to the first PCB. Processes that are waiting for a particular event, such as the completion of a disk read, are placed in a wait queue for that event or device. A process migrates among these queues throughout its lifetime.
+
+@page
+## 3.2.3 Process states
+
+As a process executes, it changes state. The state of a process is defined in part by its current activity. A process may be in one of five states:
+- New: the process is being created.
+- Ready: the process is waiting to be assigned to a processor.
+- Running: instructions are being executed.
+- Waiting: the process is waiting for some event to occur, such as an I/O completion or the reception of a signal.
+- Terminated: the process has finished execution.
+
+Only one process can be running on any processor core at any instant. Many processes may be ready and waiting, however. Figure 3.1 shows the transitions between the states.
+
+@figure process-states Figure 3.1: Process state transitions. A running process that is interrupted returns to the ready state; one that requests I/O moves to the waiting state.
+
+A newly created process is admitted to the ready queue. When the scheduler dispatches it, the process moves from ready to running. A running process can leave the running state in three ways. If an interrupt occurs, typically because the timer signals that the process has used up its time slice, it returns to the ready state. If it requests I/O or waits for an event, it moves to the waiting state. If it finishes, it exits and moves to the terminated state. When the I/O or event that a waiting process needs completes, the process moves back to the ready state, not directly to the running state: it must compete for the CPU again with the other ready processes.
+
+@page
+## 3.2.4 Process creation and termination
+
+During execution a process may create several new processes. The creating process is called the parent and the new processes are its children; each child may in turn create processes, forming a tree of processes. Most operating systems identify each process by a unique integer process identifier (PID).
+
+In UNIX and Linux a new process is created by the fork() system call. The new process consists of a copy of the address space of the original process, which allows the parent to communicate easily with its child. Both processes continue execution at the instruction after the fork(), with one difference: the return code of fork() is zero in the new (child) process, whereas the nonzero process identifier of the child is returned to the parent. If fork() fails, it returns a negative value to the parent and no child is created.
+
+After a fork(), one of the two processes typically uses one of the exec() family of system calls to replace its memory space with a new program. The exec() call loads a binary file into memory, destroying the memory image of the program that called it, and starts its execution. In this manner the two processes are able to communicate and then go their separate ways. The parent can create more children, or, if it has nothing else to do while the child runs, it can issue a wait() system call to move itself off the ready queue until the child terminates.
+
+A process terminates when it finishes executing its final statement and asks the operating system to delete it by using the exit() system call. The process may return a status value to its waiting parent, and all of its resources, including physical and virtual memory, open files and I/O buffers, are deallocated by the operating system.
+
+A process that has terminated, but whose parent has not yet called wait(), is known as a zombie process. Its entry in the process table must remain, because the table holds the exit status that the parent has not yet collected. Once the parent calls wait(), the PID of the zombie and its entry in the process table are released. If a parent terminates without invoking wait(), its children are left as orphans. Linux handles orphans by assigning the init process (systemd on most modern distributions, with PID 1) as their new parent; init periodically calls wait(), which collects the exit status of any orphan and releases its process identifier and process-table entry.
+
+@page
+# 3.3 Threads
+
+A thread is a basic unit of CPU utilisation; it comprises a thread ID, a program counter, a register set and a stack. A thread shares with other threads belonging to the same process its code section, its data section and other operating-system resources, such as open files and signals. A traditional process has a single thread of control. If a process has multiple threads of control, it can perform more than one task at a time: a word processor may display text on one thread, read keystrokes on another and check spelling on a third.
+
+The benefits of multithreaded programming fall into four categories. Responsiveness: an interactive application can keep running even if part of it is blocked or is performing a lengthy operation. Resource sharing: threads share the memory and the resources of the process to which they belong by default, without the explicit arrangements that separate processes need. Economy: allocating memory and resources for process creation is costly, and because threads share the resources of their process it is more economical to create and context-switch threads; in Solaris, for example, creating a process is about thirty times slower than creating a thread, and context switching is about five times slower. Scalability: the threads of one process can run in parallel on different processing cores, whereas a single-threaded process can run on only one core regardless of how many are available.
+
+## 3.3.1 User threads and kernel threads
+
+Support for threads may be provided either at the user level, for user threads, or by the kernel, for kernel threads. User threads are supported above the kernel and are managed by a thread library without kernel support, whereas kernel threads are supported and managed directly by the operating system. A relationship must exist between the two, and three common models establish it.
+
+The many-to-one model maps many user-level threads to one kernel thread. Thread management is done by the thread library in user space, so it is efficient. However, the entire process will block if a thread makes a blocking system call, and because only one thread can access the kernel at a time, multiple threads are unable to run in parallel on multicore systems. Few systems still use this model.
+
+The one-to-one model maps each user thread to a kernel thread. It provides more concurrency than the many-to-one model by allowing another thread to run when a thread makes a blocking system call, and it allows multiple threads to run in parallel on multiprocessors. Its only drawback is that creating a user thread requires creating the corresponding kernel thread, and a large number of kernel threads may burden the performance of a system. Linux and Windows both implement the one-to-one model.
+
+The many-to-many model multiplexes many user-level threads to a smaller or equal number of kernel threads. Developers can create as many user threads as necessary, and the corresponding kernel threads can run in parallel, but the model is difficult to implement.
+
+@page
+## 3.3.2 Context switching
+
+Switching a CPU core to another process requires performing a state save of the current process and a state restore of a different process. This task is known as a context switch. When a context switch occurs, the kernel saves the context of the old process in its PCB and loads the saved context of the new process scheduled to run. The context includes the values of the CPU registers, the process state and memory-management information.
+
+Context-switch time is pure overhead, because the system does no useful work while switching. Switching speed varies from machine to machine, depending on the memory speed, the number of registers that must be copied and the existence of special instructions, such as a single instruction to load or store all registers; a typical speed is a few microseconds. Some processors provide multiple sets of registers, so that a context switch simply requires changing the pointer to the current register set.
+
+The direct cost of saving and loading registers is only part of the price. After a switch, the caches and the translation look-aside buffer hold data belonging to the previous process, so the new process suffers a burst of cache misses until its own working data has been loaded again. Switching between two threads of the same process is cheaper than switching between processes, because the address space does not change and the memory-management information need not be replaced. Linux reports the number of voluntary context switches (the process gave up the CPU because it needed a resource) and nonvoluntary context switches (the CPU was taken away, for example when its time slice expired) for every process.
+
+# 3.4 CPU scheduling
+
+The success of CPU scheduling depends on an observed property of processes: process execution consists of a cycle of CPU execution and I/O wait. Execution begins with a CPU burst, followed by an I/O burst, then another CPU burst, and so on. Measurements show a large number of short CPU bursts and a small number of long ones. An I/O-bound program typically has many short CPU bursts, while a CPU-bound program might have a few long CPU bursts.
+
+Whenever the CPU becomes idle, the CPU scheduler selects a process from the ready queue and allocates a core to it. Scheduling decisions may take place when a process switches from the running state to the waiting state, when it switches from running to ready (for example when an interrupt occurs), when it switches from waiting to ready (at completion of I/O), and when it terminates. When scheduling takes place only in the first and last of these circumstances, the scheme is nonpreemptive or cooperative; otherwise it is preemptive. The dispatcher is the module that gives control of the core to the process selected by the scheduler: it switches context, switches to user mode and jumps to the proper location in the user program. The time it takes for the dispatcher to stop one process and start another running is known as the dispatch latency.
+
+@page
+## 3.4.1 Scheduling criteria
+
+Different CPU-scheduling algorithms have different properties, and the choice of a particular algorithm may favour one class of processes over another. Many criteria have been suggested for comparing them:
+- CPU utilisation: we want to keep the CPU as busy as possible. In a real system it should range from about 40 percent for a lightly loaded system to 90 percent for a heavily loaded system.
+- Throughput: the number of processes that are completed per time unit.
+- Turnaround time: the interval from the time of submission of a process to the time of its completion. It is the sum of the periods spent waiting in the ready queue, executing on the CPU and doing I/O.
+- Waiting time: the sum of the periods a process spends waiting in the ready queue. The scheduling algorithm does not affect the time spent executing or doing I/O, only the time spent waiting.
+- Response time: the time from the submission of a request until the first response is produced. In an interactive system this is often a better measure than turnaround time.
+
+It is desirable to maximise CPU utilisation and throughput and to minimise turnaround time, waiting time and response time. In most cases we optimise the average measure, but for interactive systems it can be more important to minimise the variance in the response time.
+
+## 3.4.2 First-come, first-served scheduling
+
+By far the simplest CPU-scheduling algorithm is the first-come, first-served (FCFS) algorithm: the process that requests the CPU first is allocated the CPU first. It is implemented with a FIFO queue; when a process enters the ready queue its PCB is linked onto the tail of the queue, and the CPU is allocated to the process at the head. FCFS is nonpreemptive: once the CPU has been allocated to a process, that process keeps it until it releases it, either by terminating or by requesting I/O.
+
+The average waiting time under FCFS is often quite long. Consider three processes that arrive at time 0 with CPU bursts of 24 ms (P1), 3 ms (P2) and 3 ms (P3). If they arrive in the order P1, P2, P3, the waiting time is 0 ms for P1, 24 ms for P2 and 27 ms for P3, so the average waiting time is (0 + 24 + 27)/3 = 17 ms. If they arrive in the order P2, P3, P1, the waiting times are 6, 0 and 3 ms and the average is only 3 ms. The average under FCFS is therefore generally not minimal and may vary substantially with the burst times.
+
+FCFS also suffers from the convoy effect: all the other processes wait for one big process to get off the CPU. When one CPU-bound process holds the CPU, the I/O-bound processes finish their I/O and wait in the ready queue while the devices sit idle; the result is lower CPU and device utilisation than if the shorter processes were allowed to go first. FCFS is particularly troublesome for interactive systems, where each user needs a share of the CPU at regular intervals.
+
+@page
+## 3.4.3 Shortest-job-first scheduling
+
+The shortest-job-first (SJF) algorithm associates with each process the length of its next CPU burst. When the CPU is available, it is assigned to the process that has the smallest next CPU burst; if the next bursts of two processes are the same, FCFS scheduling is used to break the tie. A more appropriate name would be the shortest-next-CPU-burst algorithm, because scheduling depends on the length of the next burst rather than the total length of the process.
+
+Consider four processes with burst lengths of 6 ms (P1), 8 ms (P2), 7 ms (P3) and 3 ms (P4). SJF schedules them in the order P4, P1, P3, P2. The waiting time is 3 ms for P1, 16 ms for P2, 9 ms for P3 and 0 ms for P4, so the average waiting time is (3 + 16 + 9 + 0)/4 = 7 ms. By comparison, FCFS scheduling of the same processes in numerical order would give an average waiting time of 10.25 ms.
+
+SJF is provably optimal, in that it gives the minimum average waiting time for a given set of processes. Moving a short process before a long one decreases the waiting time of the short process more than it increases the waiting time of the long process, so the average waiting time decreases.
+
+The real difficulty with SJF is knowing the length of the next CPU request. Although it cannot be known in advance, it can be predicted: we expect the next CPU burst to be similar in length to the previous ones. The next CPU burst is generally predicted as an exponential average of the measured lengths of previous CPU bursts:
+
+tau(n+1) = alpha * t(n) + (1 - alpha) * tau(n)
+
+Here t(n) is the length of the nth CPU burst, tau(n) holds the past history as the previous prediction, and the parameter alpha, with 0 <= alpha <= 1, controls the relative weight of recent and past history. If alpha = 0, recent history has no effect; if alpha = 1, only the most recent CPU burst matters. More commonly alpha = 1/2, so recent and past history are equally weighted. For example, with an initial prediction tau(0) = 10 ms, alpha = 1/2 and a measured burst of 6 ms, the next prediction is 0.5 * 6 + 0.5 * 10 = 8 ms.
+
+@page
+The SJF algorithm can be either preemptive or nonpreemptive. The choice arises when a new process arrives at the ready queue while a previous process is still executing, and the new process has a next CPU burst shorter than what is left of the currently executing process. A preemptive SJF algorithm will preempt the currently executing process, whereas a nonpreemptive one will allow it to finish its CPU burst. Preemptive SJF scheduling is sometimes called shortest-remaining-time-first (SRTF) scheduling.
+
+As an example, consider P1 arriving at time 0 with a burst of 8 ms, P2 at time 1 with 4 ms, P3 at time 2 with 9 ms and P4 at time 3 with 5 ms. Under SRTF, P1 starts at time 0 but is preempted at time 1, because P2 needs only 4 ms while P1 still needs 7 ms. The schedule is P1 from 0 to 1, P2 from 1 to 5, P4 from 5 to 10, P1 from 10 to 17 and P3 from 17 to 26. The average waiting time is ((10 - 1) + (1 - 1) + (17 - 2) + (5 - 3))/4 = 26/4 = 6.5 ms, whereas nonpreemptive SJF scheduling would give an average waiting time of 7.75 ms. Because short processes keep overtaking them, long processes may wait indefinitely under both forms of SJF.
+
+## 3.4.4 Round-robin scheduling
+
+The round-robin (RR) scheduling algorithm is similar to FCFS scheduling, but preemption is added to enable the system to switch between processes. A small unit of time, called a time quantum or time slice, is defined; a time quantum is generally from 10 to 100 milliseconds in length. The ready queue is treated as a circular queue, and the CPU scheduler goes around it, allocating the CPU to each process for a time interval of up to one time quantum.
+
+New processes are added to the tail of the ready queue. The scheduler picks the first process, sets a timer to interrupt after one time quantum and dispatches the process. If the process has a CPU burst of less than one time quantum, it releases the CPU voluntarily. Otherwise the timer goes off and causes an interrupt, a context switch is executed, and the process is put at the tail of the ready queue.
+
+Consider again P1 (24 ms), P2 (3 ms) and P3 (3 ms) with a time quantum of 4 ms. P1 runs from 0 to 4 and is preempted; P2 runs from 4 to 7 and P3 from 7 to 10, both finishing within their quantum; P1 then receives the CPU for every remaining quantum and finishes at time 30. P1 waits 6 ms (10 - 4), P2 waits 4 ms and P3 waits 7 ms, so the average waiting time is 17/3 = 5.66 ms. The RR scheduling algorithm is thus preemptive, and no process is allocated the CPU for more than one time quantum in a row unless it is the only runnable process.
+
+@page
+The performance of the RR algorithm depends heavily on the size of the time quantum. At one extreme, if the time quantum is extremely large, the RR policy is the same as the FCFS policy. In contrast, if the time quantum is extremely small, the RR approach can result in a large number of context switches. We want the time quantum to be large with respect to the context-switch time: if the context-switch time is approximately 10 percent of the time quantum, then about 10 percent of the CPU time will be spent in context switching. Modern systems have time quanta from 10 to 100 milliseconds and context switches that take less than 10 microseconds, so the switch is a small fraction of the quantum.
+
+Turnaround time also depends on the size of the time quantum, but the average turnaround time of a set of processes does not necessarily improve as the time-quantum size increases. In general, the average turnaround time can be improved if most processes finish their next CPU burst in a single time quantum. A rule of thumb is that 80 percent of the CPU bursts should be shorter than the time quantum.
+
+## 3.4.5 Priority scheduling
+
+A priority is associated with each process, and the CPU is allocated to the process with the highest priority; equal-priority processes are scheduled in FCFS order. The SJF algorithm is a special case of the general priority-scheduling algorithm in which the priority is the inverse of the predicted next CPU burst. Priorities are generally indicated by some fixed range of numbers, such as 0 to 7 or 0 to 4,095. There is no general agreement on whether 0 is the highest or lowest priority; in this course we use low numbers to represent high priority. Priorities can be defined internally, using measurable quantities such as time limits, memory requirements or the ratio of average I/O burst to average CPU burst, or externally, by criteria outside the operating system such as the importance of the process.
+
+Priority scheduling can be either preemptive or nonpreemptive. A preemptive priority algorithm preempts the CPU when a newly arrived process has a higher priority than the currently running one; a nonpreemptive one simply puts the new process at the head of the ready queue.
+
+A major problem with priority-scheduling algorithms is indefinite blocking, or starvation. A process that is ready to run but waiting for the CPU can be considered blocked, and a priority-scheduling algorithm can leave some low-priority processes waiting indefinitely. Rumour has it that when the IBM 7094 at MIT was shut down in 1973, engineers found a low-priority process that had been submitted in 1967 and had not yet been run.
+
+A solution to the problem of indefinite blockage of low-priority processes is aging. Aging involves gradually increasing the priority of processes that wait in the system for a long time. For example, if priorities range from 127 (low) to 0 (high), we could periodically, say every second, increase the priority of a waiting process by 1. Eventually even a process with an initial priority of 127 would have the highest priority in the system and would be executed; in this example it would take a little over 2 minutes for a priority-127 process to age to a priority-0 process. Another option is to combine round-robin and priority scheduling, so that the system runs the highest-priority process and uses round-robin among processes with the same priority.
+
+@page
+## 3.4.6 Multilevel queue scheduling
+
+With both priority and round-robin scheduling, all processes may be placed in a single queue, and the scheduler must search it to find the process with the highest priority. In practice it is often easier to have separate queues for each distinct priority. A multilevel queue scheduling algorithm partitions processes into several separate queues based on the process type, for example real-time processes, system processes, interactive processes and batch processes. Each queue may have its own scheduling algorithm: the queue of interactive (foreground) processes might be scheduled by an RR algorithm, while the batch (background) queue is scheduled by an FCFS algorithm.
+
+There must also be scheduling among the queues. Commonly this is fixed-priority preemptive scheduling: no process in the batch queue can run unless the queues for real-time, system and interactive processes are all empty, and if an interactive process enters the ready queue while a batch process is running, the batch process is preempted. Another possibility is to time-slice among the queues, giving each queue a certain portion of the CPU time; for instance, the foreground queue can be given 80 percent of the CPU time for RR scheduling among its processes, while the background queue receives 20 percent of the CPU to give to its processes on an FCFS basis.
+
+Normally, when the multilevel queue algorithm is used, processes are permanently assigned to a queue when they enter the system. That arrangement has the advantage of low scheduling overhead, but it is inflexible.
+
+## 3.4.7 Multilevel feedback queue scheduling
+
+The multilevel feedback queue scheduling algorithm, in contrast, allows a process to move between queues. The idea is to separate processes according to the characteristics of their CPU bursts. If a process uses too much CPU time, it is moved to a lower-priority queue. This scheme leaves I/O-bound and interactive processes, which are typically characterised by short CPU bursts, in the higher-priority queues. In addition, a process that waits too long in a lower-priority queue may be moved to a higher-priority queue; this form of aging prevents starvation.
+
+For example, consider a multilevel feedback queue scheduler with three queues, numbered 0 to 2. A process entering the ready queue is put in queue 0 and given a time quantum of 8 milliseconds. If it does not finish within this time, it is moved to the tail of queue 1, where it receives a quantum of 16 milliseconds. If it does not complete there either, it is preempted and put into queue 2, whose processes run on an FCFS basis, and only when queues 0 and 1 are empty.
+
+In general, a multilevel feedback queue scheduler is defined by the number of queues, the scheduling algorithm for each queue, the method used to determine when to upgrade a process to a higher-priority queue, the method used to determine when to demote a process to a lower-priority queue, and the method used to determine which queue a process will enter when it needs service. This makes it the most general CPU-scheduling algorithm, but also the most complex, since selecting values for all the parameters is difficult.
+
+@page
+## 3.4.8 Comparing the algorithms
+
+Table 3.1 summarises the algorithms of this section. No single algorithm is best for every workload, which is why general-purpose operating systems combine several of them, typically as a multilevel feedback queue with round-robin scheduling inside each priority level.
+
+@table Table 3.1: Comparison of CPU scheduling algorithms
+| Algorithm | Preemptive? | Can starve? | Main strength | Main weakness |
+| FCFS | No | No | Simple; fair in order of arrival | Convoy effect and long average waiting time |
+| SJF | No | Yes | Minimum average waiting time | Next CPU burst must be predicted |
+| SRTF | Yes | Yes | Lower average waiting time than SJF | Frequent preemption; long jobs starve |
+| Round robin | Yes | No | Good response time for interactive users | Performance depends on the time quantum |
+| Priority | Either | Yes, unless aging is used | Important work runs first | Low-priority processes may starve |
+| Multilevel feedback queue | Yes | Rarely, with aging | Adapts to how each process behaves | Many parameters to tune |
+@end
+
+## 3.4.9 Multiprocessor scheduling
+
+If multiple CPU cores are available, load sharing becomes possible, but the scheduling problem becomes correspondingly more complex. One approach is asymmetric multiprocessing, in which all scheduling decisions, I/O processing and other system activities are handled by a single processor, the master server, while the other processors execute only user code. It is simple, because only one core accesses the system data structures, but the master server can become a bottleneck. The standard approach is symmetric multiprocessing (SMP), where each processor is self-scheduling. Ready threads may be kept in a common ready queue shared by all processors, or each processor may have its own private queue of threads; per-processor run queues are the most common approach, because they avoid contention for a shared queue and make efficient use of cache memory.
+
+When a thread has been running on a processor, the data it most recently accessed populates that processor's cache. If the thread migrates to another processor, the cache of the first processor must be invalidated and the cache of the second repopulated. Most SMP systems therefore try to avoid migration and keep a thread running on the same processor, a property known as processor affinity. With soft affinity the operating system attempts to keep a process on the same processor but does not guarantee it; with hard affinity a process can specify a subset of processors on which it may run, for example with the Linux sched_setaffinity() system call.
+
+Load balancing attempts to keep the workload evenly distributed across all processors. With push migration, a specific task periodically checks the load on each processor and, if it finds an imbalance, evenly distributes the load by moving (pushing) threads from overloaded to idle or less-busy processors. Pull migration occurs when an idle processor pulls a waiting task from a busy processor. Load balancing often counteracts the benefits of processor affinity, so tuning a scheduler is a matter of balancing the two.
+
+@page
+# 3.5 Process synchronisation
+
+Processes and threads that share data must coordinate their access to it. A race condition occurs when several processes access and manipulate the same data concurrently and the outcome of the execution depends on the particular order in which the accesses take place. For example, the statement counter++ is typically implemented in machine language as three instructions: load counter into a register, increment the register, and store the register back into counter. If a producer executes counter++ while a consumer executes counter-- and the instructions interleave, an initial value of 5 can end as 4 or 6 instead of the correct 5, because one of the updates is lost.
+
+The segment of code in which a process accesses and updates data shared with other processes is called its critical section. A solution to the critical-section problem must satisfy three requirements. Mutual exclusion: if one process is executing in its critical section, no other process can be executing in its critical section. Progress: if no process is in its critical section, only processes that wish to enter can take part in deciding which enters next, and the decision cannot be postponed indefinitely. Bounded waiting: there is a limit on the number of times other processes may enter their critical sections after a process has requested entry and before that request is granted.
+
+A mutex lock protects a critical section: a process must call acquire() before entering it and release() when it leaves. A lock that keeps a process looping while it waits is called a spinlock; spinlocks waste CPU cycles but are useful on multicore systems when locks are held for short times, because no context switch is needed. A semaphore S is an integer variable that, apart from initialisation, is accessed only through two atomic operations, wait() and signal(), originally called P and V. The value of a counting semaphore can range over an unrestricted domain, while a binary semaphore can only be 0 or 1 and behaves like a mutex lock.
+
+## 3.5.1 Deadlock
+
+A set of processes is in a deadlocked state when every process in the set is waiting for an event that can be caused only by another process in the set. A deadlock can arise only if four conditions hold simultaneously in a system, often called the Coffman conditions: mutual exclusion (at least one resource is held in a nonsharable mode), hold and wait (a process holds at least one resource while waiting to acquire others), no preemption (resources can be released only voluntarily by the process holding them) and circular wait (a closed chain of processes exists in which each waits for a resource held by the next).
+
+There are four ways to deal with deadlock. Deadlock prevention ensures that at least one of the necessary conditions cannot hold; for example, imposing a total ordering of all resource types and requiring processes to request resources in increasing order prevents circular wait. Deadlock avoidance, as in the banker's algorithm, requires advance information about the resources a process will request and grants a request only if the system stays in a safe state. Detection and recovery lets deadlocks occur, detects them and recovers, for example by terminating processes. Finally, the problem can be ignored altogether, which is what most operating systems, including Linux and Windows, do; it is then up to application developers to write programs that avoid deadlock.
+
+@page
+# 3.6 Memory management
+
+Main memory and the registers built into each processing core are the only general-purpose storage that the CPU can access directly. Any instructions in execution, and any data being used by them, must therefore be in one of these direct-access storage devices. Registers can be accessed within one CPU clock cycle, whereas completing a memory access may take many cycles, so processors include caches that hold recently used memory contents close to the core.
+
+For proper system operation the operating system must be protected from access by user processes, and user processes must be protected from one another. We first need to make sure that each process has a separate memory space. To do so, the hardware uses two registers. The base register holds the smallest legal physical memory address, and the limit register specifies the size of the range. For example, if the base register holds 300040 and the limit register is 120900, then the program can legally access all addresses from 300040 through 420939 inclusive. The CPU hardware compares every address generated in user mode with the registers. Any attempt by a program executing in user mode to access operating-system memory or other users' memory results in a trap to the operating system, which treats the attempt as a fatal error. The base and limit registers can be loaded only by the operating system, which uses a special privileged instruction.
+
+## 3.6.1 Address binding
+
+Usually a program resides on disk as a binary executable file. To run, it must be brought into memory and placed within the context of a process. The binding of instructions and data to memory addresses can be done at any step along the way. If it is known at compile time where the process will reside in memory, absolute code can be generated; if the starting location later changes, the code must be recompiled. If it is not known at compile time, the compiler generates relocatable code and final binding is delayed until load time. If the process can be moved during its execution from one memory segment to another, binding must be delayed until execution time. Special hardware must be available for this scheme to work, and most operating systems use this method.
+
+An address generated by the CPU is commonly referred to as a logical address, whereas an address seen by the memory unit is a physical address. With execution-time binding the logical address is also called a virtual address. The run-time mapping from virtual to physical addresses is done by a hardware device called the memory-management unit (MMU). In the simplest scheme the base register is now called a relocation register, and its value is added to every address generated by a user process at the time the address is sent to memory. For example, if the relocation register holds 14000, an attempt by the user to address location 346 is mapped to physical location 14346. The user program never accesses the real physical addresses; it deals only with logical addresses.
+
+@page
+## 3.6.2 Contiguous memory allocation
+
+In contiguous memory allocation each process is contained in a single section of memory that is contiguous to the section containing the next process. In the variable-partition scheme, the operating system keeps a table indicating which parts of memory are available and which are occupied. Initially all memory is available for user processes and is considered one large block of available memory, a hole. As processes enter and leave the system, memory comes to contain a set of holes of various sizes scattered throughout memory.
+
+When a process arrives and needs memory, the system searches the set for a hole that is large enough. This is an instance of the general dynamic storage-allocation problem, and three strategies are commonly used to select a free hole:
+- First fit: allocate the first hole that is big enough. Searching can stop as soon as a free hole that is large enough is found.
+- Best fit: allocate the smallest hole that is big enough. The entire list must be searched, unless it is ordered by size, and the strategy produces the smallest leftover hole.
+- Worst fit: allocate the largest hole. Again the entire list must be searched, unless it is sorted by size, and the strategy produces the largest leftover hole, which may be more useful than the smaller leftover hole from best fit.
+
+Simulations have shown that both first fit and best fit are better than worst fit in terms of decreasing time and storage utilisation. Neither first fit nor best fit is clearly better than the other in terms of storage utilisation, but first fit is generally faster.
+
+Both first fit and best fit suffer from external fragmentation. As processes are loaded and removed, free memory is broken into little pieces; external fragmentation exists when there is enough total memory space to satisfy a request but the available spaces are not contiguous. Statistical analysis of first fit reveals that, even with some optimisation, given N allocated blocks another 0.5 N blocks will be lost to fragmentation, so one-third of memory may be unusable. This property is known as the 50-percent rule.
+
+Memory fragmentation can be internal as well as external. Consider a hole of 18,464 bytes and a process that requests 18,462 bytes: allocating exactly the requested block leaves a hole of 2 bytes, and the overhead of keeping track of it is substantially larger than the hole itself. The general approach is to break physical memory into fixed-sized blocks and allocate memory in units based on block size. The memory allocated to a process may then be slightly larger than the requested memory; the difference between these two numbers is internal fragmentation, unused memory that is internal to a partition.
+
+One solution to external fragmentation is compaction: the memory contents are shuffled so as to place all free memory together in one large block. Compaction is possible only if relocation is dynamic and is done at execution time, and it can be expensive. Another solution is to permit the logical address space of processes to be noncontiguous, which is the strategy used in paging.
+
+@page
+## 3.6.3 Paging
+
+Paging is a memory-management scheme that permits a process's physical address space to be noncontiguous. It avoids external fragmentation and the associated need for compaction. Physical memory is broken into fixed-sized blocks called frames, and logical memory is broken into blocks of the same size called pages. When a process is to be executed, its pages are loaded into any available memory frames from their source.
+
+Every address generated by the CPU is divided into two parts: a page number (p) and a page offset (d). The page number is used as an index into a per-process page table, which contains the base address of each frame in physical memory; the offset is the location within the frame being referenced. The page size is defined by the hardware and is a power of 2, typically varying between 4 KB and 1 GB per page. If the size of the logical address space is 2^m and the page size is 2^n bytes, then the high-order m - n bits of a logical address designate the page number and the n low-order bits designate the page offset. For example, with 32-bit logical addresses and 4 KB (2^12-byte) pages, the page offset takes 12 bits and the page number the remaining 20 bits, so a page table can have up to 2^20 (about one million) entries. Paging itself is a form of dynamic relocation, and while it eliminates external fragmentation, it still suffers from internal fragmentation: on average, one-half page per process is wasted.
+
+@figure address-translation Figure 3.2: Address translation with a translation look-aside buffer (TLB). The page number p is looked up in the TLB first; on a TLB miss the page table in memory supplies the frame number f.
+
+Keeping the page table in main memory means that every data access needs two memory accesses: one for the page-table entry and one for the data itself. The standard solution is a special, small, fast-lookup hardware cache called a translation look-aside buffer (TLB). The TLB is associative, high-speed memory; each entry consists of a key (a page number) and a value (a frame number). It is kept small, typically between 32 and 1,024 entries. When a logical address is generated, its page number is presented to the TLB. If the page number is found (a TLB hit), its frame number is immediately available and is used to access memory. If it is not in the TLB (a TLB miss), the page table is consulted, and the page number and frame number are added to the TLB so that they will be found quickly on the next reference.
+
+@page
+The percentage of times that the page number of interest is found in the TLB is called the hit ratio. An 80 percent hit ratio means that we find the desired page number in the TLB 80 percent of the time. If it takes 10 nanoseconds to access memory, a mapped-memory access takes 10 ns when the page number is in the TLB, and 20 ns when it is not (one access for the page table and one for the desired byte). The effective memory-access time is then 0.80 x 10 + 0.20 x 20 = 12 nanoseconds, a 20 percent slowdown in average memory-access time. With a 99 percent hit ratio, which is much more realistic, the effective access time is 0.99 x 10 + 0.01 x 20 = 10.1 nanoseconds, a slowdown of only 1 percent.
+
+## 3.6.4 Virtual memory and demand paging
+
+Virtual memory is a technique that allows the execution of processes that are not completely in memory. It separates logical memory as perceived by programmers from physical memory, so that an extremely large virtual memory can be provided even when only a smaller physical memory is available. Programs can be larger than physical memory, more programs can run at the same time, and less I/O is needed to load or swap each program.
+
+With demand paging, pages are loaded only when they are demanded during program execution; pages that are never accessed are never loaded into physical memory. Some form of hardware support is needed to distinguish between the pages that are in memory and those that are on secondary storage, and the valid-invalid bit in each page-table entry is used for this purpose. When the bit is set to valid, the associated page is both legal and in memory. When it is set to invalid, the page either is not in the logical address space of the process or is valid but currently on secondary storage.
+
+While the process executes and accesses pages that are memory resident, execution proceeds normally. An access to a page marked invalid causes a page fault: the paging hardware notices that the invalid bit is set and causes a trap to the operating system. The procedure for handling this page fault is straightforward:
+- Check an internal table, usually kept with the process control block, to determine whether the reference was a valid or an invalid memory access.
+- If the reference was invalid, terminate the process. If it was valid but the page has not yet been brought in, page it in now.
+- Find a free frame, for example by taking one from the free-frame list.
+- Schedule a secondary-storage operation to read the desired page into the newly allocated frame.
+- When the storage read is complete, modify the internal table kept with the process and the page table to indicate that the page is now in memory.
+- Restart the instruction that was interrupted by the trap. The process can now access the page as though it had always been in memory.
+
+In the extreme case, a process can start executing with no pages in memory. This scheme is called pure demand paging: a page is never brought into memory until it is required.
+
+@page
+Demand paging also makes process creation fast. Recall that fork() creates a child as a duplicate of its parent. Rather than copying the parent's whole address space, many operating systems use copy-on-write: the parent and child processes initially share the same pages, and these shared pages are marked as copy-on-write pages. A copy of a shared page is created only when either process writes to it, so pages that are never modified are never copied.
+
+Demand paging can significantly affect the performance of a computer system. Let p be the probability of a page fault. If memory access takes 200 nanoseconds and the average page-fault service time is 8 milliseconds, the effective access time is (1 - p) x 200 + p x 8,000,000 nanoseconds. If one access out of 1,000 causes a page fault, the effective access time is 8.2 microseconds, and the computer is slowed down by a factor of 40 because of demand paging. If we want performance degradation to be less than 10 percent, fewer than one memory access out of 399,990 may page-fault.
+
+## 3.6.5 Page replacement
+
+If no frame is free when a page fault occurs, the operating system must find a frame that is not currently being used and free it: page replacement. The victim frame is written to secondary storage if it has been modified (its modify or dirty bit is set), and the page tables are changed to show that the page is no longer in memory. Page-replacement algorithms are evaluated by running them on a string of memory references, called a reference string, and counting the number of page faults.
+
+The simplest algorithm is first-in, first-out (FIFO) replacement: when a page must be replaced, the oldest page is chosen. FIFO is easy to understand and program, but its performance is not always good. It also suffers from Belady's anomaly: for some page-replacement algorithms, the page-fault rate may increase as the number of allocated frames increases. With the reference string 1, 2, 3, 4, 1, 2, 5, 1, 2, 3, 4, 5, FIFO causes nine faults with three frames but ten faults with four frames.
+
+The optimal page-replacement algorithm, called OPT or MIN, replaces the page that will not be used for the longest period of time. It has the lowest page-fault rate of all algorithms and never suffers from Belady's anomaly. Unfortunately, it is difficult to implement, because it requires future knowledge of the reference string, so it is used mainly for comparison studies: it is useful to know that a new algorithm is within a few percent of optimal.
+
+The least-recently-used (LRU) algorithm approximates OPT by using the recent past as an approximation of the near future: it replaces the page that has not been used for the longest period of time. LRU is considered good and is often used, but an exact implementation needs substantial hardware assistance, either counters holding the time of last use in each page-table entry or a stack of page numbers. Like OPT, LRU belongs to the class of stack algorithms, which never exhibit Belady's anomaly.
+
+Few computers provide enough hardware for true LRU, but many provide a reference bit, set by the hardware whenever the page is referenced. The second-chance or clock algorithm is a FIFO replacement algorithm that uses this bit. The pages are kept in a circular queue, and a pointer indicates which page is to be replaced next. When a frame is needed, the pointer advances until it finds a page with a reference bit of 0, clearing the reference bits of the pages it passes: a page whose bit is 1 is given a second chance.
+
+@page
+## 3.6.6 Thrashing
+
+If a process does not have the number of frames it needs to support the pages in active use, it will quickly page-fault. It must then replace some page, but since all its pages are in active use, it replaces a page that will be needed again right away, and it faults again, and again. This high paging activity is called thrashing: a process is thrashing if it is spending more time paging than executing. Thrashing causes severe performance problems. As processes wait for the paging device, CPU utilisation decreases; a scheduler that reacts by increasing the degree of multiprogramming starts new processes, which take frames from the running ones, causing more page faults and an even lower CPU utilisation.
+
+The working-set model is based on the assumption of locality. It uses a parameter, delta, to define the working-set window: the set of pages in the most recent delta page references is the working set. If a page is in active use, it will be in the working set; if it is no longer being used, it will drop from the working set delta time units after its last reference. If the total demand D, the sum of the working-set sizes of all processes, is greater than the total number of available frames m, thrashing will occur, because some processes will not have enough frames. The operating system then selects a process to suspend, writes its pages out and reallocates its frames to other processes.
+
+A more direct approach is the page-fault-frequency (PFF) strategy, which establishes upper and lower bounds on the desired page-fault rate. If the actual page-fault rate exceeds the upper limit, the process is allocated another frame; if the rate falls below the lower limit, a frame is removed from the process.
+
+# 3.7 Summary
+
+A process is a program in execution, represented in the operating system by a process control block, and it moves between the new, ready, running, waiting and terminated states during its lifetime. Threads let a process perform several tasks at once while sharing its code, data and resources. The CPU scheduler chooses which ready process runs next: FCFS is simple but suffers from the convoy effect, SJF minimises the average waiting time but needs predicted burst lengths, round robin gives interactive users good response times, and priority schemes need aging to avoid starvation. Memory management protects processes from one another and maps logical addresses to physical ones. Paging removes external fragmentation, the TLB makes translation fast, and virtual memory with demand paging lets programs larger than physical memory run, provided each process keeps its working set in memory.
+
+## Review questions
+
+- Why can a process not move directly from the waiting state to the running state?
+- Calculate the average waiting time for the processes of the SRTF example when they are scheduled with round robin and a time quantum of 3 ms.
+- Explain why the optimal page-replacement algorithm cannot be used in a real operating system.
+- A system has a TLB hit ratio of 95 percent and a memory access time of 50 ns. What is its effective memory-access time?

@@ -1,0 +1,159 @@
+% Research-methods chapter of the testbench's sample course. One "@page" per printed page: the evaluation
+% set names these pages (and scans some of them), so moving text between pages means updating
+% evaluation-set.json.
+@header CM3070 Final Project - Study Guide, Chapter 4
+@title Chapter 4: Research Methods for Computing Projects
+
+## Learning outcomes
+
+By the end of this chapter you should be able to:
+- distinguish research methods from research methodology and choose an approach that fits your research question;
+- write focused research questions and testable hypotheses;
+- plan how to sample participants and collect data, and judge the validity and reliability of your design;
+- evaluate a software artefact with users and analyse the results with appropriate statistics;
+- plan a study that meets the university's ethical and data-protection requirements.
+
+# 4.1 Introduction
+
+A final-year computing project is more than a piece of software. Examiners expect you to show that you asked a clear question, chose a sensible way of answering it, collected evidence carefully and drew conclusions that the evidence supports. This chapter introduces the vocabulary and the practical techniques you need to do that.
+
+Two terms are often confused. Research methods are the specific techniques used to collect and analyse data: a questionnaire, a semi-structured interview, a controlled experiment, a usability test or a statistical test are all methods. Research methodology is the overall strategy and its justification: the reasoning that explains why particular methods were chosen, how they fit together and why they are appropriate for answering the research question. A methodology chapter in a dissertation should therefore do more than list the methods used; it should argue that they were the right ones.
+
+The research question is the anchor for every later decision. A question such as "Does adding spaced-repetition reminders to a revision app improve students' exam scores?" points towards an experiment with a measurable outcome, whereas "How do first-year students decide when to revise?" points towards interviews and qualitative analysis. Writing the question carefully at the start saves a great deal of wasted effort later.
+
+Most computing projects combine building something with evaluating it. The building part follows a software engineering process; the evaluating part is research, and it needs the same care as the code. A beautifully engineered system with a weak evaluation usually earns a weaker mark than a modest system that is evaluated rigorously.
+
+@page
+# 4.2 Research paradigms and approaches
+
+Every study rests on assumptions about the nature of reality and of knowledge, known as a research paradigm. Three paradigms are common in computing research.
+
+Positivism assumes that there is a single objective reality that can be observed and measured. Knowledge is built by testing hypotheses with quantitative data, and the researcher aims to be a neutral observer whose personal views do not affect the results. Performance benchmarks and controlled experiments usually sit within this paradigm.
+
+Interpretivism assumes that reality is socially constructed: people experience and interpret the same situation differently, and research should understand the meanings they attach to it. Data are usually qualitative, such as interview transcripts or observation notes, and the researcher acknowledges that their own perspective shapes the interpretation. Studies of how developers collaborate or why users abandon an app often take this view.
+
+Pragmatism holds that the research question matters more than any single view of reality, and that researchers should use whichever methods work best for answering it. It is the usual justification for mixed-methods designs.
+
+These paradigms lead to three broad approaches. Quantitative research collects numerical data, such as task completion times, error counts or rating-scale responses, and analyses it statistically to test hypotheses or measure relationships between variables. Its strength is that results can be generalised and compared; its weakness is that it says little about why something happens.
+
+Qualitative research collects non-numerical data, such as words, observations and images, and analyses it for themes and meanings. It is well suited to exploring new problems and understanding experiences in depth, but its findings come from small samples and are not statistically generalisable.
+
+Mixed-methods research combines the two, for example a questionnaire to measure how satisfied a large group of users is, followed by interviews with a few of them to understand the reasons. A common design is the explanatory sequential design, in which a quantitative phase is followed by a qualitative phase that explains its results. Mixed methods give a fuller picture but take more time, and the two strands must be integrated rather than simply reported side by side.
+
+@page
+# 4.3 Research questions and hypotheses
+
+A good research question is clear, focused and answerable within the time and resources of the project. A widely used checklist is the FINER criteria: a question should be Feasible (it can be answered with the time, skills, data and participants available), Interesting (to you, your supervisor and the wider community), Novel (it confirms, extends or refutes earlier findings rather than repeating them), Ethical (it can be answered without causing harm) and Relevant (the answer will matter to practice or to future research).
+
+Broad topics must be narrowed before they become questions. "Mobile learning" is a topic; "Do push notifications increase the number of days per week on which first-year students use a revision app?" is a question, because it names the population, the intervention and the outcome that will be measured.
+
+Quantitative studies turn research questions into hypotheses, which are precise, testable predictions. The null hypothesis (H0) states that there is no effect or no difference, for example that notifications make no difference to the number of days students use the app. The alternative hypothesis (H1) states that there is an effect or a difference. Statistical tests never prove the alternative hypothesis; they assess how likely the observed data would be if the null hypothesis were true, and the null hypothesis is rejected when that probability is small enough.
+
+A hypothesis is only testable once its concepts have been operationalised, that is, defined in terms of something that can be measured. "Engagement" might be operationalised as the number of sessions per week recorded in the app's logs, and "usability" as the score on a standard questionnaire. The choice of operational definition should be justified, because it determines what the study actually measures.
+
+Hypotheses are framed in terms of variables. The independent variable is the factor that the researcher manipulates or compares, such as whether notifications are switched on. The dependent variable is the outcome that is measured, such as the number of sessions per week. A confounding variable is a third factor that influences the dependent variable and is associated with the independent variable, so that it offers an alternative explanation for the results: if students who chose to switch notifications on were also more motivated, motivation would confound the comparison. Random allocation of participants to conditions is the most effective protection against confounding.
+
+@page
+# 4.4 Sampling
+
+The population is the whole group that a study wants to draw conclusions about, for example all undergraduate computing students in the UK. Because it is rarely possible to study everyone, researchers study a sample, a subset of the population. The sampling frame is the list from which the sample is actually drawn, such as a university's register of enrolled computing students. If the frame leaves out part of the population, the sample cannot represent that part, however carefully it is chosen.
+
+Probability sampling gives every member of the population a known, non-zero chance of selection, which allows results to be generalised statistically. The main techniques are:
+- Simple random sampling: every member has an equal chance of selection, for example by drawing student numbers with a random number generator.
+- Systematic sampling: every kth member of the sampling frame is selected after a random start, for example every tenth name on the list.
+- Stratified sampling: the population is divided into subgroups (strata), such as year of study, and a random sample is drawn from each stratum in proportion to its size.
+- Cluster sampling: the population is divided into naturally occurring groups, such as tutorial groups, and whole clusters are selected at random.
+
+Non-probability sampling does not give every member a known chance of selection. It is cheaper and quicker but limits how far results can be generalised. The main techniques are:
+- Convenience sampling: participants are chosen because they are easy to reach, such as classmates or friends.
+- Purposive sampling: participants are chosen deliberately because they have characteristics or experience relevant to the study, such as professional developers who use a particular tool.
+- Snowball sampling: initial participants recruit further participants from among their contacts, which is useful for hard-to-reach groups.
+- Quota sampling: participants are recruited until fixed numbers have been reached in each category, such as 20 first-year and 20 final-year students.
+
+The sample size needed depends on the analysis planned. For a survey that estimates a proportion in a large population, about 385 responses give a margin of error of plus or minus 5 percent at a 95 percent confidence level; halving the margin of error requires roughly four times as many responses. For experiments, a power analysis estimates the number of participants needed to detect an effect of a given size; underpowered studies often fail to find effects that are really there. Qualitative studies use much smaller samples and usually continue until data saturation, the point at which new interviews no longer produce new themes.
+
+@page
+# 4.5 Collecting data
+
+Questionnaires collect the same information from many people quickly and cheaply. Closed questions offer fixed answers and produce data that is easy to analyse; open questions let respondents answer in their own words and produce richer but slower-to-analyse data. Attitudes are often measured with Likert scales, on which respondents rate their agreement with a statement, usually on a five-point or seven-point scale from "strongly disagree" to "strongly agree". Good questions are short, neutral and about one thing only. Avoid leading questions, which suggest the expected answer ("Don't you agree the new design is easier?"), and double-barrelled questions, which ask about two things at once ("Was the app fast and easy to use?").
+
+Interviews explore experiences and opinions in depth. In a structured interview every participant is asked the same questions in the same order, which makes answers easy to compare. A semi-structured interview follows an interview guide of main questions but lets the interviewer change the order and ask follow-up questions; it is the most common form in student projects. An unstructured interview is closer to a guided conversation around a topic. Interviews typically last 30 to 60 minutes, are audio-recorded with the participant's permission and are transcribed before analysis.
+
+Observation records what people actually do rather than what they say they do. It can be carried out in the field, for example watching how students use a library's self-service machines, or in a controlled setting such as a usability laboratory.
+
+Experiments test cause and effect by manipulating an independent variable and measuring its effect on a dependent variable while controlling other factors. In a between-subjects design each participant experiences only one condition, so different groups are compared; this avoids carry-over effects but needs more participants. In a within-subjects (repeated-measures) design every participant experiences all conditions, which needs fewer participants and controls for individual differences, but the order of conditions can affect the results through learning or fatigue. These order effects are controlled by counterbalancing: half of the participants experience condition A first and the other half condition B first, or, with more conditions, the orders are rotated using a Latin square.
+
+Whatever the method, run a pilot study first: a small-scale trial with two or three people from the target population. A pilot reveals confusing questions, tasks that take far longer than expected and technical problems with recording equipment or software, while there is still time to fix them.
+
+@page
+# 4.6 Validity and reliability
+
+Validity is the extent to which a study measures what it claims to measure and supports the conclusions drawn from it. Internal validity is the degree to which a study establishes a genuine cause-and-effect relationship between the independent and dependent variables, free from the influence of confounding variables. External validity is the degree to which the findings can be generalised to other people, settings and times. Construct validity is the degree to which a measurement actually captures the concept it is meant to measure; counting the hours a student spends in a learning app, for instance, may not be a valid measure of how much they learned. Ecological validity asks whether the conditions of the study resemble real-world use.
+
+Reliability is the consistency of a measure: a reliable measurement gives the same result under the same conditions. Test-retest reliability is checked by measuring the same participants twice and comparing the results. Inter-rater reliability measures how far two or more people who code or rate the same data agree with each other; it is commonly reported with Cohen's kappa, where values above about 0.6 indicate substantial agreement. Internal consistency measures whether the items of a questionnaire scale that are meant to measure the same construct produce similar scores, and is usually reported with Cronbach's alpha; a value of 0.7 or above is conventionally taken as acceptable. A measure can be reliable without being valid, but it cannot be valid without being reliable.
+
+@table Table 4.1: Common threats to validity in student projects and how to reduce them
+| Threat | Type | Example | How to reduce it |
+| Selection bias | Internal | Volunteers for the new app are keener students | Random allocation to conditions |
+| Order effects | Internal | Participants do better on the second task through practice | Counterbalance the order of conditions |
+| Experimenter bias | Internal | The researcher, who built the app, prompts participants | Use a script; blind the person running sessions |
+| Unrepresentative sample | External | Only friends from the same course take part | Probability sampling; describe the sample honestly |
+| Artificial setting | Ecological | Tasks are done in a quiet lab, not on a busy bus | Field trials or realistic tasks |
+| Poor measures | Construct | Time in the app used as a measure of learning | Use validated instruments and objective tests |
+@end
+
+No study is free of threats, and examiners do not expect one to be. What they do expect is that you identify the main threats to your own study, explain what you did to reduce them and discuss honestly how the remaining ones limit your conclusions.
+
+@page
+# 4.7 Evaluating software artefacts
+
+Most computing projects produce an artefact, such as an application, a tool or an algorithm, and the evaluation must show how well it meets its aims. The method depends on what the artefact is for.
+
+Usability testing observes representative users attempting realistic tasks with the system. Typical measures are effectiveness (the task completion rate), efficiency (the time on task and the number of errors) and satisfaction (usually measured with a questionnaire after the tasks). In a think-aloud protocol participants say what they are thinking as they work, which reveals why they hesitate or make errors; it is very effective for finding problems, although speaking aloud can slow participants down, so timings from think-aloud sessions should not be compared with timings from silent ones.
+
+The System Usability Scale (SUS) is the most widely used satisfaction questionnaire. It consists of ten statements, alternately positive and negative, each rated on a five-point scale from strongly disagree to strongly agree. The responses are converted into a single score from 0 to 100. A SUS score is not a percentage: the average score across hundreds of published studies is 68, so a system scoring above 68 is above average, and scores above about 80 are generally regarded as good.
+
+You do not need a large number of participants to find usability problems. Nielsen and Landauer's model suggests that testing with five users finds about 85 percent of the usability problems in a design, and that it is better to run several small rounds of testing, fixing problems in between, than one large test. This advice applies to finding problems, however, not to measuring performance: comparing the completion times of two designs with statistical confidence needs considerably larger samples.
+
+A/B testing compares two versions of a live system by randomly showing each user one version and measuring a behaviour, such as the proportion of users who complete a sign-up. It needs many users and is more common in industry than in student projects.
+
+Technical artefacts are evaluated with benchmarks and tests. Performance measurements should be repeated several times, with the mean and standard deviation reported and the hardware and software environment described, so that others can reproduce them. Accuracy of algorithms is measured against a ground truth, for example precision and recall against a labelled test set. Whatever the measure, compare your artefact with a meaningful baseline, such as an existing tool or a simpler approach; a result reported without a baseline is hard to interpret.
+
+@page
+# 4.8 Analysing data
+
+Quantitative analysis begins with descriptive statistics, which summarise the data: measures of central tendency, such as the mean and the median, and measures of spread, such as the standard deviation and the range. The median is preferred to the mean when data are skewed or contain outliers, as task completion times often do. Always plot the data, for example as a histogram or box plot, before running any test.
+
+Inferential statistics assess whether patterns in a sample are likely to reflect the population. The choice of test depends on the type of data and the design. An independent-samples t-test compares the means of two separate groups when the data are approximately normally distributed, while a paired t-test compares two conditions experienced by the same participants. The Mann-Whitney U test is the non-parametric alternative to the independent-samples t-test, used when the data are not normally distributed or are ordinal, such as Likert ratings; the Wilcoxon signed-rank test is the non-parametric alternative to the paired t-test. The chi-square test of independence examines whether two categorical variables are associated, for example whether the device used is associated with task success.
+
+A statistical test produces a p-value: the probability of obtaining results at least as extreme as those observed if the null hypothesis were true. By convention, a result is described as statistically significant when p is below 0.05, the significance level chosen before the analysis. Statistical significance is not the same as practical importance, so results should also report an effect size, which measures how large a difference is. For comparisons of two means, Cohen's d is commonly used, with 0.2 regarded as a small effect, 0.5 as medium and 0.8 as large.
+
+Qualitative data, such as interview transcripts and open questionnaire answers, are often analysed with thematic analysis. Braun and Clarke (2006) describe six phases: familiarising yourself with the data; generating initial codes; searching for themes; reviewing themes; defining and naming themes; and producing the report. Coding means labelling segments of the data with short descriptions of what they are about; themes are broader patterns of meaning built from related codes. Report themes with representative quotations, and explain how you moved from the raw data to the themes, so that readers can judge the analysis for themselves.
+
+@page
+# 4.9 Research ethics
+
+Any project that involves human participants, or data about people, must be planned and carried out ethically. The guiding principles are to respect participants' autonomy, to avoid harm, and to be honest about what the research involves.
+
+Informed consent means that participants agree to take part voluntarily, after being told in plain language what the study is about, what they will be asked to do, how long it will take, any risks involved and how their data will be used and stored. This information is usually given in a participant information sheet, and agreement is recorded on a consent form. Participants must be told that they have the right to withdraw from the study at any time without giving a reason and without any penalty, and how long after taking part they can still ask for their data to be removed.
+
+Anonymity and confidentiality are different. Data are anonymous when no one, not even the researcher, can link them to the person who provided them, as with an online questionnaire that collects no names or identifying details. Data are confidential when the researcher knows who provided them but promises not to reveal it, as with interviews, where quotations are reported under pseudonyms such as "Participant 4".
+
+Personal data must be handled in line with data-protection law, in the UK the UK GDPR and the Data Protection Act 2018. Collect only the data you need for your research question, store it securely on university-approved systems rather than on personal devices, keep identifying information separate from the research data, and delete it at the end of the retention period stated in the information sheet.
+
+Ethics approval must be obtained from the school's research ethics committee before any data are collected, including data from pilot studies. Retrospective approval is never granted, and data collected without approval cannot be used in your dissertation. Projects involving vulnerable participants, such as children under 18 or people who may lack the capacity to consent, need additional review and usually take longer to approve, so most student projects avoid them.
+
+Deception, such as not telling participants the true purpose of a study, is acceptable only when the research cannot be done any other way and the deception causes no harm. Participants must then be debriefed: told the true purpose as soon as possible after taking part and offered the chance to withdraw their data.
+
+@page
+# 4.10 Writing up your project
+
+A computing dissertation usually follows a standard structure. The abstract, about 300 words, summarises the problem, the approach, the main results and the conclusion. The introduction sets out the motivation, aims and objectives. The literature review critically discusses related work and identifies the gap your project addresses. The methodology explains and justifies the design of the study; the implementation describes what was built and the main design decisions; the evaluation or results chapter presents the findings without interpretation; and the discussion interprets them, relates them to the literature and acknowledges limitations. The conclusion summarises what was achieved against the original objectives and suggests future work, followed by the references and appendices.
+
+Every source you use must be acknowledged. This course uses the Harvard author-date referencing style, in which sources are cited in the text by the author's surname and year of publication, such as (Braun and Clarke, 2006), and listed alphabetically by surname in the reference list. Presenting someone else's words or ideas as your own without acknowledgement is plagiarism, and it includes copying code without credit and submitting text generated by AI tools as your own unless the module's rules explicitly allow it and you declare it.
+
+Write about limitations honestly. A limitations section that explains, for example, that the sample was small and drawn from one university, and what that means for generalising the findings, strengthens a dissertation rather than weakening it, because it shows that you understand your evidence.
+
+# 4.11 Summary
+
+Research methodology justifies the choice of methods, while research methods are the techniques themselves. Positivism, interpretivism and pragmatism lead to quantitative, qualitative and mixed-methods approaches. Good research questions meet the FINER criteria, and hypotheses must be operationalised before they can be tested. Probability sampling supports generalisation, whereas convenience, purposive, snowball and quota sampling are quicker but limit it. Questionnaires, interviews, observation and experiments each suit different questions, and a pilot study should always come first. Validity asks whether a study measures what it claims and supports its conclusions; reliability asks whether its measures are consistent. Software artefacts are evaluated with usability tests, the System Usability Scale and benchmarks against a baseline, and data are analysed with descriptive and inferential statistics or thematic analysis. Finally, every study with human participants needs informed consent, careful data handling and ethics approval before any data are collected.
