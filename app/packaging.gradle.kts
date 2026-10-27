@@ -1,6 +1,7 @@
 // Installers for LearnSphere, applied from app/build.gradle.kts. packaging/README.md has the release steps.
 //
-//   ./gradlew :app:packageMac       LearnSphere-<version>.dmg, signed; notarized and stapled with -Plearnsphere.notarize=true
+//   ./gradlew :app:packageMac       LearnSphere-<version>.dmg, signed; the app and the .dmg notarized and stapled
+//                                   with -Plearnsphere.notarize=true
 //   ./gradlew :app:packageWindows   LearnSphere-<version>.msi (Windows, with the WiX Toolset on PATH)
 //
 // Both build a Java 25 runtime with jlink, run jpackage on the jars of installDist with the JVM options of
@@ -14,7 +15,7 @@
 //   -Plearnsphere.packageVersion=<x.y.z>   installer version (default 1.0.0; jpackage on macOS refuses 0.x)
 //   -Plearnsphere.signingIdentity=<id>     name, team ID or SHA-1 of the "Developer ID Application" identity;
 //                                          found automatically when the keychain has exactly one; "-" signs ad hoc
-//   -Plearnsphere.notarize=true            notarize the .dmg and staple the ticket
+//   -Plearnsphere.notarize=true            notarize the app and the .dmg, and staple the tickets
 //   -Plearnsphere.notaryProfile=<name>     notarytool keychain profile (default learnsphere-notary)
 //
 // The task classes below only hold serializable values, so the tasks work with the configuration cache.
@@ -125,7 +126,10 @@ abstract class StageJars : DefaultTask() {
                     continue
                 }
                 if (target == NativePlatform.MACOS_ARM64 && identity != null) {
-                    val file = File(work, "${replaced.size}-${entry.name.substringAfterLast('/')}")
+                    // codesign names the signature after the file, so each library keeps its own name, in a
+                    // folder of its own: work/<jar>/<n>/libsqlitejdbc.dylib is signed as "libsqlitejdbc".
+                    val dir = File(work, "${jar.nameWithoutExtension}/${replaced.size}").also { it.mkdirs() }
+                    val file = File(dir, entry.name.substringAfterLast('/'))
                     zip.getInputStream(entry).use { input -> file.outputStream().use { input.copyTo(it) } }
                     if (!thinToArm64(file)) {
                         removed += entry.name
@@ -419,8 +423,9 @@ abstract class MacApp : DefaultTask() {
 
 /**
  * Builds the .msi with jpackage and WiX. When the payload is too large for one cabinet inside the .msi
- * (the models), packaging/windows/main.wxs keeps the cabinets as files next to it; they are copied from
- * jpackage's work folder to the output, and the .msi installs only with them beside it.
+ * (the models), packaging/windows/main.wxs keeps the cabinets as files next to it, and the .msi installs
+ * only with them beside it. jpackage writes the .msi straight into the output folder and WiX puts the
+ * cabinets next to it; cabinets left in jpackage's work folder instead are copied to the output.
  */
 @DisableCachingByDefault(because = "Builds an installer from scratch")
 abstract class WindowsMsi : DefaultTask() {
@@ -452,9 +457,16 @@ abstract class WindowsMsi : DefaultTask() {
             commandLine(listOf(jpackage.get(), "--type", "msi", "--dest", out.absolutePath, "--temp", temp.absolutePath) + jpackageArgs.get())
         }
         if (externalCabinets.get()) {
-            val cabinets = temp.walkTopDown().filter { it.isFile && it.extension.equals("cab", ignoreCase = true) }.toList()
-            if (cabinets.isEmpty()) throw GradleException("jpackage left no cabinet files in $temp; the .msi cannot install without them.")
-            cabinets.forEach { it.copyTo(File(out, it.name), overwrite = true) }
+            // Named by CabinetTemplate in packaging/windows/main.wxs.
+            val cabinet = Regex("""(?i)LearnSphere\d+\.cab""")
+            fun isCabinet(file: File) = file.isFile && cabinet.matches(file.name)
+            if (out.listFiles().orEmpty().none(::isCabinet)) {
+                val leftInTemp = temp.walkTopDown().filter(::isCabinet).toList()
+                if (leftInTemp.isEmpty()) {
+                    throw GradleException("jpackage wrote no cabinet files to $out or $temp; the .msi cannot install without them.")
+                }
+                leftInTemp.forEach { it.copyTo(File(out, it.name), overwrite = true) }
+            }
         }
         temp.deleteRecursively()
         out.listFiles()?.sortedBy { it.name }?.forEach { logger.lifecycle("${it.name}  ${it.length() / (1024 * 1024)} MB") }
@@ -619,12 +631,27 @@ val macApp = tasks.register<MacApp>("macApp") {
     onlyIf("running on macOS") { mac }
 }
 
-val macDmg = tasks.register<Exec>("macDmg") {
-    description = "Builds and signs the LearnSphere disk image from the signed app."
+val macAppBundle = File(macWork, "app/LearnSphere.app")
+
+// The app carries its own ticket, so it opens offline even after it has been copied out of the disk image.
+val notarizeMacApp = tasks.register<Exec>("notarizeMacApp") {
+    description = "Notarizes LearnSphere.app with Apple and staples the ticket to it, before it goes into the disk image."
     group = "distribution"
     dependsOn(macApp)
     val mac = onMac
-    val app = File(macWork, "app/LearnSphere.app")
+    val enabled = notarize
+    onlyIf("running on macOS") { mac }
+    onlyIf("-Plearnsphere.notarize=true") { enabled }
+    commandLine("sh", File(packagingDir, "macos/notarize.sh").absolutePath, notaryProfile, macAppBundle.absolutePath)
+}
+
+val macDmg = tasks.register<Exec>("macDmg") {
+    description = "Builds and signs the LearnSphere disk image from the signed app."
+    group = "distribution"
+    // Runs macApp, and with -Plearnsphere.notarize=true notarizes the app before it goes into the image.
+    dependsOn(notarizeMacApp)
+    val mac = onMac
+    val app = macAppBundle
     val dmg = dmgFile
     val identity = identityTxt
     val script = File(packagingDir, "macos/make-dmg.sh")
@@ -691,25 +718,31 @@ val windowsJars = tasks.register<StageJars>("stageWindowsJars") {
     doNotTrackState("Packaging always starts from scratch")
 }
 
+val windowsInputDir = File(windowsWork, "input")
+
+val windowsInput = tasks.register<Sync>("stageWindowsInput") {
+    description = "Assembles the jars and notices jpackage puts in the Windows app."
+    group = "distribution"
+    from(windowsJars)
+    into("legal") { from(collectNotices) }
+    into(windowsInputDir)
+    // stageWindowsRuntime fills runtime/ itself.
+    preserve { include("runtime/**") }
+    doNotTrackState("Packaging always starts from scratch")
+}
+
+// Staged straight into jpackage's input folder: models are hard links to the runtime folder and only the
+// split chat model takes space of its own, so a build with the models holds one copy fewer.
 val windowsRuntimeFiles = tasks.register<StageRuntime>("stageWindowsRuntime") {
     description = "Stages llama-server for Windows and the models from the runtime folder."
     group = "distribution"
+    mustRunAfter(windowsInput)
     runtimeDir.set(runtimeFolder)
     platform = NativePlatform.WINDOWS_X64.id
     includeModels = bundleModels
     // Windows Installer cannot hold a file of 2 GiB or more.
     maxFileSize = 2_000_000_000L
-    outputDir.set(File(windowsWork, "runtime"))
-    doNotTrackState("Packaging always starts from scratch")
-}
-
-val windowsInput = tasks.register<Sync>("stageWindowsInput") {
-    description = "Assembles the files jpackage puts next to the jars in the Windows app."
-    group = "distribution"
-    from(windowsJars)
-    into("legal") { from(collectNotices) }
-    into("runtime") { from(windowsRuntimeFiles) }
-    into(File(windowsWork, "input"))
+    outputDir.set(File(windowsInputDir, "runtime"))
     doNotTrackState("Packaging always starts from scratch")
 }
 
@@ -738,13 +771,17 @@ tasks.register<WindowsMsi>("packageWindows") {
     group = "distribution"
     val windows = onWindows
     // Away from Windows the task is skipped, and so is everything it would stage.
-    if (windows) dependsOn(windowsJre, windowsInput, windowsResources)
+    if (windows) dependsOn(windowsJre, windowsInput, windowsRuntimeFiles, windowsResources)
     jpackage = jpackageTool
-    jpackageArgs = commonJpackageArgs(File(windowsWork, "input"), File(windowsWork, "jre")) + listOf(
+    jpackageArgs = commonJpackageArgs(windowsInputDir, File(windowsWork, "jre")) + listOf(
         "--icon", File(packagingDir, "windows/LearnSphere.ico").absolutePath,
         "--resource-dir", File(windowsWork, "resources").absolutePath,
         "--win-per-user-install",
-        "--win-dir-chooser",
+        // %LOCALAPPDATA%\Programs\LearnSphere. The installer deletes this whole folder when the app is
+        // uninstalled or upgraded, so it must never hold user data and must stay apart from the app home,
+        // %LOCALAPPDATA%\LearnSphere (core AppPaths), which holds every profile, database and PDF. For the
+        // same reason the user cannot choose the folder: a folder such as Documents would be deleted too.
+        "--install-dir", "Programs\\LearnSphere",
         "--win-menu",
         "--win-menu-group", "LearnSphere",
         // The same for every release, so installing a new version replaces the old one.

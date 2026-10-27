@@ -1,7 +1,7 @@
 #!/bin/sh
 # Checks a built LearnSphere disk image: its signature; the app inside (deep, strict signature check,
 # hardened runtime and secure timestamp on every executable and library, the expected entitlements);
-# and, once notarized, the stapled ticket and Gatekeeper's verdict on the image and the app.
+# and, once notarized, the tickets stapled to the image and to the app, and Gatekeeper's verdict on both.
 #
 # Usage: verify.sh <file.dmg> <notarized: true|false>
 set -eu
@@ -53,6 +53,7 @@ fi
 if [ "$notarized" = true ]; then
     echo "Notarization"
     xcrun stapler validate "$dmg"
+    xcrun stapler validate "$app"
     spctl -a -vv -t install "$dmg"
     spctl -a -vv -t exec "$app"
 else

@@ -30,8 +30,8 @@ The tasks live in `app/packaging.gradle.kts`.
 | `macos/info-plist.sh` | Sets the app's minimum macOS version and removes permission prompts the app never needs |
 | `macos/sign-app.sh` | Signs every executable and library in the app, then the app |
 | `macos/make-dmg.sh` | Builds and signs the disk image |
-| `macos/notarize.sh` | Notarizes the disk image and staples the ticket |
-| `macos/verify.sh` | Checks signatures, entitlements, the stapled ticket and Gatekeeper's verdict |
+| `macos/notarize.sh` | Notarizes the app or the disk image and staples the ticket to it |
+| `macos/verify.sh` | Checks signatures, entitlements, the stapled tickets and Gatekeeper's verdict |
 | `windows/main.wxs` | The WiX source for the `.msi`, which keeps large payloads in cabinet files next to it |
 | `macos/LearnSphere.icns`, `windows/LearnSphere.ico` | App icons |
 | `icon/` | The icon renderer and a 1024 px preview |
@@ -53,7 +53,7 @@ dotnet tool install --global wix --version 5.0.2
 wix extension add --global WixToolset.Util.wixext/5.0.2 WixToolset.UI.wixext/5.0.2
 ```
 
-A Windows build with the models needs about 20 GB of free disk space.
+A Windows build with the models needs about 17 GB of free disk space.
 
 ## The runtime folder
 
@@ -137,9 +137,14 @@ xcrun notarytool store-credentials learnsphere-notary \
   --key <AuthKey_XXXXXXXXXX.p8> --key-id <key ID> --issuer <issuer ID>
 ```
 
-Then build with `-Plearnsphere.notarize=true`. The task uploads the disk image, waits for Apple's verdict,
-prints Apple's log when the submission is rejected, staples the ticket to the disk image and validates it.
-A disk image with the models is about 4.3 GB, so the upload and Apple's processing take a while.
+Then build with `-Plearnsphere.notarize=true`. The build makes two submissions, each time waiting for
+Apple's verdict and printing Apple's log when a submission is rejected:
+
+1. `notarizeMacApp` uploads the signed app as a zip archive and staples the ticket to `LearnSphere.app`,
+   so the app opens offline even after it has been copied out of the disk image.
+2. `notarizeMac` builds the disk image around the stapled app, uploads it and staples its own ticket to it.
+
+With the models, each upload is about 4.3 GB, so the uploads and Apple's processing take a while.
 
 Without `-Plearnsphere.notarize=true` the build stops after signing and says so.
 
@@ -151,8 +156,8 @@ Without `-Plearnsphere.notarize=true` the build stops after signing and says so.
 - `codesign --verify --deep --strict` on the app;
 - the hardened runtime, a secure timestamp and the Developer ID authority on every executable and library;
 - exactly the three expected entitlements;
-- for a notarized build, the stapled ticket and Gatekeeper's verdict on the disk image
-  (`spctl -a -vv -t install`) and on the app.
+- for a notarized build, the tickets stapled to the disk image and to the app, and Gatekeeper's verdict on
+  the disk image (`spctl -a -vv -t install`) and on the app.
 
 To check a disk image again, for example after downloading it from the release:
 
@@ -164,20 +169,33 @@ spctl -a -vv -t install app/build/package/LearnSphere-1.0.0.dmg   # accepted, so
 ## The Windows installer
 
 `packageWindows` builds a per-user installer: it needs no administrator rights, installs into
-`%LOCALAPPDATA%\LearnSphere` (the user can choose another folder) and adds LearnSphere to the Start menu.
-The installer's upgrade code is fixed in `app/packaging.gradle.kts`; installing a higher version replaces
-the installed one. Changing the upgrade code makes Windows treat the result as a different product.
+`%LOCALAPPDATA%\Programs\LearnSphere` and adds LearnSphere to the Start menu. The installer's upgrade code
+is fixed in `app/packaging.gradle.kts`; installing a higher version replaces the installed one. Changing
+the upgrade code makes Windows treat the result as a different product.
+
+The install folder holds the app and nothing else. Uninstalling, and every upgrade (which uninstalls the
+old version first), deletes the whole folder, so it must stay apart from the app home,
+`%LOCALAPPDATA%\LearnSphere` (`AppPaths` in core), where the profiles, their databases and the imported
+PDFs live. For the same reason the installer does not let the user choose the folder.
 
 Windows Installer limits the size of each file to 2 GB and of the `.msi` itself to 2 GB, so:
 
 - Model files larger than 2,000,000,000 bytes (the chat model) are split with `llama-gguf-split` into
-  parts named `<name>-00001-of-0000N.gguf`. `llama-server` loads a split model when given its first part.
+  parts named `<name>-00001-of-0000N.gguf` in the model's folder. `llama-server` loads a split model when
+  given its first part.
 - With the models bundled, the installer keeps its payload in `LearnSphere1.cab`, `LearnSphere2.cab` and
   so on, next to `LearnSphere-<version>.msi`. The `.msi` and all its `.cab` files must be in the same
   folder when it runs, so they are published together, for example as one `.zip`.
 - Without the models (`-PbundleModels=false`) the installer is a single `.msi`.
 
 The installer is not Authenticode-signed, so Windows SmartScreen asks the user to confirm before it runs.
+
+**Release status.** A Windows installer with the models is not releasable while the app finds each model
+by the `*.gguf` pattern alone (`docs/ARCHITECTURE.md`, "Runtime files"): in the chat model's folder that
+pattern matches every part of the split model, so the chat assistant cannot start. It becomes releasable
+once "Runtime files" says that a split model is loaded from its `-00001-of-NNNNN.gguf` part and its other
+parts are ignored, and the app's model lookup follows that rule. Check it by installing on Windows and
+asking the study assistant a question.
 
 ## Releasing
 
@@ -188,9 +206,9 @@ The installer is not Authenticode-signed, so Windows SmartScreen asks the user t
    git push origin v1.2.0
    ```
 
-2. **Windows**: the tag starts the Build workflow, which builds the installer with version `1.2.0` and
-   uploads it as the `LearnSphere-windows-x64` artifact (the `.msi` and its `.cab` files). Download it from
-   the workflow run:
+2. **Windows** (see the release status under "The Windows installer"): the tag starts the Build
+   workflow, which builds the installer with version `1.2.0` and uploads it as the `LearnSphere-windows-x64`
+   artifact (the `.msi` and its `.cab` files). Download it from the workflow run:
 
    ```sh
    gh run download --name LearnSphere-windows-x64 --dir dist/windows
@@ -202,7 +220,8 @@ The installer is not Authenticode-signed, so Windows SmartScreen asks the user t
    ./gradlew :app:packageMac -Plearnsphere.notarize=true -Plearnsphere.packageVersion=1.2.0
    ```
 
-   The build ends with the verification above; `spctl` reports `source=Notarized Developer ID`.
+   The build notarizes the app and then the disk image, and ends with the verification above; `spctl`
+   reports `source=Notarized Developer ID`.
 
 4. Publish the disk image, and the Windows `.msi` with its `.cab` files as one `.zip`. GitHub release
    assets are limited to 2 GB each, which the Windows files fit and the disk image with the models does
@@ -210,14 +229,16 @@ The installer is not Authenticode-signed, so Windows SmartScreen asks the user t
 
 ## Continuous integration
 
-`.github/workflows/build.yml` runs `./gradlew build` on `macos-latest` and `windows-latest` for every push
-and pull request. For pushes to `main`, tags and manual runs it then builds the Windows installer:
+`.github/workflows/build.yml` runs `./gradlew build` on `macos-latest` and `windows-latest` for pushes to
+`main`, for `v*` tags, for pull requests and for manual runs. For all of these except pull requests it then
+builds the Windows installer:
 
 1. Installs WiX 5.0.2 with its Util and UI extensions.
 2. Restores `runtime/` from the Actions cache, keyed on `runtime.lock` and `windows/fetch-runtime.ps1`;
    when the cache misses, `windows/fetch-runtime.ps1` downloads llama.cpp b11550 for Windows (Vulkan, x64)
    and the models from Hugging Face.
-3. Runs `:app:packageWindows`, with the version taken from the tag when the run is for a tag.
+3. Runs `:app:packageWindows`, with the version taken from the tag when the run is for a tag. The free
+   disk space is shown before and after this step: a build with the models needs about 17 GB.
 4. Uploads the `.msi` and `.cab` files as the `LearnSphere-windows-x64` artifact, kept for 14 days.
 
 ## Icons

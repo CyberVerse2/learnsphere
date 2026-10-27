@@ -49,7 +49,7 @@ jobs:
           path: '*/build/reports/tests/'
           retention-days: 7
 
-  # The installer bundles about 3.6 GB of models, so it is built for pushes, tags and manual runs, not for
+  # The installer bundles about 4.7 GB of models, so it is built for pushes, tags and manual runs, not for
   # every pull request.
   windows-installer:
     name: Windows installer
@@ -93,6 +93,8 @@ jobs:
         shell: pwsh
         run: ./packaging/windows/fetch-runtime.ps1 -Destination runtime
 
+      # A build with the models needs about 17 GB on the workspace drive at its peak: the cached models
+      # (4.7 GB), the split chat model (2.7 GB), jpackage's copy of the app (4.8 GB) and the cabinets (4.5 GB).
       - name: Show free disk space
         shell: pwsh
         run: Get-PSDrive -PSProvider FileSystem | Format-Table Name, Used, Free
@@ -105,6 +107,13 @@ jobs:
             args+=("-Plearnsphere.packageVersion=${GITHUB_REF_NAME#v}")
           fi
           ./gradlew --console=plain :app:packageWindows "${args[@]}"
+
+      - name: Show free disk space after the build
+        if: always()
+        shell: pwsh
+        run: |
+          Get-PSDrive -PSProvider FileSystem | Format-Table Name, Used, Free
+          Get-ChildItem app/build/package -ErrorAction SilentlyContinue | Format-Table Name, Length
 
       # The installer keeps the models in cabinet files next to the .msi; both are needed to install.
       - name: Upload the installer
