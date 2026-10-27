@@ -13,8 +13,10 @@ import java.util.List;
  * the same height: it cuts across the page there and reads the top halves of both columns before the bottom
  * halves. So a band laid out as columns of text (paragraphs of two or more lines on both sides of a gutter)
  * pulls in the neighbouring bands that leave the same gutter free, and the whole run is cut into columns
- * first. A full-width block (a title, a wide figure caption) ends the run. Bands made only of one-line cells,
- * such as table rows, start no run and still read row by row.
+ * first. A full-width block (a title, a wide figure caption) ends the run. Bands made only of one-line blocks,
+ * such as the rows of a table with wide text cells set apart by more than the line spacing, start no run and
+ * read row by row. Lists and tables with a narrow column never reach this point as columns:
+ * {@link LayoutAnalyzer} keeps each of their rows in one line.
  */
 final class ReadingOrder {
 

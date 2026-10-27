@@ -3,7 +3,12 @@ package edu.learnsphere.pdf;
 import java.util.ArrayList;
 import java.util.List;
 
-/** A line of text: glyphs sharing a baseline, left to right, in the layout frame. Immutable. */
+/**
+ * A line of text: glyphs sharing a baseline, left to right, in the layout frame. Immutable.
+ *
+ * <p>A <em>tabular</em> line is a table row read across: it has a wide gap that lines up with gaps in other
+ * rows but does not separate text columns (see {@link LayoutAnalyzer}).
+ */
 final class TextLine {
 
     final List<Glyph> glyphs;
@@ -15,10 +20,20 @@ final class TextLine {
     final float size;
     final boolean bold;
     final int charCount;
+    final boolean tabular;
     private String text;
 
     /** @param glyphs at least one non-space glyph, sorted by x */
     TextLine(List<Glyph> glyphs) {
+        this(glyphs, false);
+    }
+
+    /**
+     * @param glyphs  at least one non-space glyph, sorted by x
+     * @param tabular true for a table row read across
+     */
+    TextLine(List<Glyph> glyphs, boolean tabular) {
+        this.tabular = tabular;
         this.glyphs = List.copyOf(glyphs);
         float minX = Float.MAX_VALUE;
         float maxX = -Float.MAX_VALUE;
@@ -75,7 +90,7 @@ final class TextLine {
         all.addAll(a.glyphs);
         all.addAll(b.glyphs);
         all.sort((g1, g2) -> Float.compare(g1.x, g2.x));
-        return new TextLine(all);
+        return new TextLine(all, a.tabular || b.tabular);
     }
 
     private static float dominantBaseline(List<Glyph> glyphs, float size) {
@@ -166,6 +181,7 @@ final class TextLine {
 
     @Override
     public String toString() {
-        return "TextLine[" + text() + " @" + left + "," + baseline + " size " + size + (bold ? " bold" : "") + "]";
+        return "TextLine[" + text() + " @" + left + "," + baseline + " size " + size + (bold ? " bold" : "")
+                + (tabular ? " tabular" : "") + "]";
     }
 }

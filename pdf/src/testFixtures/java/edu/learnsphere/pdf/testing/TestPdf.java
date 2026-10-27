@@ -5,6 +5,7 @@ import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -21,15 +22,20 @@ import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.encryption.AccessPermission;
 import org.apache.pdfbox.pdmodel.encryption.StandardProtectionPolicy;
 import org.apache.pdfbox.pdmodel.font.PDFont;
+import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
+import org.apache.pdfbox.pdmodel.graphics.state.RenderingMode;
 
 /**
  * Writes realistic PDFs for tests: flowing text in one or two columns with a title, headings, paragraphs,
- * running headers and footers and page numbers, plus scanned-looking image pages, password-protected files
- * and damaged files. Text uses the standard PDF fonts (Helvetica, Times), so only ASCII text is supported.
+ * bulleted and numbered lists and two-column glossary tables laid out the way word processors do, running
+ * headers and footers and page numbers, plus scanned-looking image pages, password-protected files and damaged
+ * files. Text uses the standard PDF fonts (Helvetica, Times), which PDF readers supply themselves, or with
+ * {@link Builder#embeddedFonts()} a TrueType font embedded in the file as most real documents do. Only ASCII
+ * text is supported.
  *
  * <pre>{@code
  * Path pdf = TestPdf.builder()
@@ -47,7 +53,12 @@ public final class TestPdf {
     public static final float LETTER_WIDTH = 612;
     /** US Letter height in points. */
     public static final float LETTER_HEIGHT = 792;
-
+    /** Where list markers sit, from the column's left edge: a quarter inch, as word processors place them. */
+    public static final float LIST_MARKER_INDENT = 18;
+    /** Where list item text sits, from the column's left edge: half an inch, as word processors place it. */
+    public static final float LIST_TEXT_INDENT = 36;
+    /** The TrueType font that PDFBox ships, embedded by {@link Builder#embeddedFonts()}. */
+    private static final String EMBEDDED_FONT = "/org/apache/pdfbox/resources/ttf/LiberationSans-Regular.ttf";
 
     private static final String[] WORDS = ("cell membrane protein lipid nucleus ribosome energy molecule enzyme "
             + "transport gradient signal receptor organelle cytoplasm mitochondria chloroplast genome sequence "
@@ -134,6 +145,7 @@ public final class TestPdf {
         private String footer;
         private boolean pageNumbers;
         private boolean headerOnFirstPage;
+        private boolean embeddedFonts;
         private final List<Element> elements = new ArrayList<>();
 
         private Builder() {
@@ -182,6 +194,16 @@ public final class TestPdf {
             return this;
         }
 
+        /**
+         * Sets all text in a TrueType font embedded in the file (as a subset with its own character map, the way
+         * most word processors write PDFs) instead of the standard PDF fonts. Bold text is drawn filled and
+         * outlined, as PDF writers do for fonts without a bold face.
+         */
+        public Builder embeddedFonts() {
+            this.embeddedFonts = true;
+            return this;
+        }
+
         /** A large bold title. */
         public Builder title(String text) {
             elements.add(new Element(Kind.TEXT, requireAscii(text), Style.BOLD, 20, 0.6f, 0.9f, 0, 1));
@@ -203,6 +225,48 @@ public final class TestPdf {
         /** A body paragraph, wrapped to the column; a '\n' in the text forces a line break there. */
         public Builder paragraph(String text) {
             elements.add(new Element(Kind.TEXT, requireAscii(text), Style.REGULAR, 0, 0, 0.6f, 0, 1));
+            return this;
+        }
+
+        /**
+         * A bulleted list as word processors lay it out: a bullet at {@link #LIST_MARKER_INDENT} and the item's
+         * text at {@link #LIST_TEXT_INDENT}, with wrapped lines aligned with the text.
+         */
+        public Builder bulletList(String... items) {
+            return list(false, items);
+        }
+
+        /** A numbered list ("1.", "2.", …) laid out like {@link #bulletList}. */
+        public Builder numberedList(String... items) {
+            return list(true, items);
+        }
+
+        private Builder list(boolean numbered, String... items) {
+            for (int i = 0; i < items.length; i++) {
+                String marker = numbered ? (i + 1) + "." : "\u2022";
+                float after = i + 1 == items.length ? 0.6f : 0.2f;
+                elements.add(new Element(Kind.ROW, requireAscii(items[i]), Style.REGULAR, 0, i == 0 ? 0.3f : 0, after, 0, 1,
+                        marker, LIST_MARKER_INDENT, LIST_TEXT_INDENT));
+            }
+            return this;
+        }
+
+        /**
+         * A borderless two-column table of terms and their definitions: terms at the column's left edge,
+         * definitions starting {@code definitionIndent} points to the right; long cells wrap within their
+         * column.
+         *
+         * @param termsAndDefinitions term, definition, term, definition, …
+         */
+        public Builder glossary(float definitionIndent, String... termsAndDefinitions) {
+            if (termsAndDefinitions.length % 2 != 0) {
+                throw new IllegalArgumentException("Terms and definitions come in pairs");
+            }
+            for (int i = 0; i < termsAndDefinitions.length; i += 2) {
+                float after = i + 2 == termsAndDefinitions.length ? 0.6f : 0.3f;
+                elements.add(new Element(Kind.ROW, requireAscii(termsAndDefinitions[i + 1]), Style.REGULAR, 0, i == 0 ? 0.3f : 0,
+                        after, 0, 1, requireAscii(termsAndDefinitions[i]), 0, definitionIndent));
+            }
             return this;
         }
 
@@ -253,13 +317,20 @@ public final class TestPdf {
         }
     }
 
-    private enum Kind { TEXT, COLUMNS, PAGE_BREAK, ROTATION, IMAGE_PAGE }
+    private enum Kind { TEXT, ROW, COLUMNS, PAGE_BREAK, ROTATION, IMAGE_PAGE }
 
     private enum Style { REGULAR, BOLD }
 
-    /** One element; {@code size} 0 means the body size. */
+    /**
+     * One element; {@code size} 0 means the body size. A {@link Kind#ROW} (list item or table row) shows
+     * {@code label} at {@code labelX} and {@code text} at {@code textX}, both relative to the column's left edge.
+     */
     private record Element(Kind kind, String text, Style style, float size, float spaceBefore, float spaceAfter, int value,
-                           float coverage) {
+                           float coverage, String label, float labelX, float textX) {
+
+        Element(Kind kind, String text, Style style, float size, float spaceBefore, float spaceAfter, int value, float coverage) {
+            this(kind, text, style, size, spaceBefore, spaceAfter, value, coverage, "", 0, 0);
+        }
     }
 
     /** Lays elements out onto pages. */
@@ -269,10 +340,10 @@ public final class TestPdf {
 
         private final Builder spec;
         private final PDDocument document;
-        private final PDFont regular = new PDType1Font(Standard14Fonts.FontName.TIMES_ROMAN);
-        private final PDFont bold = new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD);
-        private final PDFont italic = new PDType1Font(Standard14Fonts.FontName.HELVETICA_OBLIQUE);
-        private final PDFont sans = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
+        private final PDFont regular;
+        private final PDFont bold;
+        private final PDFont italic;
+        private final PDFont sans;
         private PDPage page;
         private PDPageContentStream content;
         private int columns = 1;
@@ -281,9 +352,27 @@ public final class TestPdf {
         private float y;
         private boolean columnEmpty = true;
 
-        Typesetter(Builder spec, PDDocument document) {
+        Typesetter(Builder spec, PDDocument document) throws IOException {
             this.spec = spec;
             this.document = document;
+            if (spec.embeddedFonts) {
+                PDFont embedded;
+                try (InputStream font = TestPdf.class.getResourceAsStream(EMBEDDED_FONT)) {
+                    if (font == null) {
+                        throw new IOException("Font not found: " + EMBEDDED_FONT);
+                    }
+                    embedded = PDType0Font.load(document, font);
+                }
+                regular = embedded;
+                bold = embedded;
+                italic = embedded;
+                sans = embedded;
+            } else {
+                regular = new PDType1Font(Standard14Fonts.FontName.TIMES_ROMAN);
+                bold = new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD);
+                italic = new PDType1Font(Standard14Fonts.FontName.HELVETICA_OBLIQUE);
+                sans = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
+            }
         }
 
         void run() throws IOException {
@@ -306,8 +395,9 @@ public final class TestPdf {
                     case TEXT -> {
                         boolean heading = element.style == Style.BOLD;
                         Element next = i + 1 < spec.elements.size() ? spec.elements.get(i + 1) : null;
-                        text(element, heading && next != null && next.kind == Kind.TEXT);
+                        text(element, heading && next != null && (next.kind == Kind.TEXT || next.kind == Kind.ROW));
                     }
+                    case ROW -> row(element);
                 }
             }
             endPage();
@@ -341,15 +431,60 @@ public final class TestPdf {
                     nextColumn();
                 }
                 y -= size;
-                content.beginText();
-                content.setFont(font, size);
-                content.newLineAtOffset(columnLeft(), y);
-                content.showText(line);
-                content.endText();
+                show(line, font, element.style == Style.BOLD, size, columnLeft(), y);
                 y -= lineHeight - size;
                 columnEmpty = false;
             }
             y -= element.spaceAfter * size;
+        }
+
+        /** A list item or table row: the label and the text side by side, each wrapped within its own column. */
+        private void row(Element element) throws IOException {
+            float size = spec.bodySize;
+            float lineHeight = size * LEADING;
+            float labelWidth = element.textX - element.labelX - size;
+            List<String> labels = element.label.isEmpty() ? List.of() : wrap(element.label, regular, size, Math.max(size, labelWidth));
+            List<String> lines = wrap(element.text, regular, size, columnWidth() - element.textX);
+            if (page == null) {
+                startPage();
+            }
+            if (!columnEmpty) {
+                y -= element.spaceBefore * size;
+            }
+            if (y - lineHeight * Math.min(2, Math.max(labels.size(), lines.size())) < spec.margin) {
+                nextColumn();
+            }
+            for (int i = 0; i < Math.max(labels.size(), lines.size()); i++) {
+                if (y - lineHeight < spec.margin) {
+                    nextColumn();
+                }
+                y -= size;
+                if (i < labels.size()) {
+                    show(labels.get(i), regular, false, size, columnLeft() + element.labelX, y);
+                }
+                if (i < lines.size()) {
+                    show(lines.get(i), regular, false, size, columnLeft() + element.textX, y);
+                }
+                y -= lineHeight - size;
+                columnEmpty = false;
+            }
+            y -= element.spaceAfter * size;
+        }
+
+        private void show(String text, PDFont font, boolean boldStyle, float size, float x, float baseline) throws IOException {
+            content.beginText();
+            content.setFont(font, size);
+            boolean fakeBold = boldStyle && spec.embeddedFonts;
+            if (fakeBold) {
+                content.setRenderingMode(RenderingMode.FILL_STROKE);
+                content.setLineWidth(size * 0.03f);
+            }
+            content.newLineAtOffset(x, baseline);
+            content.showText(text);
+            if (fakeBold) {
+                content.setRenderingMode(RenderingMode.FILL);
+            }
+            content.endText();
         }
 
         private void nextColumn() throws IOException {
@@ -381,20 +516,12 @@ public final class TestPdf {
             if (spec.pageNumbers) {
                 String label = Integer.toString(number);
                 float labelWidth = sans.getStringWidth(label) / 1000 * 9;
-                content.beginText();
-                content.setFont(sans, 9);
-                content.newLineAtOffset((spec.width - labelWidth) / 2, 36);
-                content.showText(label);
-                content.endText();
+                show(label, sans, false, 9, (spec.width - labelWidth) / 2, 36);
             }
         }
 
         private void small(String text, float x, float baseline) throws IOException {
-            content.beginText();
-            content.setFont(italic, 9);
-            content.newLineAtOffset(x, baseline);
-            content.showText(text);
-            content.endText();
+            show(text, italic, false, 9, x, baseline);
         }
 
         private void endPage() throws IOException {

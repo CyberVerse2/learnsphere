@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import edu.learnsphere.core.model.DocumentError;
+import edu.learnsphere.core.spi.ChunkDraft;
 import edu.learnsphere.core.spi.NormalizedRect;
 import edu.learnsphere.core.spi.PageText;
 import edu.learnsphere.core.spi.TextBlock;
@@ -18,6 +19,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CancellationException;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -108,6 +110,43 @@ class PdfBoxTextExtractorTest {
         assertTrue(left.bounds().x() + left.bounds().width() < 0.5);
         assertTrue(right.bounds().x() > 0.5);
         assertTrue(right.bounds().y() < left.bounds().y() + 0.05, "the right column starts at the top");
+    }
+
+    @Test
+    void keepsListItemsAndTableRowsWhole(@TempDir Path temp) throws Exception {
+        List<String> steps = List.of("Put on goggles and a lab coat.", "Measure 50 ml of water into the beaker.",
+                "Add one spoon of salt and stir until it dissolves, then write down the temperature of the solution"
+                        + " every minute for ten minutes.",
+                "Wash and dry all equipment.");
+        List<String> facts = List.of("Mitochondria release energy.", "Ribosomes build proteins.", "The nucleus holds the DNA.",
+                "Vacuoles store water.");
+        String[] terms = {"Osmosis", "The movement of water across a partially permeable membrane.",
+                "Diffusion", "The spreading of particles from high to low concentration.",
+                "Active transport", "Movement against a concentration gradient, using energy released by respiration."};
+        String closing = TestPdf.sentences(5, 3);
+        Path pdf = TestPdf.builder().heading("Practical 3").paragraph("Follow these steps.")
+                .numberedList(steps.toArray(String[]::new)).paragraph("Remember:").bulletList(facts.toArray(String[]::new))
+                .heading("Key terms").glossary(128, terms).paragraph(closing).write(temp.resolve("practical.pdf"));
+
+        List<String> expected = new ArrayList<>(List.of("Practical 3", "Follow these steps."));
+        for (int i = 0; i < steps.size(); i++) {
+            expected.add((i + 1) + ". " + steps.get(i));
+        }
+        expected.add("Remember:");
+        facts.forEach(fact -> expected.add("\u2022 " + fact));
+        expected.add("Key terms");
+        for (int i = 0; i < terms.length; i += 2) {
+            expected.add(terms[i] + " " + terms[i + 1]);
+        }
+        expected.add(closing);
+        PageText page = extractor.extractPage(pdf, 1);
+        assertEquals(expected, page.blocks().stream().map(TextBlock::text).toList());
+
+        String passages = new SectionChunker().chunk(List.of(page)).stream().map(ChunkDraft::text)
+                .collect(Collectors.joining("\n\n"));
+        assertTrue(passages.contains("1. Put on goggles and a lab coat.\n\n2. Measure 50 ml"), passages);
+        assertTrue(passages.contains("Diffusion The spreading of particles from high to low concentration.\n\nActive transport"),
+                passages);
     }
 
     @Test
