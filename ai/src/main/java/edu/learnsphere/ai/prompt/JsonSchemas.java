@@ -108,6 +108,15 @@ public final class JsonSchemas {
         return object(root);
     }
 
+    /** {@code {"evidence", "verdict": true|false|not_stated, "note"}}: whether a statement is true. */
+    public static ObjectNode statement() {
+        Map<String, JsonNode> root = properties();
+        root.put("evidence", string());
+        root.put("verdict", oneOf(List.of("true", "false", "not_stated")));
+        root.put("note", string());
+        return object(root);
+    }
+
     /** {@code {"points": [{"point", "status"}], "errors": [...], "feedback"}}. */
     public static ObjectNode grade() {
         Map<String, JsonNode> point = properties();

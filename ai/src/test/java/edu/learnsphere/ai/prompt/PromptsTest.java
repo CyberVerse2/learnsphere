@@ -46,6 +46,8 @@ class PromptsTest {
                 Map.entry(Prompts.ITEMS_USER, Set.of("passages", "concepts", "avoid", "plan")),
                 Map.entry(Prompts.SUPPORT_SYSTEM, Set.of()),
                 Map.entry(Prompts.SUPPORT_USER, Set.of("source", "passage", "type", "prompt", "answer")),
+                Map.entry(Prompts.STATEMENT_SYSTEM, Set.of()),
+                Map.entry(Prompts.STATEMENT_USER, Set.of("source", "passage", "statement")),
                 Map.entry(Prompts.GRADE_SYSTEM, Set.of()),
                 Map.entry(Prompts.GRADE_USER, Set.of("question", "reference", "context", "answer")),
                 Map.entry(Prompts.PAGE_SYSTEM, Set.of()),

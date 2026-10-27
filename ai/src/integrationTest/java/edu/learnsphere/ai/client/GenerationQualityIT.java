@@ -172,6 +172,7 @@ class GenerationQualityIT {
         assertThat(draft.prompt().toLowerCase()).doesNotContain("passage").doesNotContain("multiple-choice")
                 .doesNotContain("true or false");
         assertThat(draft.passageNumber()).isBetween(1, notes.size());
+        assertThat(draft.explanation().toLowerCase()).doesNotContain("passage");
         switch (draft.type()) {
             case MCQ -> assertThat(draft.distractors()).hasSizeBetween(2, 4).doesNotHaveDuplicates()
                     .doesNotContain(draft.answer());
@@ -218,10 +219,15 @@ class GenerationQualityIT {
                     verdict.note());
         }
         int supportedDrafts = 0;
+        List<String> unsupported = new ArrayList<>();
         for (ItemDraft d : ITEMS) {
-            if (ai.supportChecker().check(d.prompt(), d.answer(), notes.get(d.passageNumber() - 1),
-                    CancellationToken.NONE).supported()) {
+            SupportVerdict verdict = ai.supportChecker().check(d.prompt(), d.answer(), notes.get(d.passageNumber() - 1),
+                    CancellationToken.NONE);
+            if (verdict.supported()) {
                 supportedDrafts++;
+            } else {
+                unsupported.add(d.type().code() + " p[" + d.passageNumber() + "] " + d.prompt() + " → " + d.answer()
+                        + " (" + verdict.note() + ")");
             }
         }
         REPORT.line("")
@@ -229,6 +235,8 @@ class GenerationQualityIT {
                         + "median %s per check.", correct, cases.size(), supportedDrafts, ITEMS.size(),
                         EvalReport.ms(EvalReport.median(millis)))
                 .line("");
+        unsupported.forEach(u -> REPORT.line("- not supported: %s", u));
+        REPORT.line("");
         assertThat(correct).as("support verdicts right").isGreaterThanOrEqualTo(cases.size() - 1);
         if (!ITEMS.isEmpty()) {
             assertThat((double) supportedDrafts / ITEMS.size()).as("generated drafts supported").isGreaterThanOrEqualTo(0.8);

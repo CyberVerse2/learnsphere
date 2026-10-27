@@ -116,14 +116,15 @@ class LlamaItemGeneratorTest {
         assertThat(props.path("passage").path("enum")).extracting(JsonNode::asInt).containsExactly(1, 2, 3);
         assertThat(props.path("concepts").path("maxItems").asInt()).isEqualTo(2);
         assertThat(schema.path("additionalProperties").asBoolean(true)).isFalse();
-        // A false statement is written after its truth value and the true fact it alters; the passage is
-        // named once the item is written.
+        // A statement is written after its truth value and the true fact it alters; the passage is named
+        // once the item is written.
         List<String> order = new java.util.ArrayList<>();
         props.fieldNames().forEachRemaining(order::add);
         assertThat(order).containsSubsequence("answer", "fact", "prompt", "explanation", "passage", "concepts");
         ObjectNode trueStatement = LlamaItemGenerator.slotSchema(
                 new Slot(0, ItemType.TRUE_FALSE, Difficulty.EASY, Boolean.TRUE, 1, null), List.of(1), List.of());
-        assertThat(trueStatement.path("properties").has("fact")).isFalse();
+        assertThat(trueStatement.path("properties").path("answer").path("const").asText()).isEqualTo("true");
+        assertThat(trueStatement.path("properties").has("fact")).isTrue();
 
         ObjectNode mcq = LlamaItemGenerator.slotSchema(slot(ItemType.MCQ), List.of(1), List.of());
         assertThat(mcq.path("properties").path("distractors").path("minItems").asInt()).isEqualTo(3);

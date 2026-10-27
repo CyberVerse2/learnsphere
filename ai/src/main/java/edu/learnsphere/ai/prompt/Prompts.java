@@ -40,6 +40,8 @@ public final class Prompts {
     public static final PromptTemplate SUPPORT_SYSTEM = PromptTemplate.load("support-system.txt");
     /** Support check: {@code {{source}}}, {@code {{passage}}}, {@code {{type}}}, {@code {{prompt}}}, {@code {{answer}}}. */
     public static final PromptTemplate SUPPORT_USER = PromptTemplate.load("support-user.txt");
+    public static final PromptTemplate STATEMENT_SYSTEM = PromptTemplate.load("statement-system.txt");
+    public static final PromptTemplate STATEMENT_USER = PromptTemplate.load("statement-user.txt");
 
     /** Short-answer grading: how to judge key points fairly. */
     public static final PromptTemplate GRADE_SYSTEM = PromptTemplate.load("grade-system.txt");

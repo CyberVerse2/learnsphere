@@ -33,14 +33,16 @@ import org.slf4j.LoggerFactory;
  * {@link ItemGenerator} on the chat model at {@link ChatPriority#USER_WAITING}.
  *
  * <p>The request becomes a <em>plan</em>: one slot per wanted item, cycling through the wanted types,
- * through easy/medium/hard (unless one difficulty is asked for) independently of type, through the passages
- * and the concepts, and alternating true and false statements. Slots are written {@value #BATCH} at a time;
- * each batch's JSON schema is a tuple with one entry per slot whose type, difficulty and true/false answer
- * are fixed, so the reply always matches the plan's shape. Drafts are then checked against the
- * {@link ItemType} conventions and the quality rules (no references to "the passage", no echoed
- * instructions, distinct plausible distractors, exactly one cloze blank that hides the answer, no
- * duplicates); failed slots are written once more, so fewer than {@code count} drafts may come back.
- * Thread-safe.
+ * through easy/medium/hard (unless one difficulty is asked for) so that each type gets every difficulty,
+ * through the concepts (each paired with a passage that explains it) or else the passages, and alternating
+ * true and false statements. Slots are written {@value #BATCH} at a time; each batch's JSON schema is a
+ * tuple with one entry per slot whose type, difficulty and true/false answer are fixed, so the reply always
+ * matches the plan's shape. A true/false statement is written after the true fact it restates or alters. Drafts are then
+ * checked against the {@link ItemType} conventions and the quality rules (no references to "the passage",
+ * no echoed instructions, distinct plausible distractors, exactly one cloze blank that hides the answer, no
+ * duplicates); failed slots are written once more, so fewer than {@code count} drafts may come back. Each
+ * kept draft is credited to the passage whose words it uses, and its explanation is cleared of passage
+ * references. Thread-safe.
  */
 public final class LlamaItemGenerator implements ItemGenerator {
 
@@ -248,8 +250,8 @@ public final class LlamaItemGenerator implements ItemGenerator {
 
     /**
      * The schema of one slot: fixed type and difficulty, fields in the order the model should write them. A
-     * false statement is written after the true fact it alters; the passage is named after the item is
-     * written, so it labels what was actually written.
+     * true/false statement is written after the true fact it restates or alters; the passage is named after
+     * the item is written, so it labels what was actually written.
      */
     static ObjectNode slotSchema(Slot slot, List<Integer> passageNumbers, List<String> concepts) {
         Map<String, JsonNode> props = new LinkedHashMap<>();
@@ -262,11 +264,8 @@ public final class LlamaItemGenerator implements ItemGenerator {
                 props.put("distractors", JsonSchemas.array(JsonSchemas.string(), 3, 3));
             }
             case TRUE_FALSE -> {
-                boolean truth = Boolean.TRUE.equals(slot.truth());
-                props.put("answer", JsonSchemas.constant(truth ? "true" : "false"));
-                if (!truth) {
-                    props.put("fact", JsonSchemas.string());
-                }
+                props.put("answer", JsonSchemas.constant(Boolean.TRUE.equals(slot.truth()) ? "true" : "false"));
+                props.put("fact", JsonSchemas.string());
                 props.put("prompt", JsonSchemas.string());
             }
             case CLOZE -> {

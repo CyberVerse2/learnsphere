@@ -263,6 +263,26 @@ class LlamaImplementationsTest {
     }
 
     @Test
+    void trueFalseItemsAreCheckedByJudgingTheStatement() {
+        server.reply(Reply.json("{\"evidence\":\"each thread has its own stack\",\"verdict\":\"false\",\"note\":\"\"}"));
+        SupportVerdict markedFalse = new LlamaSupportChecker(chat).check("Threads share their stack.", "false",
+                PAGING, CancellationToken.NONE);
+        assertThat(markedFalse.supported()).isTrue();
+        assertThat(markedFalse.note()).isEqualTo("The source contradicts this statement.");
+        assertThat(lastUserText()).contains("Statement: Threads share their stack.").doesNotContain("Answer:");
+        assertThat(server.lastChatRequest().path("response_format").path("json_schema").path("name").asText())
+                .isEqualTo("statement");
+
+        SupportVerdict markedTrue = new LlamaSupportChecker(chat).check("Threads share their stack.", "True.", PAGING,
+                CancellationToken.NONE);
+        assertThat(markedTrue.supported()).isFalse();
+
+        server.reply(Reply.json("{\"evidence\":\"\",\"verdict\":\"not_stated\",\"note\":\"\"}"));
+        assertThat(new LlamaSupportChecker(chat).check("Linux was written in 1991.", "true", PAGING,
+                CancellationToken.NONE).supported()).isFalse();
+    }
+
+    @Test
     void gradesAreComputedFromThePointsNotPickedByTheModel() {
         server.reply(Reply.json("""
                 {"points":[{"point":"shared data","status":"covered"},{"point":"at least one write","status":"partly"},

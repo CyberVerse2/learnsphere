@@ -1,0 +1,4 @@
+Source passage ({{source}}):
+{{passage}}
+
+Statement: {{statement}}
