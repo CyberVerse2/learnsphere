@@ -19,6 +19,9 @@ public final class Main {
     public static void main(String[] args) {
         configureLogging();
         Application.launch(LearnSphereApp.class, args);
+        // launch returns after LearnSphereApp.stop() closed the profile and stopped the study assistant;
+        // exiting here also ends any library thread that would otherwise keep the process alive.
+        System.exit(0);
     }
 
     /** Sets {@value #LOGS_PROPERTY} to {@code <app home>/logs} unless it is already set. Call before the first log. */

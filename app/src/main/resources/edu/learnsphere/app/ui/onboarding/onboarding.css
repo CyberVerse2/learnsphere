@@ -1,0 +1,126 @@
+/* First run and adding a profile (full screen). Card and step dots live in learnsphere.css. */
+
+.onboarding-card {
+    -fx-padding: 32px 36px 32px 36px;
+}
+
+.onboarding-step-body {
+    -fx-spacing: 24px;
+}
+
+.onboarding-step-body.welcome {
+    -fx-spacing: 24px;
+}
+
+.onboarding-lead {
+    -fx-text-fill: -ls-text-muted;
+}
+
+.onboarding-body {
+    -fx-font-size: 14px;
+    -fx-line-spacing: 3px;
+    -fx-text-fill: -ls-text-muted;
+    -fx-padding: 4px 0 0 0;
+}
+
+.onboarding-fields {
+    -fx-spacing: 16px;
+}
+
+.form-field-hint {
+    -fx-font-size: 12px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.onboarding-error {
+    -fx-font-size: 13px;
+    -fx-text-fill: -ls-danger-text;
+}
+
+.onboarding-actions {
+    -fx-padding: 8px 0 0 0;
+}
+
+/* The readiness well: orbit drawing beside the status. */
+.onboarding-status {
+    -fx-background-color: -ls-surface-sunken;
+    -fx-background-radius: 12px;
+    -fx-padding: 16px 20px 16px 12px;
+}
+
+.onboarding-status-title {
+    -fx-font-size: 15px;
+    -fx-text-fill: -ls-text;
+}
+
+.onboarding-status-detail {
+    -fx-font-size: 13px;
+    -fx-line-spacing: 2px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.onboarding-restart {
+    -fx-translate-y: 4px;
+}
+
+.onboarding-privacy {
+    -fx-font-size: 13px;
+    -fx-line-spacing: 2px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.onboarding-privacy-icon {
+    -fx-icon-color: -ls-text-muted;
+}
+
+/* ---- Assistant orbit ---------------------------------------------------------------------------- */
+
+.assistant-orbit .orbit-line {
+    -fx-fill: transparent;
+    -fx-stroke: -ls-border-strong;
+    -fx-stroke-width: 1.25px;
+}
+
+.assistant-orbit .orbit-line.back {
+    -fx-stroke: -ls-border;
+}
+
+.assistant-orbit .orbit-sphere {
+    -fx-fill: -ls-accent-soft;
+    -fx-stroke: -ls-accent-muted;
+    -fx-stroke-width: 1px;
+}
+
+.assistant-orbit .orbit-moon {
+    -fx-fill: -ls-accent;
+}
+
+.assistant-orbit .orbit-icon {
+    -fx-icon-color: -ls-accent;
+}
+
+.assistant-orbit.ready .orbit-sphere {
+    -fx-fill: -ls-success-soft;
+    -fx-stroke: -ls-success;
+}
+
+.assistant-orbit.ready .orbit-moon {
+    -fx-fill: -ls-success;
+}
+
+.assistant-orbit.ready .orbit-icon {
+    -fx-icon-color: -ls-success-text;
+}
+
+.assistant-orbit.unavailable .orbit-sphere {
+    -fx-fill: -ls-warning-soft;
+    -fx-stroke: -ls-warning;
+}
+
+.assistant-orbit.unavailable .orbit-moon {
+    -fx-fill: -ls-text-faint;
+}
+
+.assistant-orbit.unavailable .orbit-icon {
+    -fx-icon-color: -ls-warning-text;
+}

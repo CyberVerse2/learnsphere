@@ -9,22 +9,31 @@ import edu.learnsphere.app.ui.Fx;
 import edu.learnsphere.app.ui.MainWindow;
 import edu.learnsphere.app.ui.UiExecutors;
 import edu.learnsphere.core.profile.AppPreferences;
+import edu.learnsphere.core.service.ProfileSummary;
 import edu.learnsphere.core.util.Subscription;
 import java.util.ArrayList;
 import java.util.List;
 import javafx.application.Application;
+import javafx.beans.binding.Bindings;
 import javafx.geometry.Rectangle2D;
 import javafx.scene.Scene;
 import javafx.scene.layout.BorderPane;
 import javafx.stage.Screen;
 import javafx.stage.Stage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * The JavaFX application: builds the context, opens the last used profile, applies the theme from the
- * app-wide preferences and shows the main window with its menus, where it was last time. The window's place
- * is saved when it closes and again when the application stops, however it was quit.
+ * The JavaFX application: builds the context, opens the last used profile (unless it has a password, which
+ * the window then asks for), applies the theme from the app-wide preferences and shows the main window with
+ * its menus, where it was last time, titled with the open profile's name. However the app is quit (closing the
+ * window, the Quit menu item or the system's Quit), {@link #stop()} saves the window's place, takes the
+ * screens down and closes the context: the profile's background work stops, then the study assistant, and
+ * nothing is left running.
  */
 public final class LearnSphereApp extends Application {
+
+    private static final Logger LOG = LoggerFactory.getLogger(LearnSphereApp.class);
 
     public static final String TITLE = "LearnSphere";
     public static final double DEFAULT_WIDTH = 1360;
@@ -67,13 +76,19 @@ public final class LearnSphereApp extends Application {
             theme.setPreference(changed.theme());
             Motion.reduceMotionProperty().set(changed.reduceMotion());
         }));
-        stage.setTitle(TITLE);
+        stage.titleProperty().bind(Bindings.createStringBinding(() -> title(context.profile()),
+                context.profileProperty()));
         stage.setMinWidth(MIN_WIDTH);
         stage.setMinHeight(MIN_HEIGHT);
         stage.setScene(scene);
         placeWindow(stage);
         stage.setOnHiding(event -> saveWindow(stage));
         stage.show();
+    }
+
+    /** The window title while {@code profile} is open (null: none is). */
+    public static String title(ProfileSummary profile) {
+        return profile == null ? TITLE : profile.displayName() + " \u2014 " + TITLE;
     }
 
     /** Puts the window where it was last time, fitted to the screens attached now. */
@@ -116,20 +131,27 @@ public final class LearnSphereApp extends Application {
     @Override
     public void stop() {
         // Platform.exit() (the in-window Quit, or the system quitting the app) need not hide the window first.
-        saveWindow(stage);
-        preferencesListener.close();
-        if (menus != null) {
-            menus.dispose();
-        }
-        if (window != null) {
-            window.dispose();
-        }
-        if (theme != null) {
-            theme.dispose();
-        }
-        UiExecutors.shutdown();
-        if (context != null) {
-            context.close();
+        long started = System.nanoTime();
+        try {
+            saveWindow(stage);
+            preferencesListener.close();
+            if (menus != null) {
+                menus.dispose();
+            }
+            if (window != null) {
+                window.dispose();
+            }
+            if (theme != null) {
+                theme.dispose();
+            }
+        } catch (RuntimeException e) {
+            LOG.warn("Taking the window down failed", e);
+        } finally {
+            UiExecutors.shutdown();
+            if (context != null) {
+                context.close();
+            }
+            LOG.info("Quit in {} ms", (System.nanoTime() - started) / 1_000_000);
         }
     }
 }

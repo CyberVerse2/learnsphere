@@ -16,6 +16,7 @@ public sealed interface Destination {
     Settings SETTINGS = new Settings();
     Profiles PROFILES = new Profiles();
     Onboarding ONBOARDING = new Onboarding();
+    AddProfile ADD_PROFILE = new AddProfile();
     Gallery GALLERY = new Gallery();
 
     /** The screen this destination opens. */
@@ -138,8 +139,31 @@ public sealed interface Destination {
         }
     }
 
+    /**
+     * Opening a profile that has a password (full screen): its avatar, a password field and a way to switch
+     * to another profile.
+     */
+    record Unlock(String profileId) implements Destination {
+        public Unlock {
+            Objects.requireNonNull(profileId, "profileId");
+        }
+
+        @Override
+        public Route route() {
+            return Route.PROFILES;
+        }
+    }
+
     /** First run (full screen). */
     record Onboarding() implements Destination {
+        @Override
+        public Route route() {
+            return Route.ONBOARDING;
+        }
+    }
+
+    /** Creating another profile from the profile choice (full screen, the profile step of onboarding). */
+    record AddProfile() implements Destination {
         @Override
         public Route route() {
             return Route.ONBOARDING;

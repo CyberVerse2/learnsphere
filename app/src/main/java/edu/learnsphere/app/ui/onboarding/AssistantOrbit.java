@@ -1,0 +1,160 @@
+package edu.learnsphere.app.ui.onboarding;
+
+import edu.learnsphere.app.theme.Motion;
+import edu.learnsphere.app.ui.components.Icons;
+import edu.learnsphere.core.service.AssistantState;
+import java.util.Objects;
+import javafx.animation.Animation;
+import javafx.animation.Interpolator;
+import javafx.animation.KeyFrame;
+import javafx.animation.KeyValue;
+import javafx.animation.Timeline;
+import javafx.beans.property.DoubleProperty;
+import javafx.beans.property.SimpleDoubleProperty;
+import javafx.beans.value.ChangeListener;
+import javafx.beans.value.WeakChangeListener;
+import javafx.scene.Group;
+import javafx.scene.layout.Region;
+import javafx.scene.layout.StackPane;
+import javafx.scene.shape.Arc;
+import javafx.scene.shape.ArcType;
+import javafx.scene.shape.Circle;
+import javafx.scene.transform.Rotate;
+import javafx.util.Duration;
+import org.kordamp.ikonli.feather.Feather;
+import org.kordamp.ikonli.javafx.FontIcon;
+
+/**
+ * The study assistant's readiness drawn in the orbit language of the course covers: a sphere with a tilted
+ * orbit and one moon. While it gets ready the moon travels the orbit, passing behind the sphere on the far
+ * side; when it is ready the moon comes to rest and the sphere shows a check; when it can't run the moon
+ * stops and the sphere shows a warning. With reduced motion the moon rests and only the sphere changes.
+ * Style classes: {@code assistant-orbit} plus {@code starting}, {@code ready} or {@code unavailable}; parts
+ * {@code orbit-sphere}, {@code orbit-line}, {@code orbit-moon}, {@code orbit-mark}.
+ */
+public final class AssistantOrbit extends Region {
+
+    /** Width and height of the drawing. */
+    public static final double WIDTH = 104;
+    public static final double HEIGHT = 72;
+
+    private static final double SPHERE_RADIUS = 20;
+    private static final double ORBIT_RX = 42;
+    private static final double ORBIT_RY = 12;
+    private static final double MOON_RADIUS = 4.5;
+    private static final double TILT = -14;
+    /** Where the moon rests: on the near side, to the right of the sphere. */
+    private static final double REST_ANGLE = 322;
+
+    private final Circle sphere = new Circle(SPHERE_RADIUS);
+    private final Arc back = new Arc(0, 0, ORBIT_RX, ORBIT_RY, 0, 180);
+    private final Arc front = new Arc(0, 0, ORBIT_RX, ORBIT_RY, 180, 180);
+    private final Circle moon = new Circle(MOON_RADIUS);
+    private final StackPane mark = new StackPane();
+    private final Group orbit = new Group();
+    private final DoubleProperty angle = new SimpleDoubleProperty(this, "angle", REST_ANGLE);
+    private final Timeline travel;
+    private final ChangeListener<Boolean> motionListener = (obs, was, reduced) -> animate();
+    private AssistantState state;
+
+    public AssistantOrbit() {
+        getStyleClass().add("assistant-orbit");
+        setMinSize(WIDTH, HEIGHT);
+        setPrefSize(WIDTH, HEIGHT);
+        setMaxSize(WIDTH, HEIGHT);
+        setMouseTransparent(true);
+        sphere.getStyleClass().add("orbit-sphere");
+        for (Arc arc : new Arc[] {back, front}) {
+            arc.setType(ArcType.OPEN);
+            arc.getStyleClass().add("orbit-line");
+        }
+        back.getStyleClass().add("back");
+        moon.getStyleClass().add("orbit-moon");
+        mark.getStyleClass().add("orbit-mark");
+        mark.setMinSize(SPHERE_RADIUS * 2, SPHERE_RADIUS * 2);
+        mark.setMaxSize(SPHERE_RADIUS * 2, SPHERE_RADIUS * 2);
+        mark.setLayoutX(-SPHERE_RADIUS);
+        mark.setLayoutY(-SPHERE_RADIUS);
+        orbit.getTransforms().add(new Rotate(TILT, 0, 0));
+        orbit.setLayoutX(WIDTH / 2);
+        orbit.setLayoutY(HEIGHT / 2);
+        getChildren().add(orbit);
+        angle.addListener((obs, old, value) -> placeMoon());
+        travel = new Timeline(
+                new KeyFrame(Duration.ZERO, new KeyValue(angle, 0, Interpolator.LINEAR)),
+                new KeyFrame(Duration.millis(2400), new KeyValue(angle, 360, Interpolator.LINEAR)));
+        travel.setCycleCount(Animation.INDEFINITE);
+        sceneProperty().addListener((obs, old, scene) -> animate());
+        Motion.reduceMotionProperty().addListener(new WeakChangeListener<>(motionListener));
+        placeMoon();
+        show(AssistantState.STARTING);
+    }
+
+    /** The state drawn, or null before the first one. */
+    public AssistantState state() {
+        return state;
+    }
+
+    /** True while the moon is travelling (tests). */
+    public boolean isTravelling() {
+        return travel.getStatus() == Animation.Status.RUNNING;
+    }
+
+    /** Draws {@code value}. */
+    public void show(AssistantState value) {
+        Objects.requireNonNull(value, "value");
+        state = value;
+        getStyleClass().removeAll("starting", "ready", "unavailable");
+        switch (value) {
+            case STARTING -> {
+                getStyleClass().add("starting");
+                mark.getChildren().clear();
+            }
+            case READY -> {
+                getStyleClass().add("ready");
+                mark.getChildren().setAll(icon(Feather.CHECK));
+            }
+            case UNAVAILABLE, FAILED -> {
+                getStyleClass().add("unavailable");
+                mark.getChildren().setAll(icon(Feather.ALERT_TRIANGLE));
+            }
+        }
+        animate();
+    }
+
+    private static FontIcon icon(Feather glyph) {
+        FontIcon icon = Icons.of(glyph, 18);
+        icon.getStyleClass().add("orbit-icon");
+        return icon;
+    }
+
+    private void animate() {
+        boolean move = state == AssistantState.STARTING && getScene() != null && !Motion.reduced();
+        if (move && travel.getStatus() != Animation.Status.RUNNING) {
+            travel.playFrom(Duration.millis(2400 * REST_ANGLE / 360));
+        } else if (!move && travel.getStatus() == Animation.Status.RUNNING) {
+            travel.stop();
+        }
+        if (!move) {
+            angle.set(REST_ANGLE);
+        }
+    }
+
+    /** Puts the moon on the orbit at the current angle, behind the sphere on the far half. */
+    private void placeMoon() {
+        double radians = Math.toRadians(angle.get());
+        moon.setCenterX(ORBIT_RX * Math.cos(radians));
+        moon.setCenterY(-ORBIT_RY * Math.sin(radians));
+        boolean behind = Math.sin(radians) > 0;
+        if (behind) {
+            orbit.getChildren().setAll(back, moon, sphere, mark, front);
+        } else {
+            orbit.getChildren().setAll(back, sphere, mark, front, moon);
+        }
+    }
+
+    @Override
+    protected void layoutChildren() {
+        // The drawing has a fixed size; nothing to lay out.
+    }
+}

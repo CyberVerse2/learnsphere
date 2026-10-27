@@ -1,0 +1,169 @@
+/* Settings and the licences dialog. Colours come from the -ls-* tokens of learnsphere.css. */
+
+.settings-body {
+    -fx-padding: 8px 0 0 0;
+}
+
+/* ---- Index ---------------------------------------------------------------------------------------- */
+
+.settings-index {
+    -fx-padding: 4px 0 0 0;
+}
+
+.settings-index-item {
+    -fx-background-color: transparent;
+    -fx-background-radius: 8px;
+    -fx-background-insets: 0;
+    -fx-border-width: 0;
+    -fx-padding: 8px 12px 8px 12px;
+    -fx-alignment: center-left;
+    -fx-font-size: 14px;
+    -fx-text-fill: -ls-text-muted;
+    -fx-cursor: hand;
+}
+
+.settings-index-item:hover {
+    -fx-background-color: -ls-hover;
+    -fx-text-fill: -ls-text;
+}
+
+.settings-index-item:selected {
+    -fx-background-color: -ls-accent-soft;
+    -fx-text-fill: -ls-accent;
+}
+
+.settings-index-item:focus-visible {
+    -fx-background-color: -ls-focus, -ls-surface, -ls-hover;
+    -fx-background-insets: -2px, 0, 0;
+    -fx-background-radius: 10px, 8px, 8px;
+}
+
+.settings-index-item:selected:focus-visible {
+    -fx-background-color: -ls-focus, -ls-surface, -ls-accent-soft;
+}
+
+/* ---- Sections ------------------------------------------------------------------------------------- */
+
+.settings-sections {
+    -fx-padding: 0 0 48px 0;
+}
+
+.settings-section {
+    -fx-spacing: 0;
+}
+
+.settings-section-title {
+    -fx-font-size: 20px;
+}
+
+.settings-section-subtitle {
+    -fx-font-size: 13px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.settings-section > .hairline {
+    -fx-translate-y: 0;
+}
+
+.settings-section > .settings-row {
+    -fx-padding: 18px 0 18px 0;
+}
+
+.settings-section > .settings-row:last-child {
+    -fx-padding: 18px 0 0 0;
+}
+
+.settings-section > VBox:first-child {
+    -fx-padding: 0 0 18px 0;
+}
+
+.retention-value {
+    -fx-font-size: 22px;
+    -fx-text-fill: -ls-text;
+}
+
+.space-used {
+    -fx-font-size: 15px;
+    -fx-text-fill: -ls-text;
+}
+
+.model-option-row {
+    -fx-padding: 0 0 0 2px;
+}
+
+.model-option {
+    -fx-font-size: 14px;
+}
+
+.model-option-detail {
+    -fx-padding: 0 0 0 28px;
+}
+
+.model-option-row.unavailable .model-option-detail {
+    -fx-text-fill: -ls-text-faint;
+}
+
+.about-name {
+    -fx-font-size: 20px;
+}
+
+/* ---- Licences dialog ------------------------------------------------------------------------------ */
+
+.licences-scroller,
+.licences-scroller > .viewport {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-padding: 0;
+}
+
+.licences-scroller {
+    -fx-border-color: -ls-border transparent -ls-border transparent;
+    -fx-border-width: 1px 0 1px 0;
+}
+
+.licences-scroller:focus-visible {
+    -fx-border-color: -ls-focus;
+    -fx-border-width: 2px;
+    -fx-border-radius: 6px;
+}
+
+.licences {
+    -fx-padding: 20px 16px 20px 0;
+}
+
+.licences-group-title {
+    -fx-text-fill: -ls-text-muted;
+}
+
+.licence-name {
+    -fx-font-size: 14px;
+    -fx-text-fill: -ls-text;
+}
+
+.licence-use {
+    -fx-font-size: 13px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.licence-licence {
+    -fx-font-size: 13px;
+    -fx-text-fill: -ls-text;
+}
+
+.licence-notice {
+    -fx-font-size: 12px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.licence-toggle {
+    -fx-padding: 4px 8px 4px 0;
+}
+
+.licence-text {
+    -fx-font-size: 12px;
+    -fx-line-spacing: 2px;
+    -fx-text-fill: -ls-text-muted;
+    -fx-background-color: -ls-surface-sunken;
+    -fx-background-radius: 8px;
+    -fx-padding: 12px 14px 12px 14px;
+}

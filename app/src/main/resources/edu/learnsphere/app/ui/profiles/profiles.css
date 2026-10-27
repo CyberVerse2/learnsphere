@@ -1,0 +1,112 @@
+/* Profile choice and unlock (full screen). Tile basics live in learnsphere.css; colours are -ls-* tokens. */
+
+.profiles-page {
+    -fx-padding: 24px 32px 24px 32px;
+}
+
+.profiles-scroller,
+.profiles-scroller > .viewport,
+.profiles-scroller > .corner {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-border-width: 0;
+    -fx-padding: 0;
+}
+
+.profiles-centring {
+    -fx-padding: 48px 0 48px 0;
+}
+
+.profiles-column {
+    -fx-spacing: 40px;
+}
+
+.profile-tiles {
+    -fx-padding: 0;
+}
+
+.profile-tile-holder > .profile-tile-menu {
+    -fx-opacity: 0;
+}
+
+.profile-tile-holder:hover > .profile-tile-menu,
+.profile-tile-holder > .profile-tile-menu:focused,
+.profile-tile-holder > .profile-tile-menu:showing,
+.profile-tile-holder:focus-within > .profile-tile-menu {
+    -fx-opacity: 1;
+}
+
+.profile-tile-meta {
+    -fx-text-fill: -ls-text-muted;
+}
+
+.profile-tile.current .profile-tile-meta {
+    -fx-text-fill: -ls-accent;
+}
+
+.profile-tile .profile-lock {
+    -fx-icon-color: -ls-text-muted;
+}
+
+.profile-tile-placeholder {
+    -fx-padding: 22px 16px 20px 16px;
+    -fx-min-width: 172px;
+    -fx-pref-width: 172px;
+    -fx-min-height: 196px;
+}
+
+.profiles-status {
+    -fx-font-size: 13px;
+    -fx-text-fill: -ls-danger-text;
+}
+
+.restore-button {
+    -fx-font-size: 13px;
+}
+
+.full-screen-back {
+    -fx-font-size: 13px;
+}
+
+.profile-menu .danger-item > .label {
+    -fx-text-fill: -ls-danger-text;
+}
+
+.profile-menu .danger-item:focused > .label {
+    -fx-text-fill: -ls-danger-text;
+}
+
+/* ---- Unlock ------------------------------------------------------------------------------------- */
+
+.unlock-column {
+    -fx-spacing: 24px;
+    -fx-padding: 0 0 48px 0;
+}
+
+.unlock-name {
+    -fx-font-size: 34px;
+}
+
+.unlock-prompt {
+    -fx-font-size: 14px;
+}
+
+.unlock-fields {
+    -fx-padding: 8px 0 0 0;
+}
+
+.text-input.unlock-password {
+    -fx-pref-width: 320px;
+    -fx-pref-height: 44px;
+    -fx-font-size: 15px;
+}
+
+.unlock-error {
+    -fx-font-size: 13px;
+    -fx-text-fill: -ls-danger-text;
+    -fx-max-width: 320px;
+}
+
+.unlock-switch {
+    -fx-font-size: 13px;
+}

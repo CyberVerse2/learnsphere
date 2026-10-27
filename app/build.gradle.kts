@@ -34,6 +34,15 @@ configurations.configureEach {
     }
 }
 
+// The version the About section shows.
+tasks.processResources {
+    val shownVersion = project.version.toString()
+    inputs.property("version", shownVersion)
+    filesMatching("edu/learnsphere/app/app.properties") {
+        expand(mapOf("version" to shownVersion))
+    }
+}
+
 // JVM options of every way the app runs: run, runDemo, screenshots and the packaged app (packaging.gradle.kts).
 val appJvmArgs = listOf(
     "--enable-native-access=ALL-UNNAMED",
