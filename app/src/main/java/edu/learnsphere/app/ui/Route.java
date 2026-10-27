@@ -1,6 +1,9 @@
 package edu.learnsphere.app.ui;
 
-/** The screens of the app. {@link #title()} is the screen's name as people see it. */
+/**
+ * The screens of the app, as the sidebar and the full-screen rule see them. A {@link Destination} names
+ * the screen and what it shows. {@link #title()} is the screen's name as people see it.
+ */
 public enum Route {
     ONBOARDING("Welcome"),
     PROFILES("Profiles"),

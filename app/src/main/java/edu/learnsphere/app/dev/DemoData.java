@@ -1,11 +1,12 @@
 package edu.learnsphere.app.dev;
 
 import edu.learnsphere.app.AppContext;
-import edu.learnsphere.core.model.Profile;
+import edu.learnsphere.core.service.ProfileDraft;
 
 /**
  * Demo content for {@code runDemo} and the screenshot tour. Writes only into the app home of the current
- * run (a temporary folder for both tasks).
+ * run (a temporary folder for both tasks). The courses and progress the demo shows come from
+ * {@link DemoWorkspace}.
  */
 public final class DemoData {
 
@@ -17,9 +18,8 @@ public final class DemoData {
 
     /** Adds the demo profile when no profile exists. */
     public static void seedProfiles(AppContext context) {
-        if (context.profiles().isEmpty()) {
-            long now = context.clock().millis();
-            context.profiles().save(Profile.create(PROFILE_NAME, PROFILE_HUE, now).withLastOpenedAt(now));
+        if (context.profiles().list().isEmpty()) {
+            context.profiles().create(ProfileDraft.of(PROFILE_NAME, PROFILE_HUE));
         }
     }
 }

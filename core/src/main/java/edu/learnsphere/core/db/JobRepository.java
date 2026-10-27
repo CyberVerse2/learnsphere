@@ -1,5 +1,6 @@
 package edu.learnsphere.core.db;
 
+import edu.learnsphere.core.error.UserMessage;
 import edu.learnsphere.core.model.Job;
 import edu.learnsphere.core.model.JobKind;
 import edu.learnsphere.core.model.JobStatus;
@@ -22,6 +23,7 @@ public final class JobRepository {
             rs.getInt("attempts"),
             rs.getDouble("progress"),
             rs.getString("message"),
+            rs.getString("result_json"),
             rs.getString("subject_id"),
             rs.getLong("created_at"),
             rs.getLong("updated_at"));
@@ -36,14 +38,15 @@ public final class JobRepository {
 
     public void insert(Job j) {
         db.useHandle(h -> h.createUpdate("""
-                        INSERT INTO jobs (id, kind, payload_json, status, priority, attempts, progress, message, subject_id,
-                          created_at, updated_at)
-                        VALUES (:id, :kind, :payload, :status, :priority, :attempts, :progress, :message, :subjectId,
-                          :createdAt, :updatedAt)
+                        INSERT INTO jobs (id, kind, payload_json, status, priority, attempts, progress, message,
+                          result_json, subject_id, created_at, updated_at)
+                        VALUES (:id, :kind, :payload, :status, :priority, :attempts, :progress, :message, :result,
+                          :subjectId, :createdAt, :updatedAt)
                         """)
                 .bind("id", j.id()).bind("kind", j.kind().code()).bind("payload", j.payloadJson())
                 .bind("status", j.status().code()).bind("priority", j.priority()).bind("attempts", j.attempts())
-                .bind("progress", j.progress()).bind("message", j.message()).bind("subjectId", j.subjectId())
+                .bind("progress", j.progress()).bind("message", j.message()).bind("result", j.resultJson())
+                .bind("subjectId", j.subjectId())
                 .bind("createdAt", j.createdAt()).bind("updatedAt", j.updatedAt())
                 .execute());
     }
@@ -83,14 +86,16 @@ public final class JobRepository {
     }
 
     /**
-     * Atomically takes the next queued job (highest priority, then oldest), marks it running and counts
-     * the attempt.
+     * Atomically takes the next queued job of {@code kind} (highest priority, then oldest), marks it running
+     * and counts the attempt.
      */
-    public Optional<Job> claimNext() {
+    public Optional<Job> claimNext(JobKind kind) {
         return db.inTransaction(h -> {
-            Optional<Job> next = h.createQuery(
-                            "SELECT * FROM jobs WHERE status = 'queued' ORDER BY priority DESC, created_at, id LIMIT 1")
-                    .map(JOB).findOne();
+            Optional<Job> next = h.createQuery("""
+                            SELECT * FROM jobs WHERE status = 'queued' AND kind = :k
+                            ORDER BY priority DESC, created_at, id LIMIT 1
+                            """)
+                    .bind("k", kind.code()).map(JOB).findOne();
             if (next.isEmpty()) {
                 return Optional.<Job>empty();
             }
@@ -101,23 +106,47 @@ public final class JobRepository {
         });
     }
 
-    /** Updates progress (0–1) and the progress line. */
+    /** Kinds that have at least one queued job. */
+    public Set<JobKind> queuedKinds() {
+        return Set.copyOf(db.withHandle(h -> h.createQuery("SELECT DISTINCT kind FROM jobs WHERE status = 'queued'")
+                .mapTo(String.class).list()).stream().map(JobKind::fromCode).toList());
+    }
+
+    /** Updates progress (0–1) and the progress line (null keeps the current line). */
     public boolean updateProgress(String id, double progress, String message) {
         return db.withHandle(h -> h.createUpdate(
-                        "UPDATE jobs SET progress = :p, message = :m, updated_at = :now WHERE id = :id")
+                        "UPDATE jobs SET progress = :p, message = COALESCE(:m, message), updated_at = :now WHERE id = :id")
                 .bind("id", id).bind("p", Math.max(0, Math.min(1, progress))).bind("m", message)
                 .bind("now", clock.millis()).execute()) > 0;
     }
 
-    /** Sets the status and message (progress becomes 1 when done). */
-    public boolean updateStatus(String id, JobStatus status, String message) {
+    /** Marks a job done with progress 1, clears its progress line and stores its result (JSON, or null). */
+    public boolean markDone(String id, String resultJson) {
         return db.withHandle(h -> h.createUpdate("""
-                        UPDATE jobs SET status = :s, message = :m,
-                          progress = CASE WHEN :s = 'done' THEN 1 ELSE progress END, updated_at = :now
+                        UPDATE jobs SET status = 'done', progress = 1, message = NULL, result_json = :r, updated_at = :now
                         WHERE id = :id
                         """)
-                .bind("id", id).bind("s", status.code()).bind("m", message).bind("now", clock.millis())
-                .execute()) > 0;
+                .bind("id", id).bind("r", resultJson).bind("now", clock.millis()).execute()) > 0;
+    }
+
+    /**
+     * Marks a job failed with the sentence the interface shows. Callers pass
+     * {@code LearnSphereException.userMessageOf(error)}; exception text never goes into a job.
+     */
+    public boolean markFailed(String id, UserMessage message) {
+        Objects.requireNonNull(message, "message");
+        return db.withHandle(h -> h.createUpdate(
+                        "UPDATE jobs SET status = 'failed', message = :m, updated_at = :now WHERE id = :id")
+                .bind("id", id).bind("m", message.text()).bind("now", clock.millis()).execute()) > 0;
+    }
+
+    /** Marks a queued or running job cancelled; returns false when it had already finished. */
+    public boolean markCancelled(String id) {
+        return db.withHandle(h -> h.createUpdate("""
+                        UPDATE jobs SET status = 'cancelled', message = NULL, updated_at = :now
+                        WHERE id = :id AND status IN ('queued', 'running')
+                        """)
+                .bind("id", id).bind("now", clock.millis()).execute()) > 0;
     }
 
     /** Puts jobs left running by an interrupted run back in the queue; returns how many. */

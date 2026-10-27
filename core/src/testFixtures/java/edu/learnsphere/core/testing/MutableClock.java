@@ -1,4 +1,4 @@
-package edu.learnsphere.core;
+package edu.learnsphere.core.testing;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -6,8 +6,11 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 
-/** A clock tests can move. */
+/** A clock tests can move. Thread-safe. */
 public final class MutableClock extends Clock {
+
+    /** The instant {@link #fixed()} starts at: Monday 2026-03-02T09:00:00Z. */
+    public static final Instant START = Instant.parse("2026-03-02T09:00:00Z");
 
     private volatile Instant now;
     private final ZoneId zone;
@@ -21,9 +24,9 @@ public final class MutableClock extends Clock {
         this.zone = zone;
     }
 
-    /** 2026-03-02T09:00:00Z. */
+    /** A clock at {@link #START} in UTC. */
     public static MutableClock fixed() {
-        return new MutableClock(Instant.parse("2026-03-02T09:00:00Z"));
+        return new MutableClock(START);
     }
 
     public void advance(Duration duration) {

@@ -11,11 +11,11 @@ import java.util.Objects;
 import java.util.Optional;
 import org.jdbi.v3.core.mapper.RowMapper;
 import org.jdbi.v3.core.statement.PreparedBatch;
-import org.jdbi.v3.core.statement.Query;
 
 /**
  * FSRS memory state per item. Queries that feed study sessions and forecasts only consider approved
- * items, because learners only ever study approved items.
+ * items, because learners only ever study approved items, and take a {@link StudyScope} that says which
+ * courses count ({@link StudyScope#enrolled()} for "across every course I study").
  */
 public final class ReviewStateRepository {
 
@@ -29,18 +29,19 @@ public final class ReviewStateRepository {
             rs.getInt("reps"),
             rs.getInt("lapses"),
             rs.getInt("scheduled_days"),
+            rs.getInt("step"),
             rs.getLong("created_at"),
             rs.getLong("updated_at"));
 
     private static final String UPSERT = """
             INSERT INTO review_states (item_id, state, stability, difficulty, due_at, last_review_at, reps, lapses,
-              scheduled_days, created_at, updated_at)
+              scheduled_days, step, created_at, updated_at)
             VALUES (:itemId, :state, :stability, :difficulty, :dueAt, :lastReviewAt, :reps, :lapses, :scheduledDays,
-              :createdAt, :updatedAt)
+              :step, :createdAt, :updatedAt)
             ON CONFLICT (item_id) DO UPDATE SET state = excluded.state, stability = excluded.stability,
               difficulty = excluded.difficulty, due_at = excluded.due_at, last_review_at = excluded.last_review_at,
               reps = excluded.reps, lapses = excluded.lapses, scheduled_days = excluded.scheduled_days,
-              updated_at = excluded.updated_at
+              step = excluded.step, updated_at = excluded.updated_at
             """;
 
     private final Database db;
@@ -66,6 +67,7 @@ public final class ReviewStateRepository {
                 batch.bind("itemId", s.itemId()).bind("state", s.phase().code()).bind("stability", s.stability())
                         .bind("difficulty", s.difficulty()).bind("dueAt", s.dueAt()).bind("lastReviewAt", s.lastReviewAt())
                         .bind("reps", s.reps()).bind("lapses", s.lapses()).bind("scheduledDays", s.scheduledDays())
+                        .bind("step", s.step())
                         .bind("createdAt", s.createdAt()).bind("updatedAt", s.updatedAt())
                         .add();
             }
@@ -90,42 +92,35 @@ public final class ReviewStateRepository {
     }
 
     /**
-     * Approved, previously reviewed items due at or before {@code before}, earliest first.
-     *
-     * @param courseId only this course, or null for all courses
-     * @param moduleId only this module, or null
+     * Approved, previously reviewed items in {@code scope} due at or before {@code before}, earliest first.
      */
-    public List<ReviewState> listDue(String courseId, String moduleId, long before, int limit) {
-        StringBuilder sql = new StringBuilder("""
-                SELECT r.* FROM review_states r JOIN learning_items i ON i.id = r.item_id
-                WHERE i.status = 'approved' AND r.state <> 'new' AND r.due_at <= :before
-                """);
-        appendScope(sql, courseId, moduleId);
-        sql.append(" ORDER BY r.due_at LIMIT :limit");
-        return db.withHandle(h -> bindScope(h.createQuery(sql.toString()), courseId, moduleId)
+    public List<ReviewState> listDue(StudyScope scope, long before, int limit) {
+        String sql = "SELECT r.* FROM review_states r JOIN learning_items i ON i.id = r.item_id" + scope.joins()
+                + " WHERE i.status = 'approved' AND r.state <> 'new' AND r.due_at <= :before AND " + scope.condition()
+                + " ORDER BY r.due_at, r.item_id LIMIT :limit";
+        return db.withHandle(h -> scope.bind(h.createQuery(sql))
                 .bind("before", before).bind("limit", limit).map(STATE).list());
     }
 
-    /** How many approved items are due at or before {@code before} (course and module may be null). */
-    public int countDue(String courseId, String moduleId, long before) {
-        StringBuilder sql = new StringBuilder("""
-                SELECT COUNT(*) FROM review_states r JOIN learning_items i ON i.id = r.item_id
-                WHERE i.status = 'approved' AND r.state <> 'new' AND r.due_at <= :before
-                """);
-        appendScope(sql, courseId, moduleId);
-        return db.withHandle(h -> bindScope(h.createQuery(sql.toString()), courseId, moduleId)
-                .bind("before", before).mapTo(Integer.class).one());
+    /** How many approved items in {@code scope} are due at or before {@code before}. */
+    public int countDue(StudyScope scope, long before) {
+        String sql = "SELECT COUNT(*) FROM review_states r JOIN learning_items i ON i.id = r.item_id" + scope.joins()
+                + " WHERE i.status = 'approved' AND r.state <> 'new' AND r.due_at <= :before AND " + scope.condition();
+        return db.withHandle(h -> scope.bind(h.createQuery(sql)).bind("before", before).mapTo(Integer.class).one());
     }
 
-    /** Due counts per course at or before {@code before}, keyed by course id (courses with none are absent). */
-    public Map<String, Integer> countDueByCourse(long before) {
+    /**
+     * Due counts per course in {@code scope} at or before {@code before}, keyed by course id (courses with
+     * none are absent).
+     */
+    public Map<String, Integer> countDueByCourse(StudyScope scope, long before) {
+        String sql = "SELECT i.course_id, COUNT(*) AS n FROM review_states r JOIN learning_items i ON i.id = r.item_id"
+                + scope.joins()
+                + " WHERE i.status = 'approved' AND r.state <> 'new' AND r.due_at <= :before AND " + scope.condition()
+                + " GROUP BY i.course_id";
         return db.withHandle(h -> {
             Map<String, Integer> result = new HashMap<>();
-            h.createQuery("""
-                            SELECT i.course_id, COUNT(*) AS n FROM review_states r JOIN learning_items i ON i.id = r.item_id
-                            WHERE i.status = 'approved' AND r.state <> 'new' AND r.due_at <= :before
-                            GROUP BY i.course_id
-                            """)
+            scope.bind(h.createQuery(sql))
                     .bind("before", before)
                     .map((rs, ctx) -> Map.entry(rs.getString("course_id"), rs.getInt("n")))
                     .forEach(e -> result.put(e.getKey(), e.getValue()));
@@ -134,60 +129,38 @@ public final class ReviewStateRepository {
     }
 
     /**
-     * Due times of approved, reviewed items in {@code [from, to)}, for the review forecast. The caller
-     * buckets them into days in the learner's time zone.
+     * Due times of approved, reviewed items in {@code scope} in {@code [from, to)}, for the review forecast.
+     * The caller buckets them into days in the learner's time zone.
      */
-    public List<Long> dueTimesBetween(String courseId, long from, long to) {
-        StringBuilder sql = new StringBuilder("""
-                SELECT r.due_at FROM review_states r JOIN learning_items i ON i.id = r.item_id
-                WHERE i.status = 'approved' AND r.state <> 'new' AND r.due_at >= :from AND r.due_at < :to
-                """);
-        appendScope(sql, courseId, null);
-        sql.append(" ORDER BY r.due_at");
-        return db.withHandle(h -> bindScope(h.createQuery(sql.toString()), courseId, null)
+    public List<Long> dueTimesBetween(StudyScope scope, long from, long to) {
+        String sql = "SELECT r.due_at FROM review_states r JOIN learning_items i ON i.id = r.item_id" + scope.joins()
+                + " WHERE i.status = 'approved' AND r.state <> 'new' AND r.due_at >= :from AND r.due_at < :to AND "
+                + scope.condition() + " ORDER BY r.due_at";
+        return db.withHandle(h -> scope.bind(h.createQuery(sql))
                 .bind("from", from).bind("to", to).mapTo(Long.class).list());
     }
 
-    /** The earliest due time after {@code after} among approved reviewed items, if any ("next review"). */
-    public Optional<Long> nextDueAfter(String courseId, long after) {
-        StringBuilder sql = new StringBuilder("""
-                SELECT MIN(r.due_at) FROM review_states r JOIN learning_items i ON i.id = r.item_id
-                WHERE i.status = 'approved' AND r.state <> 'new' AND r.due_at > :after
-                """);
-        appendScope(sql, courseId, null);
-        return db.withHandle(h -> bindScope(h.createQuery(sql.toString()), courseId, null)
+    /** The earliest due time after {@code after} among approved reviewed items in {@code scope} ("next review"). */
+    public Optional<Long> nextDueAfter(StudyScope scope, long after) {
+        String sql = "SELECT MIN(r.due_at) FROM review_states r JOIN learning_items i ON i.id = r.item_id" + scope.joins()
+                + " WHERE i.status = 'approved' AND r.state <> 'new' AND r.due_at > :after AND " + scope.condition();
+        return db.withHandle(h -> scope.bind(h.createQuery(sql))
                 .bind("after", after).mapTo(Long.class).findOne());
     }
 
-    /** Every state of a course's approved items (for mastery and retention calculations). */
+    /** Every state of the approved items in {@code scope} (for mastery and retention calculations). */
+    public List<ReviewState> listApproved(StudyScope scope) {
+        String sql = "SELECT r.* FROM review_states r JOIN learning_items i ON i.id = r.item_id" + scope.joins()
+                + " WHERE i.status = 'approved' AND " + scope.condition();
+        return db.withHandle(h -> scope.bind(h.createQuery(sql)).map(STATE).list());
+    }
+
+    /** Every state of a course's approved items. */
     public List<ReviewState> listByCourse(String courseId) {
-        return db.withHandle(h -> h.createQuery("""
-                        SELECT r.* FROM review_states r JOIN learning_items i ON i.id = r.item_id
-                        WHERE i.course_id = :c AND i.status = 'approved'
-                        """)
-                .bind("c", courseId).map(STATE).list());
+        return listApproved(StudyScope.course(courseId));
     }
 
     public boolean delete(String itemId) {
         return db.withHandle(h -> h.createUpdate("DELETE FROM review_states WHERE item_id = :i").bind("i", itemId).execute()) > 0;
-    }
-
-    private static void appendScope(StringBuilder sql, String courseId, String moduleId) {
-        if (courseId != null) {
-            sql.append(" AND i.course_id = :courseId");
-        }
-        if (moduleId != null) {
-            sql.append(" AND i.module_id = :moduleId");
-        }
-    }
-
-    private static Query bindScope(Query query, String courseId, String moduleId) {
-        if (courseId != null) {
-            query.bind("courseId", courseId);
-        }
-        if (moduleId != null) {
-            query.bind("moduleId", moduleId);
-        }
-        return query;
     }
 }

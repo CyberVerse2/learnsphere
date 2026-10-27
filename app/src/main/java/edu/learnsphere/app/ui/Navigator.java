@@ -3,76 +3,104 @@ package edu.learnsphere.app.ui;
 import edu.learnsphere.app.theme.Motion;
 import java.util.ArrayDeque;
 import java.util.Deque;
-import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
-import java.util.function.Supplier;
 import javafx.beans.property.ReadOnlyObjectProperty;
 import javafx.beans.property.ReadOnlyObjectWrapper;
-import javafx.scene.Node;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * Switches the content area between routes with the standard entrance transition and keeps back history.
- * Screens register a factory per route; a route without one shows a page with just its title. Each
- * navigation builds a fresh view. FX thread only.
+ * Switches the content area between {@link Destination}s with the standard entrance transition and keeps
+ * back history. Screens register a factory per destination type; a destination without one shows the
+ * fallback view. Each navigation builds a fresh {@link View}: the new one gets {@link View#onShown()} and the
+ * one it replaces gets {@link View#dispose()}. FX thread only.
  */
 public final class Navigator {
 
+    private static final Logger LOG = LoggerFactory.getLogger(Navigator.class);
+
     private final StackPane host;
-    private final Map<Route, Supplier<? extends Node>> views = new EnumMap<>(Route.class);
-    private final ReadOnlyObjectWrapper<Route> current = new ReadOnlyObjectWrapper<>(this, "current");
-    private final Deque<Route> history = new ArrayDeque<>();
-    private final Function<Route, Node> fallback;
+    private final Map<Class<? extends Destination>, Function<Destination, ? extends View>> views = new HashMap<>();
+    private final Function<Destination, ? extends View> fallback;
+    private final ReadOnlyObjectWrapper<Destination> current = new ReadOnlyObjectWrapper<>(this, "current");
+    private final Deque<Destination> history = new ArrayDeque<>();
+    private View currentView;
 
     /**
      * @param host     the content area
-     * @param fallback builds the view for routes without a registered factory
+     * @param fallback builds the view for destinations without a registered factory
      */
-    public Navigator(StackPane host, Function<Route, Node> fallback) {
+    public Navigator(StackPane host, Function<Destination, ? extends View> fallback) {
         this.host = Objects.requireNonNull(host, "host");
         this.fallback = Objects.requireNonNull(fallback, "fallback");
     }
 
-    /** Registers (or replaces) the view factory for {@code route}. */
-    public void register(Route route, Supplier<? extends Node> factory) {
-        views.put(Objects.requireNonNull(route, "route"), Objects.requireNonNull(factory, "factory"));
+    /** Registers (or replaces) the view factory for destinations of {@code type}. */
+    public <D extends Destination> void register(Class<D> type, Function<? super D, ? extends View> factory) {
+        Objects.requireNonNull(type, "type");
+        Objects.requireNonNull(factory, "factory");
+        views.put(type, destination -> factory.apply(type.cast(destination)));
     }
 
-    /** The route on screen. */
-    public ReadOnlyObjectProperty<Route> currentProperty() {
+    /** The destination on screen. */
+    public ReadOnlyObjectProperty<Destination> currentProperty() {
         return current.getReadOnlyProperty();
     }
 
-    public Route current() {
+    public Destination current() {
         return current.get();
     }
 
-    /** Shows {@code route} with the entrance transition and remembers the previous route. */
-    public void navigate(Route route) {
+    /** The screen on screen, or null before the first navigation. */
+    public Route currentRoute() {
+        Destination destination = current.get();
+        return destination == null ? null : destination.route();
+    }
+
+    /** The view on screen, or null before the first navigation. */
+    public View currentView() {
+        return currentView;
+    }
+
+    /**
+     * Shows {@code destination} with the entrance transition and remembers the previous one. Navigating to
+     * the destination already on screen does nothing.
+     */
+    public void navigate(Destination destination) {
         Fx.requireFxThread();
-        if (current.get() != null && current.get() != route) {
-            history.push(current.get());
+        Objects.requireNonNull(destination, "destination");
+        Destination previous = current.get();
+        if (destination.equals(previous)) {
+            return;
         }
-        show(route, true);
+        show(destination, true);
+        if (previous != null) {
+            history.push(previous);
+        }
     }
 
-    /** Shows {@code route} without a transition or history entry (start-up, screenshots). */
-    public void reset(Route route) {
+    /** Shows {@code destination} without a transition and clears history (start-up, profile switch, screenshots). */
+    public void reset(Destination destination) {
         Fx.requireFxThread();
+        Objects.requireNonNull(destination, "destination");
+        show(destination, false);
         history.clear();
-        show(route, false);
     }
 
-    /** Returns to the previous route; false when there is none. */
+    /** Returns to the previous destination; false when there is none. */
     public boolean back() {
         Fx.requireFxThread();
-        Route previous = history.poll();
+        Destination previous = history.peek();
         if (previous == null) {
             return false;
         }
         show(previous, true);
+        history.pop();
         return true;
     }
 
@@ -80,13 +108,42 @@ public final class Navigator {
         return !history.isEmpty();
     }
 
-    private void show(Route route, boolean animate) {
-        Supplier<? extends Node> factory = views.get(route);
-        Node view = factory != null ? factory.get() : fallback.apply(route);
-        host.getChildren().setAll(view);
-        current.set(route);
+    /** Disposes the view on screen and empties the content area (window closing). */
+    public void dispose() {
+        Fx.requireFxThread();
+        View old = currentView;
+        currentView = null;
+        host.getChildren().clear();
+        history.clear();
+        current.set(null);
+        if (old != null) {
+            dispose(old);
+        }
+    }
+
+    /** Builds the view first, so a factory that throws leaves the screen and history as they were. */
+    private void show(Destination destination, boolean animate) {
+        Function<Destination, ? extends View> factory = views.getOrDefault(destination.getClass(), fallback);
+        View view = Objects.requireNonNull(factory.apply(destination), "view");
+        Region root = view.root();
+        View old = currentView;
+        host.getChildren().setAll(root);
+        currentView = view;
+        current.set(destination);
+        if (old != null) {
+            dispose(old);
+        }
+        view.onShown();
         if (animate) {
-            Motion.enter(view);
+            Motion.enter(root);
+        }
+    }
+
+    private static void dispose(View view) {
+        try {
+            view.dispose();
+        } catch (RuntimeException e) {
+            LOG.warn("Disposing {} failed", view.getClass().getSimpleName(), e);
         }
     }
 }

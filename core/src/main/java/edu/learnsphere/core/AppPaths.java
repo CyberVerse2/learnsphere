@@ -16,6 +16,7 @@ import java.util.Properties;
  * <pre>
  * &lt;app home&gt;/
  *   profiles.json
+ *   app-settings.json
  *   logs/
  *   profiles/&lt;profileId&gt;/
  *     learnsphere.db
@@ -81,6 +82,11 @@ public final class AppPaths {
     /** The profile registry file. */
     public Path profilesFile() {
         return home().resolve("profiles.json");
+    }
+
+    /** App-wide preferences (appearance, onboarding, last profile), see {@code AppPreferencesStore}. */
+    public Path preferencesFile() {
+        return home().resolve("app-settings.json");
     }
 
     /** Application and AI process logs. */

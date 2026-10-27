@@ -1,9 +1,22 @@
 package edu.learnsphere.ai.fake;
 
+import edu.learnsphere.core.spi.AiCapabilities;
+import edu.learnsphere.core.spi.Capabilities;
 import java.time.Duration;
 
 /**
- * One fake for every AI interface, ready to wire into services.
+ * One fake for every AI interface, ready to wire into services. The components keep their concrete types
+ * so tests can steer them (for example {@link FakeAiRuntime#setStatus}); {@link #capabilities()} hands
+ * them to a {@link Capabilities} in one call:
+ *
+ * <pre>{@code
+ * FakeAi ai = FakeAi.create();
+ * Capabilities capabilities = Capabilities.builder()
+ *         .pdf(inspector, extractor, chunker, renderer, locator)
+ *         .searchIndexFactory(factory)
+ *         .ai(ai.capabilities())
+ *         .build();
+ * }</pre>
  *
  * @param runtime         always ready
  * @param embedder        hashed bag-of-words vectors
@@ -38,5 +51,11 @@ public record FakeAi(
         return new FakeAi(new FakeAiRuntime(), new FakeEmbedder(), new FakeReranker(), new FakeGroundedAnswerer(wordDelay),
                 new FakeItemGenerator(), new FakeConceptExtractor(), new FakeSupportChecker(), new FakeShortAnswerGrader(),
                 new FakePageReader(), new FakeFigureDescriber());
+    }
+
+    /** Every fake as the AI slots of a {@link Capabilities}. */
+    public AiCapabilities capabilities() {
+        return new AiCapabilities(runtime, embedder, reranker, answerer, conceptExtractor, itemGenerator, supportChecker,
+                grader, pageReader, figureDescriber);
     }
 }

@@ -10,6 +10,8 @@ dependencies {
     implementation(project(":search"))
     implementation(project(":ai"))
     runtimeOnly(libs.logback.classic)
+
+    testImplementation(testFixtures(project(":core")))
 }
 
 application {

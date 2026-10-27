@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.Clock;
 import java.util.Objects;
@@ -23,6 +24,11 @@ import org.sqlite.SQLiteException;
  * <p>Repositories run every statement through {@link #withHandle} / {@link #useHandle}. Wrapping several
  * repository calls in {@link #inTransaction} makes them one transaction: while it runs, every repository
  * call on the same thread joins it. Nested {@code inTransaction} calls join the outer transaction.
+ *
+ * <p>Transactions begin {@code IMMEDIATE}, so each one holds the database's single write lock from start
+ * to finish and every other writer waits (up to {@code busy_timeout}, then fails). Keep them short: read
+ * and compute first, then write in one transaction. Never call an SPI implementation (AI requests, PDF
+ * reading, embedding, search index writes) or wait on anything slow inside {@code inTransaction}.
  *
  * <p>Thread-safe.
  */
@@ -128,6 +134,26 @@ public final class Database implements AutoCloseable {
             consumer.useHandle(handle);
             return null;
         });
+    }
+
+    /**
+     * Runs {@code work} with a pooled JDBC connection used by nobody else meanwhile, outside Jdbi (for
+     * {@link Migrations}, which needs connection-level pragmas and plain statements). The connection
+     * starts in auto-commit mode with foreign keys on; {@code work} must leave it that way.
+     */
+    <R> R withConnection(ConnectionWork<R> work) throws SQLException {
+        Connection connection = pool.openConnection();
+        try {
+            return work.apply(connection);
+        } finally {
+            pool.closeConnection(connection);
+        }
+    }
+
+    /** Work on a raw connection. */
+    @FunctionalInterface
+    interface ConnectionWork<R> {
+        R apply(Connection connection) throws SQLException;
     }
 
     /** True while the calling thread is inside {@link #inTransaction}. */

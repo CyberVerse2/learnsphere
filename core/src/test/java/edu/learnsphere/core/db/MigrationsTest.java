@@ -3,8 +3,17 @@ package edu.learnsphere.core.db;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import edu.learnsphere.core.MutableClock;
+import edu.learnsphere.core.error.LearnSphereException;
+import edu.learnsphere.core.model.Course;
+import edu.learnsphere.core.model.Document;
+import edu.learnsphere.core.model.DocumentPage;
+import edu.learnsphere.core.model.ItemStatus;
+import edu.learnsphere.core.model.ItemType;
+import edu.learnsphere.core.model.LearningItem;
+import edu.learnsphere.core.model.PageSource;
 import edu.learnsphere.core.model.SchemaVersion;
+import edu.learnsphere.core.testing.MutableClock;
+import edu.learnsphere.core.testing.TestDb;
 import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -98,6 +107,52 @@ class MigrationsTest {
         assertThat(statements.get(0)).startsWith("CREATE TABLE a").contains("'semi;colon'");
         assertThat(statements.get(1)).contains("'it''s; fine'");
         assertThat(statements.get(2)).startsWith("CREATE TRIGGER").endsWith("END");
+    }
+
+    @Test
+    void rebuildsATableWithoutDeletingRowsThatReferenceIt() {
+        try (TestDb t = TestDb.open(dir)) {
+            Course course = t.course("Biology");
+            Document document = t.document(course, null, "Cells");
+            t.repos.documents().upsertPage(new DocumentPage(document.id(), 1, "A cell is…", PageSource.TEXT_LAYER, false,
+                    null, false, t.now(), t.now()));
+            t.chunk(document, 0, "A cell is the smallest unit of life.");
+            LearningItem item = t.item(course, null, ItemType.FLASHCARD, ItemStatus.APPROVED, "What is a cell?");
+
+            List<SchemaVersion> applied = new Migrations(t.db, t.clock, getClass().getClassLoader(), "db/test-rebuild").migrate();
+
+            assertThat(applied).extracting(SchemaVersion::version).containsExactly(2);
+            assertThat(t.repos.documents().find(document.id())).isPresent();
+            assertThat(t.repos.documents().listPages(document.id())).hasSize(1);
+            assertThat(t.repos.chunks().countByDocument(document.id())).isEqualTo(1);
+            assertThat(t.repos.items().find(item.id())).isPresent();
+            assertThat(count(t.db, "SELECT matches FROM escape_check")).isEqualTo(1);
+            assertThat(t.db.<Integer, RuntimeException>withHandle(h -> h.createQuery("PRAGMA foreign_keys")
+                    .mapTo(Integer.class).one())).as("foreign keys are back on").isEqualTo(1);
+
+            t.repos.documents().delete(document.id());
+            assertThat(t.repos.chunks().countByDocument(document.id())).as("cascades still work").isZero();
+        }
+    }
+
+    @Test
+    void rollsBackAScriptThatLeavesBrokenReferences() {
+        try (TestDb t = TestDb.open(dir)) {
+            t.course("Biology");
+            Migrations migrations = new Migrations(t.db, t.clock, getClass().getClassLoader(), "db/test-dangling");
+
+            assertThatThrownBy(migrations::migrate).isInstanceOf(LearnSphereException.class)
+                    .hasMessageContaining("V2__orphan_chunk.sql");
+
+            assertThat(migrations.currentVersion()).isEqualTo(1);
+            assertThat(count(t.db, "SELECT COUNT(*) FROM chunks")).isZero();
+            assertThat(count(t.db, "SELECT COUNT(*) FROM sqlite_master WHERE name = 'should_not_exist'")).isZero();
+            assertThat(count(t.db, "PRAGMA foreign_keys")).isEqualTo(1);
+        }
+    }
+
+    private static int count(Database db, String sql) {
+        return db.withHandle(h -> h.createQuery(sql).mapTo(Integer.class).one());
     }
 
     @Test

@@ -1,5 +1,6 @@
 package edu.learnsphere.core.db;
 
+import edu.learnsphere.core.testing.TestDb;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 

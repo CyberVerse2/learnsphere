@@ -441,6 +441,11 @@
     -fx-text-fill: -ls-text-faint;
 }
 
+.sidebar-course {
+    -fx-graphic-text-gap: 10px;
+    -fx-text-overrun: ellipsis;
+}
+
 .sidebar-divider {
     -fx-background-color: -ls-border;
     -fx-min-height: 1px;

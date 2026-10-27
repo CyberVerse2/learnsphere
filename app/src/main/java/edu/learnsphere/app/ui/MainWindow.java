@@ -8,8 +8,8 @@ import javafx.scene.layout.StackPane;
 
 /**
  * The window content: the {@link Sidebar} on the left and the routed content area in the centre. Screens
- * register with {@link #navigator()}; the sidebar hides for full-screen routes (study sessions,
- * onboarding, profile choice).
+ * register with {@link #navigator()} by destination type; the sidebar hides for full-screen routes (study
+ * sessions, onboarding, profile choice).
  */
 public final class MainWindow extends BorderPane {
 
@@ -22,23 +22,31 @@ public final class MainWindow extends BorderPane {
         content.getStyleClass().add("content");
 
         navigator = new Navigator(content, MainWindow::untitledPage);
-        navigator.register(Route.HOME, () -> new WelcomePage(context, navigator));
+        navigator.register(Destination.Home.class, destination -> new WelcomePage(context, navigator));
 
         sidebar = new Sidebar(context, navigator);
         setLeft(sidebar);
         setCenter(content);
-        navigator.currentProperty().addListener((obs, old, route) ->
-                setLeft(route != null && route.isFullScreen() ? null : sidebar));
-        navigator.reset(Route.HOME);
+        navigator.currentProperty().addListener((obs, old, destination) ->
+                setLeft(destination != null && destination.route().isFullScreen() ? null : sidebar));
+        navigator.reset(Destination.HOME);
     }
 
     public Navigator navigator() {
         return navigator;
     }
 
-    private static Page untitledPage(Route route) {
-        Label title = new Label(route.title());
+    /** A screen that is not built yet: its title on an empty page. */
+    private static View untitledPage(Destination destination) {
+        Label title = new Label(destination.route().title());
         title.getStyleClass().add("text-display");
-        return new Page(title);
+        Page page = new Page(title);
+        return () -> page;
+    }
+
+    /** Disposes the screen on display (window closing). */
+    public void dispose() {
+        navigator.dispose();
+        sidebar.dispose();
     }
 }

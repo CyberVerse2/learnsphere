@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.within;
 import edu.learnsphere.core.ask.CitationValidator;
 import edu.learnsphere.core.model.Difficulty;
 import edu.learnsphere.core.model.ItemType;
+import edu.learnsphere.core.spi.AiCapabilities;
 import edu.learnsphere.core.spi.AiStatus;
 import edu.learnsphere.core.spi.ConceptDraft;
 import edu.learnsphere.core.spi.EmbedKind;
@@ -238,5 +239,22 @@ class FakesTest {
         assertThat(ai.embedder().dimensions()).isEqualTo(FakeEmbedder.DEFAULT_DIMENSIONS);
         assertThat(ai.answerer()).isNotNull();
         assertThat(ai.figureDescriber()).isNotNull();
+    }
+
+    @Test
+    void fillsEveryAiSlotOfTheCapabilities() {
+        FakeAi ai = FakeAi.create();
+        AiCapabilities slots = ai.capabilities();
+
+        assertThat(slots.runtime()).isSameAs(ai.runtime());
+        assertThat(slots.embedder()).isSameAs(ai.embedder());
+        assertThat(slots.reranker()).isSameAs(ai.reranker());
+        assertThat(slots.answerer()).isSameAs(ai.answerer());
+        assertThat(slots.conceptExtractor()).isSameAs(ai.conceptExtractor());
+        assertThat(slots.itemGenerator()).isSameAs(ai.itemGenerator());
+        assertThat(slots.supportChecker()).isSameAs(ai.supportChecker());
+        assertThat(slots.grader()).isSameAs(ai.grader());
+        assertThat(slots.pageReader()).isSameAs(ai.pageReader());
+        assertThat(slots.figureDescriber()).isSameAs(ai.figureDescriber());
     }
 }

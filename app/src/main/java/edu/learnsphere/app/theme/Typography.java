@@ -122,6 +122,12 @@ public final class Typography {
         faces = resolved;
         stylesheet = dataUrl(css(resolved));
         LOG.info("Fonts: {}", resolved);
+        List<String> missing = resolved.entrySet().stream().filter(e -> !e.getValue().bundled())
+                .map(e -> e.getKey().file()).toList();
+        if (!missing.isEmpty()) {
+            LOG.warn("Bundled fonts missing from {}fonts/, using installed fallbacks: {}",
+                    Typography.class.getPackageName().replace('.', '/') + "/", missing);
+        }
     }
 
     /** The resolved font for {@code face}. */

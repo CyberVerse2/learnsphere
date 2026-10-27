@@ -44,6 +44,25 @@ class StudySessionRepositoryTest extends RepositoryTestBase {
     }
 
     @Test
+    void countsItemsFirstAttemptedSinceATime() {
+        Course course = t.course("C");
+        Course other = t.course("D");
+        LearningItem old = t.item(course, null, ItemType.MCQ, ItemStatus.APPROVED, "old");
+        LearningItem fresh = t.item(course, null, ItemType.MCQ, ItemStatus.APPROVED, "fresh");
+        LearningItem elsewhere = t.item(other, null, ItemType.MCQ, ItemStatus.APPROVED, "elsewhere");
+        SessionRecord session = t.session(null);
+        attempt(old, session, true, 1);
+        long startOfDay = t.now();
+        attempt(old, session, false, 0);
+        attempt(fresh, session, true, 1);
+        attempt(fresh, session, true, 1);
+        attempt(elsewhere, session, true, 1);
+
+        assertThat(repos.sessions().countItemsFirstAttemptedSince(startOfDay)).isEqualTo(2);
+        assertThat(repos.sessions().countItemsFirstAttemptedSince(t.now())).isZero();
+    }
+
+    @Test
     void roundTripsAttempts() {
         Course course = t.course("C");
         LearningItem item = t.item(course, null, ItemType.SHORT_ANSWER, ItemStatus.APPROVED, "Explain");

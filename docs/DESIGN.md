@@ -24,7 +24,15 @@ Principles:
 | Caption | Inter | 12 / Medium | Metadata, labels, status pills |
 | Numeral | Newsreader | 40 / Medium, tabular | Big stats (due today, streak, mastery) |
 
-Fonts ship inside the app (static TTF instances, SIL Open Font License) and load at startup; text never falls back to a platform default.
+Fonts ship inside the app as static TTF instances under the SIL Open Font License and load at startup, so text never depends on what the computer has installed. The files live in `app/src/main/resources/edu/learnsphere/app/theme/fonts/`:
+
+| File | Face |
+|---|---|
+| `Inter-Regular.ttf`, `Inter-Medium.ttf`, `Inter-SemiBold.ttf`, `Inter-Bold.ttf` | Inter 400, 500, 600, 700 |
+| `Newsreader-Regular.ttf`, `Newsreader-Medium.ttf`, `Newsreader-Italic.ttf` | Newsreader 400, 500, 400 italic |
+| `OFL.txt` | the licence, shipped with the fonts |
+
+`Typography` loads each file and maps it to the CSS classes of its role. A missing file is logged as a warning naming it, and that role uses an installed fallback (Segoe UI or the system sans; PT Serif, Georgia or Cambria). With every file present, `./gradlew :app:screenshots` logs `bundled=true` for all seven faces.
 
 ## Colour
 

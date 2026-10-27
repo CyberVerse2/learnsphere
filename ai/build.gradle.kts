@@ -6,6 +6,8 @@ description = "llama-server lifecycle, model clients, prompts and deterministic 
 
 dependencies {
     api(project(":core"))
+
+    testImplementation(testFixtures(project(":core")))
 }
 
 // Real-model tests: ./gradlew :ai:integrationTest (skipped when the runtime folder is missing).

@@ -6,7 +6,6 @@ import edu.learnsphere.core.model.Chunk;
 import edu.learnsphere.core.model.Course;
 import edu.learnsphere.core.model.CourseModule;
 import edu.learnsphere.core.model.Document;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -67,8 +66,9 @@ class ChunkRepositoryTest extends RepositoryTestBase {
         repos.chunks().updateEmbeddings(Map.of(a.id(), new float[] {1f}, c.id(), new float[] {1f}), "m");
         repos.documents().markReady(ready.id());
 
-        List<ChunkRepository.ChunkWithTitle> seen = new ArrayList<>();
-        repos.chunks().forEachIndexable(seen::add);
+        List<ChunkRepository.ChunkWithTitle> seen = repos.chunks().withIndexable("m", stream -> stream.toList());
+        long otherModel = repos.chunks().withIndexable("other", stream -> stream.count());
+        assertThat(otherModel).isZero();
 
         assertThat(seen).singleElement().satisfies(row -> {
             assertThat(row.chunk().id()).isEqualTo(a.id());
@@ -76,6 +76,20 @@ class ChunkRepositoryTest extends RepositoryTestBase {
         });
         assertThat(repos.chunks().listWithTitles(List.of(c.id()))).singleElement()
                 .satisfies(row -> assertThat(row.documentTitle()).isEqualTo("Pending doc"));
+    }
+
+    @Test
+    void findsChunksWithoutAnEmbeddingFromTheCurrentEmbedder() {
+        Document document = t.document(t.course("C"), null, "Doc");
+        Chunk a = t.chunk(document, 0, "a");
+        Chunk b = t.chunk(document, 1, "b");
+        Chunk c = t.chunk(document, 2, "c");
+        repos.chunks().updateEmbeddings(Map.of(a.id(), new float[] {1f}), "old");
+        repos.chunks().updateEmbeddings(Map.of(b.id(), new float[] {1f}), "new");
+
+        assertThat(repos.chunks().listWithStaleEmbedding("new", 10)).extracting(Chunk::id).containsExactly(a.id(), c.id());
+        assertThat(repos.chunks().listWithStaleEmbedding("new", 1)).extracting(Chunk::id).containsExactly(a.id());
+        assertThat(repos.chunks().countWithStaleEmbedding("new")).isEqualTo(2);
     }
 
     @Test

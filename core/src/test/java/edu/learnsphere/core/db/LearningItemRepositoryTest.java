@@ -120,12 +120,63 @@ class LearningItemRepositoryTest extends RepositoryTestBase {
         LearningItem newState = t.item(course, first, ItemType.MCQ, ItemStatus.APPROVED, "new state");
         t.item(course, first, ItemType.MCQ, ItemStatus.DRAFT, "draft");
         repos.reviews().upsert(new ReviewState(seen.id(), edu.learnsphere.core.model.ReviewPhase.REVIEW, 1, 5,
-                t.now(), t.now(), 1, 0, 1, t.now(), t.now()));
+                t.now(), t.now(), 1, 0, 1, 0, t.now(), t.now()));
         repos.reviews().upsert(ReviewState.newItem(newState.id(), t.now()));
 
-        assertThat(repos.items().listUnseen(course.id(), null, 10)).containsExactly(early, newState, late, loose);
-        assertThat(repos.items().listUnseen(course.id(), second.id(), 10)).containsExactly(late);
-        assertThat(repos.items().listUnseen(null, null, 1)).containsExactly(early);
+        assertThat(repos.items().listUnseen(StudyScope.course(course.id()), 10)).containsExactly(early, newState, late, loose);
+        assertThat(repos.items().listUnseen(StudyScope.module(course.id(), second.id()), 10)).containsExactly(late);
+        assertThat(repos.items().countUnseen(StudyScope.course(course.id()))).isEqualTo(4);
+        assertThat(repos.items().listUnseen(StudyScope.enrolled(), 10)).as("not enrolled").isEmpty();
+        repos.courses().enrol(course.id(), t.now());
+        assertThat(repos.items().listUnseen(StudyScope.enrolled(), 1)).containsExactly(early);
+    }
+
+    @Test
+    void listsUnseenItemsOnlyFromCoursesBeingStudied() {
+        Course studying = t.enrolledCourse("Studying");
+        Course left = t.enrolledCourse("Left");
+        Course archived = t.enrolledCourse("Archived");
+        Course ownUnenrolled = t.course("Own, not studied");
+        LearningItem a = t.item(studying, null, ItemType.MCQ, ItemStatus.APPROVED, "a");
+        t.item(left, null, ItemType.MCQ, ItemStatus.APPROVED, "b");
+        t.item(archived, null, ItemType.MCQ, ItemStatus.APPROVED, "c");
+        LearningItem d = t.item(ownUnenrolled, null, ItemType.MCQ, ItemStatus.APPROVED, "d");
+        repos.courses().leave(left.id());
+        t.archive(archived);
+
+        assertThat(repos.items().listUnseen(StudyScope.enrolled(), 10)).containsExactly(a);
+        assertThat(repos.items().countUnseen(StudyScope.enrolled())).isEqualTo(1);
+        assertThat(repos.items().listUnseen(StudyScope.courses(List.of(studying.id(), ownUnenrolled.id())), 10))
+                .containsExactlyInAnyOrder(a, d);
+        assertThat(repos.items().listUnseen(StudyScope.courses(List.of()), 10)).isEmpty();
+    }
+
+    @Test
+    void storesEmbeddingsAndClearsThemWhenTheTextChanges() {
+        Course course = t.course("C");
+        CourseModule module = t.module(course, "M");
+        LearningItem a = t.item(course, module, ItemType.MCQ, ItemStatus.DRAFT, "a");
+        LearningItem b = t.item(course, module, ItemType.MCQ, ItemStatus.APPROVED, "b");
+        LearningItem rejected = t.item(course, module, ItemType.MCQ, ItemStatus.REJECTED, "r");
+
+        assertThat(repos.items().listMissingEmbedding(module.id(), "m1", 10)).containsExactlyInAnyOrder(a, b);
+        repos.items().updateEmbeddings(Map.of(a.id(), new float[] {1f, 0f}, b.id(), new float[] {0f, 1f},
+                rejected.id(), new float[] {1f, 1f}), "m1");
+
+        assertThat(repos.items().embeddingsForModule(module.id(), "m1")).containsOnlyKeys(a.id(), b.id());
+        assertThat(repos.items().embeddingsForModule(module.id(), "m1").get(a.id())).containsExactly(1f, 0f);
+        assertThat(repos.items().embeddingsForModule(module.id(), "m2")).isEmpty();
+        assertThat(repos.items().listMissingEmbedding(module.id(), "m1", 10)).isEmpty();
+        assertThat(repos.items().listMissingEmbedding(module.id(), "m2", 10)).hasSize(2);
+
+        LearningItem current = repos.items().get(a.id());
+        repos.items().update(current.withSupport(edu.learnsphere.core.model.SupportStatus.SUPPORTED, "ok", t.now()));
+        assertThat(repos.items().embeddingsForModule(module.id(), "m1")).as("same text keeps it").containsKey(a.id());
+        repos.items().update(new LearningItem(current.id(), current.courseId(), current.moduleId(), current.type(),
+                "a reworded", current.answer(), current.explanation(), current.distractors(), current.difficulty(),
+                current.sourceChunkId(), current.sourcePage(), current.origin(), current.status(), current.support(),
+                current.supportNote(), current.createdAt(), t.now()));
+        assertThat(repos.items().embeddingsForModule(module.id(), "m1")).containsOnlyKeys(b.id());
     }
 
     @Test

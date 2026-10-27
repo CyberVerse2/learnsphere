@@ -18,6 +18,16 @@ public interface ItemService {
     /** Items matching {@code filter}, in module order. */
     List<ItemSummary> list(ItemFilter filter);
 
+    /**
+     * The review queue: drafts of a course (or one module when {@code moduleId} is not null), each with its
+     * source passage, concepts and flags, in module order then oldest first, so every card can show the
+     * draft beside the passage it came from without another call.
+     *
+     * @param limit  page size (at least 1)
+     * @param offset drafts to skip
+     */
+    List<ItemDetail> reviewQueue(String courseId, String moduleId, int limit, int offset);
+
     /** Counts per status, plus unsupported drafts and flagged items. */
     ItemCounts counts(String courseId);
 

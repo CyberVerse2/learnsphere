@@ -25,7 +25,10 @@ import org.jdbi.v3.core.mapper.RowMapper;
 import org.jdbi.v3.core.statement.PreparedBatch;
 import org.jdbi.v3.core.statement.Query;
 
-/** Learning items and their concept tags ({@code item_concepts}). */
+/**
+ * Learning items, their concept tags ({@code item_concepts}) and their embeddings. {@link LearningItem}
+ * does not carry the embedding; read it with {@link #embeddingsForModule}.
+ */
 public final class LearningItemRepository {
 
     private static final TypeReference<List<String>> STRING_LIST = new TypeReference<>() { };
@@ -91,10 +94,16 @@ public final class LearningItemRepository {
         });
     }
 
-    /** Writes every mutable column and stamps {@code updated_at}. */
+    /**
+     * Writes every mutable column and stamps {@code updated_at}. A changed prompt or answer clears the
+     * stored embedding, which no longer matches the text.
+     */
     public boolean update(LearningItem i) {
         return db.withHandle(h -> h.createUpdate("""
-                        UPDATE learning_items SET module_id = :moduleId, type = :type, prompt = :prompt, answer = :answer,
+                        UPDATE learning_items SET
+                          embedding = CASE WHEN prompt = :prompt AND answer = :answer THEN embedding END,
+                          embedding_model = CASE WHEN prompt = :prompt AND answer = :answer THEN embedding_model END,
+                          module_id = :moduleId, type = :type, prompt = :prompt, answer = :answer,
                           explanation = :explanation, options_json = :options, difficulty = :difficulty,
                           source_chunk_id = :sourceChunkId, source_page = :sourcePage, origin = :origin, status = :status,
                           support = :support, support_note = :supportNote, updated_at = :now
@@ -224,36 +233,24 @@ public final class LearningItemRepository {
     }
 
     /**
-     * Approved items that have never been reviewed (no review state, or state new), in module order then
-     * creation order: the queue of new items for study sessions.
-     *
-     * @param courseId only this course, or null for all courses
-     * @param moduleId only this module, or null
+     * Approved items in {@code scope} that have never been reviewed (no review state, or state new), in
+     * module order then creation order: the queue of new items for study sessions.
      */
-    public List<LearningItem> listUnseen(String courseId, String moduleId, int limit) {
-        StringBuilder sql = new StringBuilder("""
-                SELECT i.* FROM learning_items i
-                LEFT JOIN review_states r ON r.item_id = i.id
-                LEFT JOIN modules m ON m.id = i.module_id
-                WHERE i.status = 'approved' AND (r.item_id IS NULL OR r.state = 'new')
-                """);
-        if (courseId != null) {
-            sql.append(" AND i.course_id = :c");
-        }
-        if (moduleId != null) {
-            sql.append(" AND i.module_id = :m");
-        }
-        sql.append(" ORDER BY COALESCE(m.position, 1000000), i.created_at, i.id LIMIT :limit");
-        return db.withHandle(h -> {
-            Query q = h.createQuery(sql.toString()).bind("limit", limit);
-            if (courseId != null) {
-                q.bind("c", courseId);
-            }
-            if (moduleId != null) {
-                q.bind("m", moduleId);
-            }
-            return q.map(ITEM).list();
-        });
+    public List<LearningItem> listUnseen(StudyScope scope, int limit) {
+        String sql = "SELECT i.* FROM learning_items i" + scope.joins()
+                + " LEFT JOIN review_states r ON r.item_id = i.id"
+                + " LEFT JOIN modules m ON m.id = i.module_id"
+                + " WHERE i.status = 'approved' AND (r.item_id IS NULL OR r.state = 'new') AND " + scope.condition()
+                + " ORDER BY COALESCE(m.position, 1000000), i.created_at, i.id LIMIT :limit";
+        return db.withHandle(h -> scope.bind(h.createQuery(sql)).bind("limit", limit).map(ITEM).list());
+    }
+
+    /** How many approved items in {@code scope} have never been reviewed. */
+    public int countUnseen(StudyScope scope) {
+        String sql = "SELECT COUNT(*) FROM learning_items i" + scope.joins()
+                + " LEFT JOIN review_states r ON r.item_id = i.id"
+                + " WHERE i.status = 'approved' AND (r.item_id IS NULL OR r.state = 'new') AND " + scope.condition();
+        return db.withHandle(h -> scope.bind(h.createQuery(sql)).mapTo(Integer.class).one());
     }
 
     /** Item counts per status for a course. Every status is present (0 when none). */
@@ -294,6 +291,61 @@ public final class LearningItemRepository {
 
     public boolean delete(String id) {
         return db.withHandle(h -> h.createUpdate("DELETE FROM learning_items WHERE id = :id").bind("id", id).execute()) > 0;
+    }
+
+    // ---- embeddings ---------------------------------------------------------------------------
+
+    /**
+     * Stores item embeddings (prompt and answer, embedded as a passage) keyed by item id, tagged with the
+     * embedder's name. Used to drop near-duplicate drafts without embedding every existing item again.
+     */
+    public void updateEmbeddings(Map<String, float[]> embeddings, String model) {
+        if (embeddings.isEmpty()) {
+            return;
+        }
+        Objects.requireNonNull(model, "model");
+        long now = clock.millis();
+        db.useTransaction(h -> {
+            PreparedBatch batch = h.prepareBatch(
+                    "UPDATE learning_items SET embedding = :e, embedding_model = :m, updated_at = :now WHERE id = :id");
+            embeddings.forEach((id, vector) ->
+                    batch.bind("id", id).bind("e", EmbeddingCodec.encode(vector)).bind("m", model).bind("now", now).add());
+            batch.execute();
+        });
+    }
+
+    /**
+     * Embeddings made by {@code model} for the items of a module that are drafts or approved, keyed by item
+     * id (the near-duplicate check). Items without one, or with one from another embedder, are absent.
+     */
+    public Map<String, float[]> embeddingsForModule(String moduleId, String model) {
+        return db.withHandle(h -> {
+            Map<String, float[]> result = new LinkedHashMap<>();
+            h.createQuery("""
+                            SELECT id, embedding FROM learning_items
+                            WHERE module_id = :m AND embedding IS NOT NULL AND embedding_model = :model
+                              AND status IN ('draft', 'approved')
+                            ORDER BY created_at, id
+                            """)
+                    .bind("m", moduleId).bind("model", model)
+                    .map((rs, ctx) -> Map.entry(rs.getString("id"), EmbeddingCodec.decode(rs.getBytes("embedding"))))
+                    .forEach(e -> result.put(e.getKey(), e.getValue()));
+            return result;
+        });
+    }
+
+    /**
+     * Draft and approved items of a module with no embedding from {@code model} (never embedded, or embedded
+     * by another embedder), oldest first.
+     */
+    public List<LearningItem> listMissingEmbedding(String moduleId, String model, int limit) {
+        return db.withHandle(h -> h.createQuery("""
+                        SELECT * FROM learning_items
+                        WHERE module_id = :m AND status IN ('draft', 'approved')
+                          AND (embedding IS NULL OR embedding_model IS NOT :model)
+                        ORDER BY created_at, id LIMIT :limit
+                        """)
+                .bind("m", moduleId).bind("model", model).bind("limit", limit).map(ITEM).list());
     }
 
     // ---- concept tags -------------------------------------------------------------------------

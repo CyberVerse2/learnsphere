@@ -5,6 +5,7 @@ import edu.learnsphere.core.error.InvalidInputException;
 import edu.learnsphere.core.error.NotFoundException;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Sharing courses, progress and feedback as files. Methods taking an id throw {@link NotFoundException}
@@ -27,17 +28,36 @@ public interface SharingService {
      */
     PackageInfo exportCourse(String courseId, Path target, ExportOptions options);
 
-    /** Reads a package's details without importing it. */
+    /**
+     * Reads a package's details without importing it. {@link PackageInfo#createdHere()} tells the UI before
+     * importing that the package is a course made in this profile, which {@link #importCourse} rejects.
+     */
     PackageInfo inspect(Path packageFile);
 
     /**
      * Imports a package as a new course, or updates the matching course in place (items keep their ids,
      * new ones are added, missing ones retired, progress kept). The learner is enrolled.
      *
-     * @param code the code for a protected package, or null
-     * @throws InvalidInputException when the code is missing or wrong
+     * <p>The package and the code are checked before this returns; copying the PDFs, storing passages and
+     * indexing them then run as a {@link edu.learnsphere.core.model.JobKind#IMPORT_PACKAGE} job with
+     * progress and cancellation (follow {@link edu.learnsphere.core.events.JobProgress}). When the job is
+     * done, {@link #importResult} returns what it did. The code is kept in memory only, so an import
+     * interrupted by quitting LearnSphere ends as failed and is started again by the learner.
+     *
+     * @param code the code for a protected package, or null (the service wipes the array after use)
+     * @return the queued job
+     * @throws InvalidInputException when the file is not a course package, or the code is missing or wrong
+     * @throws ConflictException     when the package's {@code package_id} belongs to a course created in this
+     *                               profile (origin local): importing it here would clash with that
+     *                               course's own items
      */
-    ImportResult importCourse(Path packageFile, char[] code);
+    JobUpdate importCourse(Path packageFile, char[] code);
+
+    /**
+     * What a finished {@link #importCourse} job did; empty while it runs, or when it failed or was
+     * cancelled.
+     */
+    Optional<ImportResult> importResult(String jobId);
 
     /** Writes this learner's progress in a course under {@code learnerLabel}, for the creator. */
     void exportProgress(String courseId, String learnerLabel, Path target);

@@ -2,7 +2,11 @@ package edu.learnsphere.core.service;
 
 import edu.learnsphere.core.error.InvalidInputException;
 
-/** Typed per-profile settings. Changes publish {@link edu.learnsphere.core.events.SettingChanged}. */
+/**
+ * Typed per-profile settings ({@link SettingKeys}). Changes publish
+ * {@link edu.learnsphere.core.events.SettingChanged}. App-wide preferences (appearance, onboarding, last
+ * profile) live in {@link edu.learnsphere.core.profile.AppPreferences}, not here.
+ */
 public interface SettingsService {
 
     /** Every setting. */

@@ -21,7 +21,9 @@ dependencies {
     implementation(libs.commonmark)
     runtimeOnly(libs.logback.classic)
 
+    testImplementation(testFixtures(project(":core")))
     testImplementation(libs.testfx.junit5)
+    testImplementation(libs.hamcrest)
 }
 
 // Every JavaFX module must come from the same release; libraries may ask for other versions.
@@ -31,11 +33,13 @@ configurations.configureEach {
     }
 }
 
+// JVM options of every way the app runs: run, runDemo, screenshots and the packaged app (packaging.gradle.kts).
 val appJvmArgs = listOf(
     "--enable-native-access=ALL-UNNAMED",
     "--add-modules=jdk.incubator.vector",
     "-Dfile.encoding=UTF-8",
 )
+extra["appJvmArgs"] = appJvmArgs
 
 application {
     // A launcher that does not extend Application lets JavaFX start from the class path.
@@ -80,3 +84,14 @@ tasks.register<JavaExec>("screenshots") {
         (this as JavaExec).systemProperty("learnsphere.home", home.toString())
     }
 }
+
+tasks.test {
+    // UI tests run without a display: JavaFX's headless platform, software rendering and the Glass robot.
+    systemProperty("glass.platform", "Headless")
+    systemProperty("prism.order", "sw")
+    systemProperty("testfx.robot", "glass")
+    jvmArgs("--add-modules=jdk.incubator.vector")
+}
+
+// Installers (jpackage, signing, notarization) live in their own script.
+apply(from = "packaging.gradle.kts")

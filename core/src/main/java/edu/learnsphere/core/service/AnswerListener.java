@@ -8,8 +8,13 @@ import edu.learnsphere.core.model.ChatMessage;
  *
  * <p>Order: {@link #onQuestionSaved}, then {@link #onPhase} updates and {@link #onToken} calls, then
  * exactly one terminal call: {@link #onAnswer}, {@link #onInsufficientEvidence}, {@link #onError} or
- * {@link #onCancelled}. Tokens may already have streamed when the answer turns out to have no valid
- * citation; {@link #onInsufficientEvidence} then replaces the streamed text.
+ * {@link #onCancelled}.
+ *
+ * <p>Streamed tokens are a preview. The stored answer can differ from them: citation markers that point
+ * at no passage are removed, groups such as {@code [1, 3]} are split into {@code [1][3]}, and an answer
+ * without a valid citation becomes insufficient evidence. So in {@link #onAnswer} the UI always replaces
+ * the streamed text with {@code answer.text()} (and renders citation chips from {@code answer.citations()}),
+ * and in {@link #onInsufficientEvidence} it replaces the streamed text with the insufficient-evidence card.
  */
 public interface AnswerListener {
 
@@ -24,7 +29,7 @@ public interface AnswerListener {
     /** The next piece of answer text, possibly containing {@code [n]} markers. */
     void onToken(String token);
 
-    /** The answer is complete and stored, with validated citations. */
+    /** The answer is complete and stored, with validated citations; replace the streamed text with {@code answer.text()}. */
     void onAnswer(Answer answer);
 
     /** The material does not cover the question; {@code answer.text()} says so and suggests what to try. */

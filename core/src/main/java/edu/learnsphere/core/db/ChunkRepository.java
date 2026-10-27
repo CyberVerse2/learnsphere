@@ -7,7 +7,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.stream.Stream;
 import org.jdbi.v3.core.mapper.RowMapper;
 import org.jdbi.v3.core.statement.PreparedBatch;
 
@@ -147,21 +148,45 @@ public final class ChunkRepository {
     }
 
     /**
-     * Streams every embedded chunk of ready documents with its document title, one at a time, so the
-     * search index can be rebuilt without loading everything into memory.
+     * Gives {@code action} a lazy stream of every chunk of ready documents that has an embedding from
+     * {@code model}, with its document title, in course and reading order. The database handle stays
+     * open until {@code action} returns, so the stream can feed {@code SearchIndex.rebuild} without
+     * loading every vector into memory. Do not keep the stream after {@code action} returns.
      */
-    public void forEachIndexable(Consumer<ChunkWithTitle> action) {
-        db.useHandle(h -> {
-            try (var stream = h.createQuery("""
+    public <R> R withIndexable(String model, Function<Stream<ChunkWithTitle>, R> action) {
+        Objects.requireNonNull(model, "model");
+        return db.withHandle(h -> {
+            try (Stream<ChunkWithTitle> stream = h.createQuery("""
                             SELECT c.*, d.title AS document_title FROM chunks c JOIN documents d ON d.id = c.document_id
-                            WHERE c.embedding IS NOT NULL AND d.status = 'ready'
+                            WHERE c.embedding IS NOT NULL AND c.embedding_model = :model AND d.status = 'ready'
                             ORDER BY c.course_id, d.created_at, c.ordinal
                             """)
+                    .bind("model", model)
                     .map((rs, ctx) -> new ChunkWithTitle(CHUNK.map(rs, ctx), rs.getString("document_title")))
                     .stream()) {
-                stream.forEach(action);
+                return action.apply(stream);
             }
         });
+    }
+
+    /**
+     * Chunks whose embedding is missing or was made by another embedder than {@code currentModel}, oldest
+     * documents first, so a change of embedder can re-embed them in batches.
+     */
+    public List<Chunk> listWithStaleEmbedding(String currentModel, int limit) {
+        return db.withHandle(h -> h.createQuery("""
+                        SELECT c.* FROM chunks c JOIN documents d ON d.id = c.document_id
+                        WHERE c.embedding IS NULL OR c.embedding_model IS NOT :model
+                        ORDER BY d.created_at, c.document_id, c.ordinal LIMIT :limit
+                        """)
+                .bind("model", currentModel).bind("limit", limit).map(CHUNK).list());
+    }
+
+    /** How many chunks have no embedding from {@code currentModel}. */
+    public int countWithStaleEmbedding(String currentModel) {
+        return db.withHandle(h -> h.createQuery(
+                        "SELECT COUNT(*) FROM chunks WHERE embedding IS NULL OR embedding_model IS NOT :model")
+                .bind("model", currentModel).mapTo(Integer.class).one());
     }
 
     /** Chunks with these ids and their document titles (for building citations). */

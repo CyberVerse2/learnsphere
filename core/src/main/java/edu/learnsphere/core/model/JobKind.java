@@ -18,7 +18,10 @@ public enum JobKind implements CodedEnum {
     /** Rebuild the search index from the database. Subject: none. */
     REBUILD_INDEX,
 
-    /** Import a shared course package. Subject: course id when updating. */
+    /**
+     * Import a shared course package (copy PDFs, store passages, index them). Subject: the course id when
+     * updating, otherwise none. Result: an {@code ImportResult}.
+     */
     IMPORT_PACKAGE;
 
     private final String code = CodedEnum.codeOf(this);

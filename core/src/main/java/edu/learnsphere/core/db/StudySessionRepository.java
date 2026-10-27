@@ -179,6 +179,19 @@ public final class StudySessionRepository {
     }
 
     /**
+     * How many distinct items had their first attempt ever at or after {@code since}, across every course:
+     * the new items introduced since then, which the daily new-item limit counts.
+     */
+    public int countItemsFirstAttemptedSince(long since) {
+        return db.withHandle(h -> h.createQuery("""
+                        SELECT COUNT(DISTINCT a.item_id) FROM attempts a
+                        WHERE a.created_at >= :since
+                          AND NOT EXISTS (SELECT 1 FROM attempts b WHERE b.item_id = a.item_id AND b.created_at < :since)
+                        """)
+                .bind("since", since).mapTo(Integer.class).one());
+    }
+
+    /**
      * The most recent {@code perConcept} attempts for every concept of a course (newest first within
      * each concept), in one query.
      */

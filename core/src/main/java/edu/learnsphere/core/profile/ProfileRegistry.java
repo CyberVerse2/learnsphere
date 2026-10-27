@@ -4,14 +4,13 @@ import edu.learnsphere.core.error.LearnSphereException;
 import edu.learnsphere.core.error.NotFoundException;
 import edu.learnsphere.core.error.UserMessage;
 import edu.learnsphere.core.model.Profile;
+import edu.learnsphere.core.util.AtomicFiles;
 import edu.learnsphere.core.util.Json;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -135,26 +134,9 @@ public final class ProfileRegistry {
     }
 
     private void write(Map<String, Profile> content) {
-        Path temp = null;
         try {
-            Path folder = file.toAbsolutePath().getParent();
-            Files.createDirectories(folder);
-            temp = Files.createTempFile(folder, "profiles", ".json.tmp");
-            String json = Json.writePretty(new RegistryFile(FORMAT_VERSION, List.copyOf(content.values())));
-            Files.writeString(temp, json, StandardCharsets.UTF_8);
-            try {
-                Files.move(temp, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            } catch (AtomicMoveNotSupportedException e) {
-                Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING);
-            }
+            AtomicFiles.writeString(file, Json.writePretty(new RegistryFile(FORMAT_VERSION, List.copyOf(content.values()))));
         } catch (IOException e) {
-            if (temp != null) {
-                try {
-                    Files.deleteIfExists(temp);
-                } catch (IOException ignored) {
-                    // best effort
-                }
-            }
             throw new LearnSphereException(CANNOT_SAVE, "Cannot write " + file, e);
         }
     }

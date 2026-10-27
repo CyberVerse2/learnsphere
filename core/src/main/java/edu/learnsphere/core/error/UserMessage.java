@@ -10,6 +10,11 @@ import java.util.Objects;
  * index, embedding, chunk, file paths, codes); no build history ("now", "new", "no longer"). For example
  * "This PDF is password-protected. Remove the password and import it again."
  *
+ * <p>Keep the learner's own content (course titles, file names, question text) out of messages: the
+ * interface shows it next to the message anyway. Text longer than {@value #MAX_LENGTH} characters is
+ * shortened at a word boundary and ends with an ellipsis instead of failing, so building a message can
+ * never break the error path it is part of.
+ *
  * @param text the sentence (or two very short sentences), at most {@value #MAX_LENGTH} characters
  */
 public record UserMessage(String text) {
@@ -41,6 +46,9 @@ public record UserMessage(String text) {
     public static final UserMessage WRONG_PASSWORD = new UserMessage("That password isn't right. Try again.");
     /** A wrong code for a protected course. */
     public static final UserMessage WRONG_COURSE_CODE = new UserMessage("That code isn't right. Check it with the course author.");
+    /** A profile's data could not be opened or prepared. */
+    public static final UserMessage PROFILE_NOT_OPENED =
+            new UserMessage("This profile couldn't be opened. Restart LearnSphere and try again.");
     /** Not enough free disk space. */
     public static final UserMessage DISK_FULL = new UserMessage("Your computer is out of space. Free some up and try again.");
 
@@ -51,8 +59,20 @@ public record UserMessage(String text) {
             throw new IllegalArgumentException("A user message needs text");
         }
         if (text.length() > MAX_LENGTH) {
-            throw new IllegalArgumentException("A user message is one short sentence: " + text);
+            text = shorten(text);
         }
+    }
+
+    private static String shorten(String text) {
+        int limit = MAX_LENGTH - 1;
+        int cut = text.lastIndexOf(' ', limit);
+        if (cut < MAX_LENGTH / 2) {
+            cut = limit;
+        }
+        if (Character.isLowSurrogate(text.charAt(cut))) {
+            cut--;
+        }
+        return text.substring(0, cut).stripTrailing() + "…";
     }
 
     /** Shorthand for {@code new UserMessage(text)}. */

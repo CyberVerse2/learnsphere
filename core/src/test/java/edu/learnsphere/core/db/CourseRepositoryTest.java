@@ -150,8 +150,8 @@ class CourseRepositoryTest extends RepositoryTestBase {
         LearningItem later = t.item(course, module, ItemType.MCQ, ItemStatus.APPROVED, "later");
         t.item(course, module, ItemType.MCQ, ItemStatus.APPROVED, "unseen");
         t.item(course, module, ItemType.MCQ, ItemStatus.DRAFT, "draft");
-        repos.reviews().upsert(new ReviewState(due.id(), ReviewPhase.REVIEW, 3, 5, t.now() - 1, t.now() - 100, 2, 0, 3, t.now(), t.now()));
-        repos.reviews().upsert(new ReviewState(later.id(), ReviewPhase.REVIEW, 3, 5, t.now() + 100_000, t.now(), 1, 0, 3, t.now(), t.now()));
+        repos.reviews().upsert(new ReviewState(due.id(), ReviewPhase.REVIEW, 3, 5, t.now() - 1, t.now() - 100, 2, 0, 3, 0, t.now(), t.now()));
+        repos.reviews().upsert(new ReviewState(later.id(), ReviewPhase.REVIEW, 3, 5, t.now() + 100_000, t.now(), 1, 0, 3, 0, t.now(), t.now()));
         repos.flags().insert(edu.learnsphere.core.model.Flag.open(due.id(), edu.learnsphere.core.model.FlagReason.UNCLEAR, "",
                 edu.learnsphere.core.model.FlagSource.SELF, t.now()));
 

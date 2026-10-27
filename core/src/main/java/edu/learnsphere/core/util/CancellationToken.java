@@ -50,10 +50,12 @@ public final class CancellationToken implements Cancellable {
         if (!cancellable || !cancelled.compareAndSet(false, true)) {
             return;
         }
+        // Run only the callbacks this call removes: onCancel may race to remove (and run) one itself.
         for (Runnable callback : callbacks) {
-            run(callback);
+            if (callbacks.remove(callback)) {
+                run(callback);
+            }
         }
-        callbacks.clear();
     }
 
     @Override

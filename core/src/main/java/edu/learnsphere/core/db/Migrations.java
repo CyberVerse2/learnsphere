@@ -1,5 +1,7 @@
 package edu.learnsphere.core.db;
 
+import edu.learnsphere.core.error.LearnSphereException;
+import edu.learnsphere.core.error.UserMessage;
 import edu.learnsphere.core.model.SchemaVersion;
 import java.io.IOException;
 import java.io.InputStream;
@@ -13,6 +15,11 @@ import java.nio.file.FileSystemAlreadyExistsException;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -33,8 +40,17 @@ import org.slf4j.LoggerFactory;
  * in order of {@code n}, each in its own transaction together with its {@code schema_version} row.
  * Running it again applies only scripts that are not recorded yet.
  *
- * <p>Scripts are split into statements at semicolons outside quotes and comments; a
- * {@code CREATE TRIGGER ... END;} block stays one statement. Never edit an applied script: add a new one.
+ * <p>Each script runs on a dedicated connection with foreign keys switched off (before the transaction
+ * begins, the only place SQLite honours the switch), so the standard table rebuild works: create
+ * {@code x_new}, copy the rows, drop {@code x}, rename {@code x_new} to {@code x}, recreate its indexes and
+ * triggers. With foreign keys on, dropping {@code x} would delete every row that references it. Before
+ * committing, {@code PRAGMA foreign_key_check} must come back empty, otherwise the script is rolled back;
+ * foreign keys are switched back on before the connection returns to the pool.
+ *
+ * <p>Statements go to SQLite as written (plain JDBC, no parameter parsing), so literals such as
+ * {@code ESCAPE '\'} are safe. Scripts are split into statements at semicolons outside quotes and
+ * comments; a {@code CREATE TRIGGER ... END;} block stays one statement. Never edit a script that has
+ * shipped: add a new one.
  */
 public final class Migrations {
 
@@ -80,20 +96,77 @@ public final class Migrations {
                 continue;
             }
             long now = clock.millis();
-            database.useTransaction(handle -> {
-                for (String statement : splitStatements(script.sql())) {
-                    handle.execute(statement);
-                }
-                handle.createUpdate("INSERT INTO schema_version (version, name, applied_at) VALUES (:v, :n, :t)")
-                        .bind("v", script.version())
-                        .bind("n", script.name())
-                        .bind("t", now)
-                        .execute();
-            });
+            try {
+                database.withConnection(connection -> {
+                    apply(connection, script, now);
+                    return null;
+                });
+            } catch (SQLException e) {
+                throw new LearnSphereException(UserMessage.PROFILE_NOT_OPENED, "Migration " + script.name() + " failed", e);
+            }
             LOG.info("Applied migration {}", script.name());
             applied.add(new SchemaVersion(script.version(), script.name(), now));
         }
         return applied;
+    }
+
+    private static void apply(Connection connection, Script script, long appliedAt) throws SQLException {
+        execute(connection, "PRAGMA foreign_keys = OFF");
+        try {
+            connection.setAutoCommit(false);
+            try {
+                try (Statement statement = connection.createStatement()) {
+                    for (String sql : splitStatements(script.sql())) {
+                        statement.execute(sql);
+                    }
+                }
+                try (PreparedStatement insert = connection.prepareStatement(
+                        "INSERT INTO schema_version (version, name, applied_at) VALUES (?, ?, ?)")) {
+                    insert.setInt(1, script.version());
+                    insert.setString(2, script.name());
+                    insert.setLong(3, appliedAt);
+                    insert.executeUpdate();
+                }
+                List<String> violations = foreignKeyViolations(connection);
+                if (!violations.isEmpty()) {
+                    throw new SQLException("Migration " + script.name() + " leaves rows with broken references: "
+                            + String.join("; ", violations));
+                }
+                connection.commit();
+            } catch (SQLException | RuntimeException e) {
+                rollbackQuietly(connection);
+                throw e;
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        } finally {
+            execute(connection, "PRAGMA foreign_keys = ON");
+        }
+    }
+
+    private static List<String> foreignKeyViolations(Connection connection) throws SQLException {
+        List<String> violations = new ArrayList<>();
+        try (Statement statement = connection.createStatement();
+             ResultSet rows = statement.executeQuery("PRAGMA foreign_key_check")) {
+            while (rows.next() && violations.size() < 10) {
+                violations.add(rows.getString(1) + " row " + rows.getLong(2) + " -> " + rows.getString(3));
+            }
+        }
+        return violations;
+    }
+
+    private static void execute(Connection connection, String sql) throws SQLException {
+        try (Statement statement = connection.createStatement()) {
+            statement.execute(sql);
+        }
+    }
+
+    private static void rollbackQuietly(Connection connection) {
+        try {
+            connection.rollback();
+        } catch (SQLException e) {
+            LOG.warn("Could not roll back a failed migration", e);
+        }
     }
 
     /** The highest applied version, or 0 for an empty database. */

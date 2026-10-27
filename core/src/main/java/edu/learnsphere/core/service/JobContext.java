@@ -20,6 +20,12 @@ public interface JobContext {
      */
     void progress(double fraction, String message);
 
+    /**
+     * Stores what the job produced (serialized as JSON when the job finishes successfully), for example
+     * the outcome of an import. Read it back with {@link JobQueue#result}.
+     */
+    void setResult(Object result);
+
     /** Cancelled when the user cancels the job or the workspace closes. */
     CancellationToken token();
 

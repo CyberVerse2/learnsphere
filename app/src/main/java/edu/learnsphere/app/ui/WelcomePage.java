@@ -26,7 +26,7 @@ import org.kordamp.ikonli.Ikon;
 import org.kordamp.ikonli.feather.Feather;
 
 /** The home screen's opening view: what LearnSphere does and where to begin. */
-public final class WelcomePage extends Page {
+public final class WelcomePage extends Page implements View {
 
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("EEEE d MMMM", Locale.getDefault());
 
@@ -46,6 +46,11 @@ public final class WelcomePage extends Page {
         column().setSpacing(32);
     }
 
+    @Override
+    public Region root() {
+        return this;
+    }
+
     private static Card hero(Navigator navigator) {
         Label heading = new Label("Learn from your own material");
         heading.getStyleClass().add("text-title");
@@ -56,7 +61,7 @@ public final class WelcomePage extends Page {
         Button start = new Button("Open your library", Icons.of(Feather.ARROW_RIGHT));
         start.getStyleClass().add("primary");
         start.setContentDisplay(javafx.scene.control.ContentDisplay.RIGHT);
-        start.setOnAction(event -> navigator.navigate(Route.LIBRARY));
+        start.setOnAction(event -> navigator.navigate(Destination.LIBRARY));
         FlowPane chips = new FlowPane(8, 8, chip("Quizzes"), chip("Flashcards"), chip("Spaced reviews"),
                 chip("Cited answers"));
         VBox copy = new VBox(heading, body, chips, start);

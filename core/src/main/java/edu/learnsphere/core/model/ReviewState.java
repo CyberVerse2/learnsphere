@@ -13,6 +13,8 @@ import java.util.Objects;
  * @param reps          successful and failed reviews so far
  * @param lapses        times the item was forgotten after being learned
  * @param scheduledDays interval chosen at the last review, in days
+ * @param step          0-based position in the learning steps (phase learning) or relearning steps (phase
+ *                      relearning); 0 in the other phases
  */
 public record ReviewState(
         String itemId,
@@ -24,17 +26,21 @@ public record ReviewState(
         int reps,
         int lapses,
         int scheduledDays,
+        int step,
         long createdAt,
         long updatedAt) {
 
     public ReviewState {
         Objects.requireNonNull(itemId, "itemId");
         Objects.requireNonNull(phase, "phase");
+        if (step < 0) {
+            throw new IllegalArgumentException("step must be >= 0: " + step);
+        }
     }
 
     /** The state of an item that has never been reviewed, due immediately. */
     public static ReviewState newItem(String itemId, long now) {
-        return new ReviewState(itemId, ReviewPhase.NEW, 0, 0, now, null, 0, 0, 0, now, now);
+        return new ReviewState(itemId, ReviewPhase.NEW, 0, 0, now, null, 0, 0, 0, 0, now, now);
     }
 
     /** True when reviewed at least once and due at or before {@code time}. */

@@ -25,25 +25,23 @@ class SettingKeysTest {
 
     @Test
     void parsesStoredValuesAndFallsBackOnBadOnes() {
-        assertThat(SettingKeys.THEME.parse("dark")).isEqualTo(ThemePreference.DARK);
-        assertThat(SettingKeys.THEME.parse("purple")).isEqualTo(ThemePreference.SYSTEM);
         assertThat(SettingKeys.SESSION_SIZE.parse("30")).isEqualTo(30);
         assertThat(SettingKeys.SESSION_SIZE.parse("3")).isEqualTo(20);
         assertThat(SettingKeys.SESSION_SIZE.parse("lots")).isEqualTo(20);
         assertThat(SettingKeys.DESIRED_RETENTION.parse("0.99")).isEqualTo(0.90);
         assertThat(SettingKeys.MODEL_CHOICE.parse("chat-9b")).isEqualTo(ModelChoice.CHAT_9B);
-        assertThat(SettingKeys.REDUCE_MOTION.parse(null)).isFalse();
+        assertThat(SettingKeys.NEW_ITEMS_PER_DAY.parse(null)).isEqualTo(15);
         assertThat(SettingKeys.DESCRIBE_FIGURES.parse("false")).isFalse();
     }
 
     @Test
     void defaultsMatchAppSettings() {
         AppSettings defaults = AppSettings.defaults();
-        assertThat(defaults.theme()).isEqualTo(SettingKeys.THEME.defaultValue());
         assertThat(defaults.newItemsPerDay()).isEqualTo(SettingKeys.NEW_ITEMS_PER_DAY.defaultValue());
         assertThat(defaults.desiredRetention()).isEqualTo(SettingKeys.DESIRED_RETENTION.defaultValue());
         assertThat(defaults.sessionSize()).isEqualTo(SettingKeys.SESSION_SIZE.defaultValue());
         assertThat(defaults.modelChoice()).isEqualTo(SettingKeys.MODEL_CHOICE.defaultValue());
-        assertThat(defaults.onboardingCompleted()).isFalse();
+        assertThat(defaults.evidenceThreshold()).isEqualTo(SettingKeys.EVIDENCE_THRESHOLD.defaultValue());
+        assertThat(defaults.describeFigures()).isTrue();
     }
 }

@@ -7,6 +7,8 @@ sqlite = "3.53.4.0"
 jdbi = "3.55.0"
 lucene = "10.5.2"
 pdfbox = "3.0.8"
+jbig2 = "3.0.4"
+jai-imageio = "1.4.0"
 jackson = "2.22.4"
 commonmark = "0.31.0"
 slf4j = "2.0.20"
@@ -15,6 +17,7 @@ junit = "6.1.3"
 assertj = "3.27.7"
 mockito = "5.24.0"
 testfx = "4.0.18"
+hamcrest = "3.0"
 
 [libraries]
 # UI (JavaFX artifacts need an OS classifier; see app/build.gradle.kts)
@@ -41,6 +44,10 @@ lucene-analysis-common = { module = "org.apache.lucene:lucene-analysis-common", 
 
 # PDF
 pdfbox = { module = "org.apache.pdfbox:pdfbox", version.ref = "pdfbox" }
+# Image decoders PDFBox finds through ImageIO: JBIG2 (scanned pages) and JPEG 2000 (JPX).
+# jai-imageio-jpeg2000 is BSD-3-Clause plus the JJ2000 licence: ship its notice with the app.
+pdfbox-jbig2 = { module = "org.apache.pdfbox:jbig2-imageio", version.ref = "jbig2" }
+jai-imageio-jpeg2000 = { module = "com.github.jai-imageio:jai-imageio-jpeg2000", version.ref = "jai-imageio" }
 
 # JSON
 jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
@@ -57,6 +64,8 @@ junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher
 assertj-core = { module = "org.assertj:assertj-core", version.ref = "assertj" }
 mockito-core = { module = "org.mockito:mockito-core", version.ref = "mockito" }
 testfx-junit5 = { module = "org.testfx:testfx-junit5", version.ref = "testfx" }
+# TestFX robot methods take Hamcrest matchers, so compiling calls to them needs it.
+hamcrest = { module = "org.hamcrest:hamcrest", version.ref = "hamcrest" }
 
 [bundles]
 lucene = ["lucene-core", "lucene-queryparser", "lucene-analysis-common"]

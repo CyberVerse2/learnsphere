@@ -3,6 +3,8 @@
 -- lowercase codes checked against the Java enums in edu.learnsphere.core.model. Tables are STRICT.
 -- A child row that cannot outlive its parent is deleted with it (ON DELETE CASCADE); optional
 -- references to modules and source passages are cleared instead (ON DELETE SET NULL).
+-- Embeddings are float32 little-endian BLOBs tagged with the name of the embedder that made them, so
+-- vectors from another embedder can be found and recomputed.
 
 CREATE TABLE IF NOT EXISTS schema_version (
     version    INTEGER PRIMARY KEY,
@@ -157,6 +159,8 @@ CREATE TABLE learning_items (
     status          TEXT    NOT NULL CHECK (status IN ('draft', 'approved', 'rejected', 'retired')),
     support         TEXT    NOT NULL DEFAULT 'unchecked' CHECK (support IN ('supported', 'unsupported', 'unchecked')),
     support_note    TEXT,
+    embedding       BLOB,
+    embedding_model TEXT,
     created_at      INTEGER NOT NULL,
     updated_at      INTEGER NOT NULL
 ) STRICT;
@@ -193,6 +197,7 @@ CREATE TABLE review_states (
     reps           INTEGER NOT NULL DEFAULT 0 CHECK (reps >= 0),
     lapses         INTEGER NOT NULL DEFAULT 0 CHECK (lapses >= 0),
     scheduled_days INTEGER NOT NULL DEFAULT 0 CHECK (scheduled_days >= 0),
+    step           INTEGER NOT NULL DEFAULT 0 CHECK (step >= 0),
     created_at     INTEGER NOT NULL,
     updated_at     INTEGER NOT NULL
 ) STRICT;
@@ -267,6 +272,7 @@ CREATE TABLE jobs (
     attempts     INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
     progress     REAL    NOT NULL DEFAULT 0 CHECK (progress BETWEEN 0 AND 1),
     message      TEXT,
+    result_json  TEXT,
     subject_id   TEXT,
     created_at   INTEGER NOT NULL,
     updated_at   INTEGER NOT NULL
