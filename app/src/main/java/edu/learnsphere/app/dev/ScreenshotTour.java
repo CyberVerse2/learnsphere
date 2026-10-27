@@ -109,6 +109,13 @@ public final class ScreenshotTour {
                         }),
                 new Shot("progress-course-scrolled", window -> window.navigator().reset(new Destination.Progress(os)),
                         ScreenshotTour::scrollToEnd),
+                new Shot("progress-week-off", window -> {
+                    forgetWeek(window, 2);
+                    window.navigator().reset(new Destination.Progress(os));
+                }, window -> {
+                    scrollToEnd(window);
+                    inspectChart(window, ".retention-chart", 2);
+                }),
                 new Shot("progress-creator", window -> {
                     DemoClassProgress.seed(window.context().workspace(), chemistry);
                     window.navigator().reset(new Destination.Progress(chemistry));
@@ -172,6 +179,21 @@ public final class ScreenshotTour {
                 store.attempts.clear();
                 store.reviews.clear();
                 store.studyTime.clear();
+            }
+        }
+    }
+
+    /** Removes the demo's answers from the week {@code weeksAgo} weeks before this one: a week off. FX thread. */
+    private static void forgetWeek(MainWindow window, int weeksAgo) {
+        if (window.context().workspace().progress() instanceof DemoProgress demo) {
+            DemoStore store = demo.store();
+            synchronized (store) {
+                java.time.LocalDate monday = store.today()
+                        .with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY))
+                        .minusWeeks(weeksAgo);
+                long from = store.startOfDay(monday);
+                long to = store.startOfDay(monday.plusWeeks(1));
+                store.attempts.removeIf(attempt -> attempt.createdAt() >= from && attempt.createdAt() < to);
             }
         }
     }
