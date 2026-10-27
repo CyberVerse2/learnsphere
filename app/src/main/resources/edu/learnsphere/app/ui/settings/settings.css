@@ -155,7 +155,8 @@
     -fx-text-fill: -ls-text-muted;
 }
 
-.licence-toggle {
+/* Flush with the entry's text above it (beats the quiet small button padding). */
+.licences .button.quiet.small.licence-toggle {
     -fx-padding: 4px 8px 4px 0;
 }
 

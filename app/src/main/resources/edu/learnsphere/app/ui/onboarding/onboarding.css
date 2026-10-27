@@ -104,6 +104,11 @@
     -fx-fill: -ls-accent;
 }
 
+/* On the far side the moon is seen through the sphere, so the travelling moon never vanishes. */
+.assistant-orbit .orbit-moon.far {
+    -fx-opacity: 0.4;
+}
+
 .assistant-orbit .orbit-icon {
     -fx-icon-color: -ls-accent;
 }

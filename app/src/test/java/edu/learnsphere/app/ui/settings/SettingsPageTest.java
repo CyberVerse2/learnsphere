@@ -146,7 +146,8 @@ class SettingsPageTest {
 
         assistant.release();
         waitFor("ready", () -> texts(robot, ".status-pill-label").contains("Ready"));
-        assertThat(texts(robot, ".settings-row-detail")).contains("Your study assistant is ready");
+        assertThat(texts(robot, ".settings-row-detail")).containsAnyOf("Giving quick answers.",
+                "Your study assistant is ready");
 
         List<RadioButton> options = robot.from(section).lookup(".model-option").queryAllAs(RadioButton.class)
                 .stream().toList();
@@ -231,5 +232,9 @@ class SettingsPageTest {
         assertThat(SettingsPage.modelDetail(new edu.learnsphere.core.service.ModelOption(ModelChoice.CHAT_9B, false, false, false),
                 ModelChoice.CHAT_4B)).endsWith("Needs 12 GB of memory or more; best with 16 GB. Not available on this computer.");
         assertThat(SettingsPage.themeLabel(ThemePreference.SYSTEM)).isEqualTo("Match computer");
+        assertThat(SettingsPage.statusLine(edu.learnsphere.core.service.AssistantStatus.ready(ModelChoice.CHAT_9B)))
+                .isEqualTo("Giving thorough answers.");
+        assertThat(SettingsPage.statusLine(edu.learnsphere.core.service.AssistantStatus.unavailable()))
+                .isEqualTo("Your study assistant can't run on this computer.");
     }
 }

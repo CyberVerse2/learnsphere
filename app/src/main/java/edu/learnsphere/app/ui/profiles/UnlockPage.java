@@ -9,6 +9,7 @@ import edu.learnsphere.app.ui.View;
 import edu.learnsphere.app.ui.components.ActivityIndicator;
 import edu.learnsphere.app.ui.components.Avatar;
 import edu.learnsphere.app.ui.components.Skeleton;
+import edu.learnsphere.app.ui.components.Toasts;
 import edu.learnsphere.core.error.UserMessage;
 import edu.learnsphere.core.service.ProfileSummary;
 import java.util.Objects;
@@ -95,8 +96,9 @@ public final class UnlockPage implements View {
         }
         ProfileSummary profile = found.get();
         if (!profile.passwordProtected()) {
-            // The password was removed in the meantime: nothing to ask.
+            // The password was removed in the meantime: nothing to ask; Home follows once it is open.
             submit(profile);
+            return;
         }
         Avatar avatar = new Avatar(profile.initials(), profile.avatarHue(), 88);
         Label name = new Label(profile.displayName());
@@ -170,6 +172,14 @@ public final class UnlockPage implements View {
     }
 
     private void failed(UserMessage message) {
+        if (error.getScene() == null) {
+            // Opened without asking (no password) and it failed: back to the choice, saying why.
+            navigator.reset(Destination.PROFILES);
+            if (navigator.currentView() != null) {
+                Toasts.error(navigator.currentView().root(), message);
+            }
+            return;
+        }
         busy = false;
         working.setVisible(false);
         working.setManaged(false);

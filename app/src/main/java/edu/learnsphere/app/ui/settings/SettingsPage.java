@@ -498,7 +498,7 @@ public final class SettingsPage extends PageView {
             case UNAVAILABLE -> "Can't run here";
             case FAILED -> "Stopped";
         });
-        assistantMessage.setText(status.message().text());
+        assistantMessage.setText(statusLine(status));
         restart.setVisible(status.canRestart());
         restart.setManaged(status.canRestart());
     }
@@ -551,6 +551,15 @@ public final class SettingsPage extends PageView {
     }
 
     /** The name of a way of answering, as people see it. */
+    /** The line under the status: once ready, which way it answers; otherwise the status's own sentence. */
+    static String statusLine(AssistantStatus status) {
+        ModelChoice model = status.activeModel();
+        if (status.isReady() && model != null && model != ModelChoice.AUTO) {
+            return "Giving " + modelLabel(model).toLowerCase(Locale.ROOT) + " answers.";
+        }
+        return status.message().text();
+    }
+
     static String modelLabel(ModelChoice choice) {
         return switch (choice) {
             case AUTO -> "Automatic";
@@ -628,9 +637,9 @@ public final class SettingsPage extends PageView {
                     system.reveal(context.paths().profile(id).root());
                 }
             });
-            where = row("Where it's kept", "On this computer, in LearnSphere's own folder for this profile.", reveal);
+            where = row("Where it's kept", "On this computer only.", reveal);
         } else {
-            where = row("Where it's kept", "On this computer, in LearnSphere's own folder for this profile.", new Region());
+            where = row("Where it's kept", "On this computer only.", new Region());
         }
         spaceUsed.getStyleClass().add("space-used");
         spaceUsed.setText("…");
@@ -640,8 +649,8 @@ public final class SettingsPage extends PageView {
         backup.setOnAction(event -> actions.backup(context.profile(), page()));
         return section(Section.STORAGE, null, where,
                 row("Space used", "Your PDFs, questions and progress in this profile.", spaceUsed),
-                row("Back up", "Save this profile's courses, PDFs and progress in one file you can keep somewhere "
-                        + "safe, then restore it from the profile choice.", backup));
+                row("Back up", "Save a copy of this profile's courses, PDFs and progress to keep somewhere safe. "
+                        + "Restore it from the profile choice.", backup));
     }
 
     private void loadSpaceUsed() {

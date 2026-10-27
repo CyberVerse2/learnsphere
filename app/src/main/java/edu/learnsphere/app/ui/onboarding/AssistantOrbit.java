@@ -26,8 +26,8 @@ import org.kordamp.ikonli.javafx.FontIcon;
 
 /**
  * The study assistant's readiness drawn in the orbit language of the course covers: a sphere with a tilted
- * orbit and one moon. While it gets ready the moon travels the orbit, passing behind the sphere on the far
- * side; when it is ready the moon comes to rest and the sphere shows a check; when it can't run the moon
+ * orbit and one moon. While it gets ready the moon travels the orbit, dimmed on the far side as it passes
+ * behind the sphere (so it never disappears); when it is ready the moon comes to rest and the sphere shows a check; when it can't run the moon
  * stops and the sphere shows a warning. With reduced motion the moon rests and only the sphere changes.
  * Style classes: {@code assistant-orbit} plus {@code starting}, {@code ready} or {@code unavailable}; parts
  * {@code orbit-sphere}, {@code orbit-line}, {@code orbit-moon}, {@code orbit-mark}.
@@ -49,7 +49,7 @@ public final class AssistantOrbit extends Region {
     private final Circle sphere = new Circle(SPHERE_RADIUS);
     private final Arc back = new Arc(0, 0, ORBIT_RX, ORBIT_RY, 0, 180);
     private final Arc front = new Arc(0, 0, ORBIT_RX, ORBIT_RY, 180, 180);
-    /** The moon on the far half of the orbit, drawn behind the sphere. */
+    /** The moon on the far half of the orbit: dimmed, and drawn over the sphere so it stays in sight. */
     private final Circle moonBehind = new Circle(MOON_RADIUS);
     /** The moon on the near half, drawn in front of the sphere. */
     private final Circle moon = new Circle(MOON_RADIUS);
@@ -73,7 +73,7 @@ public final class AssistantOrbit extends Region {
         }
         back.getStyleClass().add("back");
         moon.getStyleClass().add("orbit-moon");
-        moonBehind.getStyleClass().add("orbit-moon");
+        moonBehind.getStyleClass().addAll("orbit-moon", "far");
         mark.getStyleClass().add("orbit-mark");
         mark.setMinSize(SPHERE_RADIUS * 2, SPHERE_RADIUS * 2);
         mark.setMaxSize(SPHERE_RADIUS * 2, SPHERE_RADIUS * 2);
@@ -83,7 +83,7 @@ public final class AssistantOrbit extends Region {
         orbit.setLayoutX(WIDTH / 2);
         orbit.setLayoutY(HEIGHT / 2);
         // A fixed drawing order; the moon changes sides by showing one of its two circles.
-        orbit.getChildren().setAll(back, moonBehind, sphere, mark, front, moon);
+        orbit.getChildren().setAll(back, sphere, mark, moonBehind, front, moon);
         getChildren().add(orbit);
         angle.addListener((obs, old, value) -> placeMoon());
         travel = new Timeline(
@@ -146,7 +146,7 @@ public final class AssistantOrbit extends Region {
         }
     }
 
-    /** Puts the moon on the orbit at the current angle, behind the sphere on the far half. */
+    /** Puts the moon on the orbit at the current angle, dimmed on the far half. */
     private void placeMoon() {
         double radians = Math.toRadians(angle.get());
         double x = ORBIT_RX * Math.cos(radians);
