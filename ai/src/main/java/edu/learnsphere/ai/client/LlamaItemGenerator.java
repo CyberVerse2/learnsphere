@@ -15,6 +15,7 @@ import edu.learnsphere.core.spi.Passage;
 import edu.learnsphere.core.util.CancellationToken;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -68,6 +69,21 @@ public final class LlamaItemGenerator implements ItemGenerator {
     private static final Pattern OPTION_LETTER = Pattern.compile("^(\\(?[A-Da-d][).:]|option [A-Da-d][).:]?)\\s+");
     private static final Pattern BARE_LETTER = Pattern.compile("(?i)^(option )?\\(?[a-d]\\)?\\.?$");
     private static final Pattern BLANKS = Pattern.compile("_{2,}|\\[blank]|\\(blank\\)");
+    /** An explanation that talks about writing the item instead of the subject: the model lost its way. */
+    private static final Pattern WRITING_TALK = Pattern.compile(
+            "(?i)\\b(let's|let me|rephrase|the prompt|the plan|the rule|i will|i'll|this item|the item)\\b");
+    private static final Pattern EXPLANATION_SOURCE_LEAD = Pattern.compile(
+            "(?i)^(according to|as (stated|described|explained|noted) in|based on|in) (the )?(passages?|text|material|notes)"
+                    + "( \\[?\\d+]?)?,?\\s*"
+                    + "|^(the )?passages? \\[?\\d+]? (explicitly |clearly |directly )?(states?|says|notes|explains|shows"
+                    + "|indicates|mentions)( that|:)\\s*");
+    private static final Pattern PASSAGE_MENTION = Pattern.compile(
+            "(?i)\\b(the )?passages? \\[?\\d+]?(\\s*(and|,)\\s*\\[?\\d+]?)*|\\bthe passages?\\b");
+    private static final Set<String> COMMON_WORDS = Set.of("the", "and", "for", "with", "that", "this", "from", "are",
+            "its", "into", "each", "which", "when", "what", "how", "why", "not", "but", "can", "has", "have", "was", "were",
+            "will", "all", "any", "one", "two", "than", "then", "they", "them", "their", "there", "these", "those", "also",
+            "only", "more", "most", "such", "does", "used", "uses", "called", "other", "same", "been", "being", "while",
+            "where", "would", "should", "could", "about", "because", "between", "true", "false");
 
     /**
      * One planned item.
@@ -136,19 +152,49 @@ public final class LlamaItemGenerator implements ItemGenerator {
     static List<Slot> plan(ItemGenerationRequest request, List<Passage> passages) {
         List<ItemType> types = request.types().stream().sorted(Comparator.comparingInt(Enum::ordinal)).toList();
         List<Slot> slots = new ArrayList<>(request.count());
+        Map<String, Integer> conceptUses = new HashMap<>();
         int trueFalse = 0;
+        int unpaired = 0;
         for (int i = 0; i < request.count(); i++) {
             ItemType type = types.get(i % types.size());
+            // Each pass through the types moves every type one step along the ladder, so a type asked for
+            // several times gets every difficulty.
             Difficulty difficulty = request.difficulty() != null
                     ? request.difficulty()
-                    : LADDER[(i + i / types.size()) % LADDER.length];
+                    : LADDER[(i % types.size() + i / types.size()) % LADDER.length];
             Boolean truth = type == ItemType.TRUE_FALSE ? trueFalse++ % 2 == 0 : null;
-            int passage = passages.get(i % passages.size()).number();
             String concept = request.conceptNames().isEmpty() ? null
                     : request.conceptNames().get(i % request.conceptNames().size());
+            // A concept is paired with a passage that explains it; otherwise passages are taken in turn.
+            List<Passage> about = concept == null ? List.of() : passagesAbout(concept, passages);
+            int passage = about.isEmpty()
+                    ? passages.get(unpaired++ % passages.size()).number()
+                    : about.get((conceptUses.merge(concept, 1, Integer::sum) - 1) % about.size()).number();
             slots.add(new Slot(i, type, difficulty, truth, passage, concept));
         }
         return slots;
+    }
+
+    /** The passages that mention most of the concept's words (title included), best first. */
+    static List<Passage> passagesAbout(String concept, List<Passage> passages) {
+        Set<String> words = contentWords(concept, 3);
+        if (words.isEmpty()) {
+            return List.of();
+        }
+        int best = 0;
+        List<Passage> found = new ArrayList<>();
+        for (Passage passage : passages) {
+            Set<String> text = contentWords(passage.sectionTitle() + " " + passage.text(), 3);
+            int score = (int) words.stream().filter(text::contains).count();
+            if (score > best) {
+                best = score;
+                found.clear();
+            }
+            if (score == best && score > 0) {
+                found.add(passage);
+            }
+        }
+        return best * 2 >= words.size() ? found : List.of();
     }
 
     static String planText(List<Slot> batch) {
@@ -163,7 +209,7 @@ public final class LlamaItemGenerator implements ItemGenerator {
             if (slot.concept() != null) {
                 plan.append(", testing \"").append(slot.concept()).append('"');
             }
-            plan.append(", preferably from passage [").append(slot.passage()).append("]\n");
+            plan.append(", from passage [").append(slot.passage()).append("]\n");
         }
         return plan.toString().strip();
     }
@@ -200,12 +246,15 @@ public final class LlamaItemGenerator implements ItemGenerator {
         return text.toString();
     }
 
-    /** The schema of one slot: fixed type and difficulty, fields in the order the model should write them. */
+    /**
+     * The schema of one slot: fixed type and difficulty, fields in the order the model should write them. A
+     * false statement is written after the true fact it alters; the passage is named after the item is
+     * written, so it labels what was actually written.
+     */
     static ObjectNode slotSchema(Slot slot, List<Integer> passageNumbers, List<String> concepts) {
         Map<String, JsonNode> props = new LinkedHashMap<>();
         props.put("type", JsonSchemas.constant(slot.type().code()));
         props.put("difficulty", JsonSchemas.constant(slot.difficulty().name().toLowerCase(Locale.ROOT)));
-        props.put("passage", JsonSchemas.integerIn(passageNumbers));
         switch (slot.type()) {
             case MCQ -> {
                 props.put("prompt", JsonSchemas.string());
@@ -213,7 +262,11 @@ public final class LlamaItemGenerator implements ItemGenerator {
                 props.put("distractors", JsonSchemas.array(JsonSchemas.string(), 3, 3));
             }
             case TRUE_FALSE -> {
-                props.put("answer", JsonSchemas.constant(Boolean.TRUE.equals(slot.truth()) ? "true" : "false"));
+                boolean truth = Boolean.TRUE.equals(slot.truth());
+                props.put("answer", JsonSchemas.constant(truth ? "true" : "false"));
+                if (!truth) {
+                    props.put("fact", JsonSchemas.string());
+                }
                 props.put("prompt", JsonSchemas.string());
             }
             case CLOZE -> {
@@ -226,6 +279,7 @@ public final class LlamaItemGenerator implements ItemGenerator {
             }
         }
         props.put("explanation", JsonSchemas.string());
+        props.put("passage", JsonSchemas.integerIn(passageNumbers));
         if (!concepts.isEmpty()) {
             props.put("concepts", JsonSchemas.array(JsonSchemas.oneOf(concepts), 1, Math.min(2, concepts.size())));
         }
@@ -240,17 +294,20 @@ public final class LlamaItemGenerator implements ItemGenerator {
         ItemType type = slot.type();
         String prompt = stripMeta(TextCleanup.oneLine(node.path("prompt").asText("")));
         String answer = TextCleanup.oneLine(node.path("answer").asText(""));
-        String explanation = TextCleanup.sentence(node.path("explanation").asText(""));
-        int passage = node.path("passage").asInt(slot.passage());
+        String rawExplanation = TextCleanup.oneLine(node.path("explanation").asText(""));
+        String fact = TextCleanup.oneLine(node.path("fact").asText(""));
+        int labeled = node.path("passage").asInt(slot.passage());
         List<String> distractors = new ArrayList<>();
-        if (passages.stream().noneMatch(p -> p.number() == passage)) {
-            reason = "unknown passage " + passage;
+        if (passages.stream().noneMatch(p -> p.number() == labeled)) {
+            reason = "unknown passage " + labeled;
         } else if (prompt.isEmpty() || answer.isEmpty()) {
             reason = "empty prompt or answer";
         } else if (SOURCE_REFERENCE.matcher(prompt).find()) {
             reason = "prompt refers to the source";
         } else if (INSTRUCTION_ECHO.matcher(prompt).find()) {
             reason = "prompt echoes the instructions";
+        } else if (WRITING_TALK.matcher(rawExplanation).find()) {
+            reason = "explanation talks about writing the item";
         } else {
             switch (type) {
                 case MCQ -> {
@@ -275,6 +332,9 @@ public final class LlamaItemGenerator implements ItemGenerator {
                     answer = Boolean.TRUE.equals(slot.truth()) ? "true" : "false";
                     if (prompt.endsWith("?")) {
                         reason = "true/false prompt is a question";
+                    } else if (Boolean.FALSE.equals(slot.truth()) && !fact.isEmpty()
+                            && TextCleanup.key(fact).equals(TextCleanup.key(prompt))) {
+                        reason = "false statement repeats the true fact";
                     }
                 }
                 case CLOZE -> {
@@ -306,7 +366,70 @@ public final class LlamaItemGenerator implements ItemGenerator {
         if (tags.isEmpty() && slot.concept() != null) {
             tags.add(slot.concept());
         }
+        String explanation = cleanExplanation(rawExplanation);
+        if (explanation.isEmpty() && !fact.isEmpty()) {
+            explanation = TextCleanup.sentence(fact);
+        }
+        String stated = switch (type) {
+            case TRUE_FALSE -> fact.isEmpty() ? prompt : fact;
+            case CLOZE -> prompt.replace(ItemType.CLOZE_BLANK, answer);
+            default -> prompt + " " + answer;
+        };
+        int passage = sourcePassage(stated, labeled, passages);
+        if (passage != labeled) {
+            LOG.debug("A {} draft labelled passage {} comes from passage {}", type.code(), labeled, passage);
+        }
         return Optional.of(new ItemDraft(type, prompt, answer, explanation, distractors, slot.difficulty(), passage, tags));
+    }
+
+    /**
+     * The passage an item comes from: the labelled one, unless another passage shares clearly more of the
+     * item's words (the model sometimes writes about a neighbouring passage and keeps the planned number).
+     */
+    static int sourcePassage(String itemText, int labeled, List<Passage> passages) {
+        Set<String> words = contentWords(itemText, 4);
+        int labeledScore = 0;
+        int bestScore = -1;
+        int best = labeled;
+        for (Passage passage : passages) {
+            Set<String> text = contentWords(passage.sectionTitle() + " " + passage.text(), 4);
+            int score = (int) words.stream().filter(text::contains).count();
+            if (passage.number() == labeled) {
+                labeledScore = score;
+            }
+            if (score > bestScore) {
+                bestScore = score;
+                best = passage.number();
+            }
+        }
+        return bestScore >= labeledScore + 2 && bestScore * 4 >= labeledScore * 5 ? best : labeled;
+    }
+
+    /** Lowercase words of at least {@code minLength} letters, without common words, with a plural "s" dropped. */
+    static Set<String> contentWords(String text, int minLength) {
+        Set<String> words = new HashSet<>();
+        for (String word : TextCleanup.key(text == null ? "" : text).split(" ")) {
+            if (word.length() < minLength || COMMON_WORDS.contains(word)) {
+                continue;
+            }
+            words.add(word.length() > 4 && word.endsWith("s") && !word.endsWith("ss")
+                    ? word.substring(0, word.length() - 1) : word);
+        }
+        return words;
+    }
+
+    /**
+     * The explanation as the learner reads it: without "Passage [3] states that…" openings, with remaining
+     * mentions of passages turned into "the material", and without citation markers.
+     */
+    static String cleanExplanation(String explanation) {
+        String text = TextCleanup.oneLine(explanation);
+        for (int i = 0; i < 2; i++) {
+            text = EXPLANATION_SOURCE_LEAD.matcher(text).replaceFirst("").strip();
+        }
+        text = PASSAGE_MENTION.matcher(text).replaceAll("the material");
+        text = text.replaceAll("\\s*\\[\\d+(?:\\s*[,–-]\\s*\\d+)*]", "").replaceAll("\\s+([.,;:])", "$1");
+        return TextCleanup.sentence(TextCleanup.capitalize(text.strip()));
     }
 
     static String stripMeta(String prompt) {

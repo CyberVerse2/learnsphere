@@ -13,9 +13,9 @@ final class TextCleanup {
         return text == null ? "" : text.replaceAll("\\s+", " ").strip();
     }
 
-    /** Ends a sentence with a full stop when it has no closing punctuation. */
+    /** One line starting with a capital letter and ending with a full stop when it has no closing punctuation. */
     static String sentence(String text) {
-        String s = oneLine(text);
+        String s = capitalize(oneLine(text));
         if (s.isEmpty()) {
             return s;
         }
