@@ -8,6 +8,7 @@ import static edu.learnsphere.search.Passages.query;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import edu.learnsphere.core.error.LearnSphereException;
 import edu.learnsphere.core.spi.IndexedChunk;
 import edu.learnsphere.core.spi.SearchIndex;
 import edu.learnsphere.core.spi.SearchQuery;
@@ -24,6 +25,7 @@ import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
+import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -184,6 +186,121 @@ class LuceneSearchIndexRecoveryTest {
             assertThat(index.needsRebuild()).isTrue();
             assertThat(index.size()).isZero();
             assertThat(folder().resolve(LuceneSearchIndex.REBUILD_MARKER)).doesNotExist();
+        }
+    }
+
+    /** Removes the segment-info files of the committed passages: a commit or reopen must read them again. */
+    private void loseSegmentInfo() throws IOException {
+        List<Path> infos = files(folder()).stream().filter(p -> p.getFileName().toString().endsWith(".si")).toList();
+        assertThat(infos).isNotEmpty();
+        for (Path info : infos) {
+            Files.delete(info);
+        }
+    }
+
+    private static void assertAsksForARestart(ThrowingCallable call) {
+        assertThatThrownBy(call).isInstanceOfSatisfying(LearnSphereException.class,
+                e -> assertThat(e.userMessage()).isEqualTo(SearchFailures.NEEDS_RESTART));
+    }
+
+    @Test
+    void damageFoundWhileOpenAsksForARestartAndTheNextOpenStartsEmpty() throws IOException {
+        List<IndexedChunk> passages = completeIndex();
+        try (LuceneSearchIndex index = LuceneSearchIndex.open(folder(), DIMENSIONS, MODEL)) {
+            assertThat(index.search(query("bio", "osmosis"))).isNotEmpty();
+            loseSegmentInfo();
+            index.upsert(List.of(passage("bio", "doc-9", null, "Diffusion spreads particles evenly.")));
+
+            assertAsksForARestart(index::commit);
+
+            assertThat(index.needsRebuild()).isTrue();
+            assertThat(folder().resolve(LuceneSearchIndex.REBUILD_MARKER)).exists();
+            // Rather than answers from damaged passages, nothing until the rebuild.
+            assertThat(index.search(query("bio", "osmosis"))).isEmpty();
+        }
+
+        try (LuceneSearchIndex index = LuceneSearchIndex.open(folder(), DIMENSIONS, MODEL)) {
+            assertThat(index.needsRebuild()).isTrue();
+            assertThat(index.size()).isZero();
+            assertThat(folder().resolve(LuceneSearchIndex.REBUILD_MARKER)).doesNotExist();
+
+            index.rebuild(passages.stream());
+
+            assertThat(index.size()).isEqualTo(passages.size());
+        }
+    }
+
+    @Test
+    void anUndoneRebuildThatCannotReturnToTheLastCommitStopsWritesAndTheNextOpenStartsEmpty() throws IOException {
+        List<IndexedChunk> passages = completeIndex();
+        try (LuceneSearchIndex index = LuceneSearchIndex.open(folder(), DIMENSIONS, MODEL)) {
+            // Damage nothing has noticed yet; the rebuild is cancelled and must go back to the damaged commit.
+            loseSegmentInfo();
+            AtomicInteger served = new AtomicInteger();
+            Stream<IndexedChunk> cancelledHalfway = Stream.generate(() -> {
+                if (served.incrementAndGet() > 5) {
+                    throw new CancellationException("job cancelled");
+                }
+                return passages.get(served.get());
+            });
+
+            assertThatThrownBy(() -> index.rebuild(cancelledHalfway)).isInstanceOf(CancellationException.class);
+
+            assertThat(index.needsRebuild()).isTrue();
+            assertThat(folder().resolve(LuceneSearchIndex.REBUILD_MARKER)).exists();
+            assertThat(index.search(query("bio", "osmosis"))).isEmpty();
+            assertAsksForARestart(index::size);
+            assertAsksForARestart(() -> index.upsert(List.of(passage("bio", "doc-9", null, "Diffusion."))));
+            assertAsksForARestart(() -> index.deleteByDocument("doc-1"));
+            assertAsksForARestart(index::commit);
+        }
+
+        try (LuceneSearchIndex index = LuceneSearchIndex.open(folder(), DIMENSIONS, MODEL)) {
+            assertThat(index.needsRebuild()).isTrue();
+            assertThat(index.size()).isZero();
+        }
+    }
+
+    /** Ways damage comes to light while the index is open. */
+    enum FoundBy {
+        /** A commit that must sync the lost file; the writer is left with changes it cannot commit. */
+        COMMIT,
+        /** An undone rebuild that cannot reopen the last commit; the index is left without a writer. */
+        UNDONE_REBUILD
+    }
+
+    @ParameterizedTest
+    @EnumSource(FoundBy.class)
+    void aRebuildRepairsDamageFoundWhileOpenWithoutARestart(FoundBy foundBy) throws IOException {
+        List<IndexedChunk> passages = completeIndex();
+        try (LuceneSearchIndex index = LuceneSearchIndex.open(folder(), DIMENSIONS, MODEL)) {
+            loseSegmentInfo();
+            switch (foundBy) {
+                case COMMIT -> {
+                    index.upsert(List.of(passage("bio", "doc-9", null, "Diffusion spreads particles evenly.")));
+                    assertAsksForARestart(index::commit);
+                }
+                case UNDONE_REBUILD -> assertThatThrownBy(() -> index.rebuild(Stream.generate(() -> {
+                    throw new CancellationException("job cancelled");
+                }))).isInstanceOf(CancellationException.class);
+            }
+            assertThat(index.needsRebuild()).isTrue();
+
+            index.rebuild(passages.stream());
+
+            assertThat(index.needsRebuild()).isFalse();
+            assertThat(folder().resolve(LuceneSearchIndex.REBUILD_MARKER)).doesNotExist();
+            assertThat(index.size()).isEqualTo(passages.size());
+            assertThat(index.search(query("bio", "osmosis membrane"))).hasSize(24);
+            IndexedChunk added = passage("bio", "doc-9", null, "Diffusion spreads particles evenly.");
+            index.upsert(List.of(added));
+            index.commit();
+            assertThat(ids(index.search(query("bio", "diffusion particles"))).getFirst()).isEqualTo(added.chunkId());
+        }
+
+        try (LuceneSearchIndex index = LuceneSearchIndex.open(folder(), DIMENSIONS, MODEL)) {
+            assertThat(index.needsRebuild()).isFalse();
+            assertThat(index.size()).isEqualTo(passages.size() + 1);
         }
     }
 

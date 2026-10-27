@@ -80,6 +80,7 @@ import org.slf4j.LoggerFactory;
  * cleared and opened empty with {@link #needsRebuild()} true. That state is committed straight away, so an
  * index filled only partly before a crash is rebuilt again on the next start. {@link #rebuild} replaces the
  * contents in one commit; when it fails or its stream is cancelled, the index goes back to its last commit.
+ * A rebuild of an index found damaged while open first clears it the same way, so it recovers in place.
  *
  * <h2>Threading</h2>
  * Thread-safe. Searches never block: they run on the searcher of the last commit, managed by a
@@ -91,7 +92,8 @@ import org.slf4j.LoggerFactory;
  * <h2>Errors</h2>
  * Failures reach callers as {@link LearnSphereException}s carrying a {@link UserMessage}: a full disk,
  * a failed search or update, or, when the index turns out damaged while open, a request to restart (the
- * index is then marked so the next open clears it and {@link #needsRebuild()} turns true straight away).
+ * index is then marked so the next open clears it, and {@link #needsRebuild()} turns true straight away;
+ * a {@link #rebuild} repairs it without the restart).
  */
 public final class LuceneSearchIndex implements SearchIndex {
 
@@ -118,9 +120,14 @@ public final class LuceneSearchIndex implements SearchIndex {
     /** Shared by writes, exclusive for rebuild and close. Searches do not take it. */
     private final ReentrantReadWriteLock gate = new ReentrantReadWriteLock();
 
-    /** Writer and searchers; replaced after a failed rebuild, null once closed or when it could not be reopened. */
+    /**
+     * Writer and searchers; replaced after a failed rebuild and when a damaged index starts over, null once closed
+     * or while it cannot be reopened.
+     */
     private volatile Engine engine;
     private volatile boolean needsRebuild;
+    /** Damage was found while open: the next rebuild starts from a cleared folder and a fresh writer. */
+    private volatile boolean damaged;
     private volatile boolean closed;
 
     private record Engine(IndexWriter writer, SearcherManager searchers) {
@@ -173,7 +180,7 @@ public final class LuceneSearchIndex implements SearchIndex {
         }
         LuceneSearchIndex index = new LuceneSearchIndex(absolute, directory, dimensions, embeddingModel);
         try {
-            index.start();
+            index.start(false);
             return index;
         } catch (IOException e) {
             index.releaseResources();
@@ -192,10 +199,14 @@ public final class LuceneSearchIndex implements SearchIndex {
     // ---------------------------------------------------------------------------------------------------------
     // Opening and recovery
 
-    private void start() throws IOException {
+    /**
+     * Opens the writer and searchers on the folder's index, or on a cleared folder when the index cannot be used
+     * as it is (or {@code clear} says so).
+     */
+    private void start(boolean clear) throws IOException {
         String reason = null;
         IndexWriter writer = null;
-        if (Files.exists(folder.resolve(REBUILD_MARKER))) {
+        if (clear || Files.exists(folder.resolve(REBUILD_MARKER))) {
             reason = "it was found damaged while open";
         } else if (!DirectoryReader.indexExists(directory)) {
             reason = "the folder holds no index";
@@ -306,7 +317,7 @@ public final class LuceneSearchIndex implements SearchIndex {
             }
             documents.add(IndexFields.toDocument(chunk, Vectors.unit(chunk.embedding(), dimensions)));
         }
-        write("upsert", current -> {
+        write("upsert", SearchFailures.ADD_FAILED, current -> {
             for (int i = 0; i < documents.size(); i++) {
                 current.writer().updateDocument(IndexFields.idTerm(batch.get(i).chunkId()), documents.get(i));
             }
@@ -321,24 +332,24 @@ public final class LuceneSearchIndex implements SearchIndex {
         }
         Term[] terms = chunkIds.stream().map(id -> IndexFields.idTerm(Objects.requireNonNull(id, "chunkId")))
                 .toArray(Term[]::new);
-        write("delete", current -> current.writer().deleteDocuments(terms));
+        write("delete", SearchFailures.REMOVE_FAILED, current -> current.writer().deleteDocuments(terms));
     }
 
     @Override
     public void deleteByDocument(String documentId) {
         Term term = new Term(IndexFields.DOCUMENT_ID, Objects.requireNonNull(documentId, "documentId"));
-        write("delete document", current -> current.writer().deleteDocuments(term));
+        write("delete document", SearchFailures.REMOVE_FAILED, current -> current.writer().deleteDocuments(term));
     }
 
     @Override
     public void deleteByCourse(String courseId) {
         Term term = new Term(IndexFields.COURSE_ID, Objects.requireNonNull(courseId, "courseId"));
-        write("delete course", current -> current.writer().deleteDocuments(term));
+        write("delete course", SearchFailures.REMOVE_FAILED, current -> current.writer().deleteDocuments(term));
     }
 
     @Override
     public void commit() {
-        write("commit", current -> {
+        write("commit", SearchFailures.SAVE_FAILED, current -> {
             current.writer().commit();
             current.searchers().maybeRefreshBlocking();
         });
@@ -351,7 +362,9 @@ public final class LuceneSearchIndex implements SearchIndex {
      * logged rather than failing the whole rebuild. Writes from other threads wait until the rebuild has
      * committed or failed. When the stream throws (for example a {@link java.util.concurrent.CancellationException}
      * from a cancelled job) or writing fails, the index returns to its last commit and the exception
-     * propagates; {@link #needsRebuild()} keeps its value.
+     * propagates; {@link #needsRebuild()} keeps its value. When the index was found damaged while open, the
+     * rebuild first clears it and opens it empty, as {@link #open} would, instead of going through the damaged
+     * contents.
      */
     @Override
     public void rebuild(Stream<IndexedChunk> chunks) {
@@ -359,6 +372,9 @@ public final class LuceneSearchIndex implements SearchIndex {
         gate.writeLock().lock();
         try {
             ensureOpen();
+            if (damaged) {
+                startOver();
+            }
             Engine current = engine();
             long started = System.nanoTime();
             long added = 0;
@@ -385,7 +401,7 @@ public final class LuceneSearchIndex implements SearchIndex {
                 current.writer().commit();
                 committed = true;
             } catch (IOException e) {
-                throw failure("rebuild", e, SearchFailures.UPDATE_FAILED);
+                throw failure("rebuild", e, SearchFailures.REBUILD_FAILED);
             } catch (AlreadyClosedException e) {
                 throw stopped("rebuild", current, e);
             } finally {
@@ -400,6 +416,8 @@ public final class LuceneSearchIndex implements SearchIndex {
             } catch (IOException e) {
                 refreshFailure = e;
             }
+            // Damage found in the replaced contents no longer matters.
+            damaged = false;
             needsRebuild = false;
             deleteMarker();
             if (refreshFailure != null) {
@@ -570,7 +588,8 @@ public final class LuceneSearchIndex implements SearchIndex {
         }
     }
 
-    private void write(String what, WriteWork work) {
+    /** Runs {@code work} on the writer; {@code fallback} is the sentence for a failure that is not disk full or damage. */
+    private void write(String what, UserMessage fallback, WriteWork work) {
         gate.readLock().lock();
         try {
             ensureOpen();
@@ -578,7 +597,7 @@ public final class LuceneSearchIndex implements SearchIndex {
             try {
                 work.apply(current);
             } catch (IOException e) {
-                throw failure(what, e, SearchFailures.UPDATE_FAILED);
+                throw failure(what, e, fallback);
             } catch (AlreadyClosedException e) {
                 throw stopped(what, current, e);
             }
@@ -613,15 +632,36 @@ public final class LuceneSearchIndex implements SearchIndex {
         }
     }
 
+    /**
+     * Replaces the engine of an index found damaged by a fresh one on a cleared folder. Runs under the
+     * exclusive gate. When that fails too, the engine stays null (and the damage mark stays) until a later
+     * rebuild or open succeeds.
+     */
+    private void startOver() {
+        Engine old = engine;
+        engine = null;
+        if (old != null) {
+            closeQuietly(old.searchers());
+            rollbackQuietly(old.writer());
+        }
+        try {
+            start(true);
+        } catch (IOException | RuntimeException e) {
+            LOG.error("The damaged search index in {} could not be cleared", folder, e);
+            throw new LearnSphereException(SearchFailures.messageFor(e, SearchFailures.NEEDS_RESTART),
+                    "Search index could not start over in " + folder, e);
+        }
+        damaged = false;
+    }
+
+    /** The exception for a failed {@code what}; damage also marks the index for a rebuild. */
     private LearnSphereException failure(String what, IOException e, UserMessage fallback) {
-        if (SearchFailures.isDiskFull(e)) {
-            return new LearnSphereException(UserMessage.DISK_FULL, "Search index " + what + " failed: disk full", e);
-        }
-        if (SearchFailures.isDamage(e)) {
+        UserMessage message = SearchFailures.messageFor(e, fallback);
+        if (message.equals(SearchFailures.NEEDS_RESTART)) {
             markForRebuild(e);
-            return new LearnSphereException(SearchFailures.NEEDS_RESTART, "Search index " + what + " found damage", e);
+            return new LearnSphereException(message, "Search index " + what + " found damage in " + folder, e);
         }
-        return new LearnSphereException(fallback, "Search index " + what + " failed in " + folder, e);
+        return new LearnSphereException(message, "Search index " + what + " failed in " + folder, e);
     }
 
     /** The writer stopped itself after an unrecoverable error (a "tragic" event in Lucene's terms). */
@@ -636,9 +676,10 @@ public final class LuceneSearchIndex implements SearchIndex {
         return new LearnSphereException(SearchFailures.NEEDS_RESTART, "Search index " + what + ": writer stopped", e);
     }
 
-    /** Searches return nothing from now on, and the next open clears the index so it is rebuilt. */
+    /** Searches return nothing from now on, and the next rebuild or open clears the index first. */
     private void markForRebuild(Throwable cause) {
         needsRebuild = true;
+        damaged = true;
         LOG.error("The search index in {} is damaged; it will be rebuilt", folder, cause);
         try {
             Files.writeString(folder.resolve(REBUILD_MARKER), "The search index was found damaged and is rebuilt on the next open.\n",

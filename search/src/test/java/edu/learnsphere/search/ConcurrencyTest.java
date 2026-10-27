@@ -8,10 +8,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import edu.learnsphere.core.spi.IndexedChunk;
 import edu.learnsphere.core.spi.SearchHit;
+import edu.learnsphere.core.spi.SearchQuery;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -51,6 +53,16 @@ class ConcurrencyTest {
         pool.shutdownNow();
         assertThat(pool.awaitTermination(30, TimeUnit.SECONDS)).isTrue();
         index.close();
+    }
+
+    /** Waits until {@code searches} counted one, failing on a search error or after a minute. */
+    private void awaitSearches(AtomicInteger searches, String what) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.MINUTES.toNanos(1);
+        while (searches.get() == 0) {
+            assertThat(errors).isEmpty();
+            assertThat(System.nanoTime()).as("searches of " + what + " within a minute").isLessThan(deadline);
+            Thread.sleep(5);
+        }
     }
 
     private static IndexedChunk numbered(String course, int i) {
@@ -101,10 +113,13 @@ class ConcurrencyTest {
             }));
         }
 
-        for (Future<?> writer : writers) {
-            writer.get(90, TimeUnit.SECONDS);
+        try {
+            for (Future<?> writer : writers) {
+                writer.get(90, TimeUnit.SECONDS);
+            }
+        } finally {
+            writing.set(false);
         }
-        writing.set(false);
         for (Future<?> searcher : searchers) {
             searcher.get(30, TimeUnit.SECONDS);
         }
@@ -112,7 +127,16 @@ class ConcurrencyTest {
         assertThat(errors).isEmpty();
         assertThat(searches.get()).isPositive();
         assertThat(index.size()).isEqualTo(1000);
-        assertThat(index.search(query("b", "osmosis").withLimit(100))).hasSize(40)
+        // 72 passages of "b" mention osmosis; keyword search returns its 40 best. Exact counts come only from
+        // keyword search: the fake query vector for one word is nearly one-hot, most passages tie with it, and
+        // which of the tied passages approximate nearest-neighbour search returns depends on the segment layout
+        // the two writers happened to produce.
+        assertThat(index.search(new SearchQuery("osmosis", null, "b", Set.of(), 40, 0, 100, 60))).hasSize(40)
+                .allSatisfy(h -> {
+                    assertThat(h.courseId()).isEqualTo("b");
+                    assertThat(h.text()).contains("osmosis");
+                });
+        assertThat(index.search(query("b", "osmosis").withLimit(100))).hasSizeBetween(40, 80)
                 .allSatisfy(h -> assertThat(h.courseId()).isEqualTo("b"));
     }
 
@@ -141,10 +165,14 @@ class ConcurrencyTest {
             }));
         }
 
-        Thread.sleep(50);
-        index.rebuild(IntStream.range(0, 2_000).mapToObj(i -> passage("a", "new", null, "omega osmosis " + i)));
-        Thread.sleep(50);
-        rebuilding.set(false);
+        try {
+            // Waits for what the searches saw rather than for a fixed time, so a busy machine cannot skip a phase.
+            awaitSearches(sawOld, "the old contents");
+            index.rebuild(IntStream.range(0, 2_000).mapToObj(i -> passage("a", "new", null, "omega osmosis " + i)));
+            awaitSearches(sawNew, "the new contents");
+        } finally {
+            rebuilding.set(false);
+        }
         for (Future<?> searcher : searchers) {
             searcher.get(30, TimeUnit.SECONDS);
         }
