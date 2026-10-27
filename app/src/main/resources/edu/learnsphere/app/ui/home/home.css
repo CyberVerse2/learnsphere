@@ -1,0 +1,182 @@
+/*
+ * Home: the Study next hero with its beads, the week card, Continue and recent questions. Only the -ls-*
+ * tokens of the theme stylesheet are used.
+ */
+
+/* ---- Study next -------------------------------------------------------------------------------- */
+
+.study-hero {
+    -fx-background-color: -ls-border, -ls-surface;
+    -fx-background-insets: 0, 1px;
+    -fx-background-radius: 14px, 13px;
+    /* The same top and bottom as the week card beside it, so their first and last lines line up. */
+    -fx-padding: 28px 32px 24px 32px;
+}
+
+.study-hero-overline {
+    -fx-text-fill: -ls-accent;
+}
+
+.study-hero:caught-up .study-hero-overline {
+    -fx-text-fill: -ls-success-text;
+}
+
+.study-hero-headline {
+    -fx-font-size: 30px;
+    -fx-line-spacing: 1px;
+    -fx-text-fill: -ls-text;
+}
+
+.study-hero-detail {
+    -fx-font-size: 15px;
+    -fx-line-spacing: 3px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.study-hero-beads-caption {
+    -fx-text-fill: -ls-success-text;
+}
+
+.study-hero-courses {
+    -fx-padding: 4px 0 0 0;
+}
+
+.study-hero-course-title {
+    -fx-font-size: 13px;
+    -fx-text-fill: -ls-text;
+}
+
+.study-hero-course-count {
+    -fx-text-fill: -ls-text-muted;
+}
+
+.study-hero-shortcut {
+    -fx-text-fill: -ls-text-faint;
+}
+
+/* One bead per question: filled for due reviews, hollow for new questions, green for reviews done. */
+.bead {
+    -fx-pref-width: 12px;
+    -fx-pref-height: 12px;
+    -fx-background-radius: 999px;
+    -fx-border-radius: 999px;
+}
+
+.bead-due {
+    -fx-background-color: -ls-accent;
+}
+
+.bead-new {
+    -fx-background-color: -ls-accent-soft;
+    -fx-border-color: -ls-accent;
+    -fx-border-width: 1.5px;
+}
+
+.bead-done {
+    -fx-background-color: -ls-success;
+}
+
+.bead-more {
+    -fx-padding: 0 0 0 4px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+/* ---- Last 7 days ------------------------------------------------------------------------------- */
+
+.home-week {
+    -fx-padding: 28px 28px 24px 28px;
+}
+
+.home-week-streak {
+    -fx-font-size: 40px;
+    -fx-text-fill: -ls-text;
+}
+
+.home-week-streak-unit {
+    -fx-font-size: 14px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.home-week-hint {
+    -fx-font-size: 14px;
+    -fx-text-fill: -ls-text-muted;
+    -fx-padding: 6px 0 0 0;
+}
+
+.home-week-total {
+    -fx-text-fill: -ls-text-muted;
+}
+
+/* ---- Recent questions -------------------------------------------------------------------------- */
+
+.home-questions {
+    -fx-padding: 6px;
+}
+
+.home-question {
+    -fx-padding: 18px 20px 18px 18px;
+    -fx-background-radius: 10px;
+    -fx-cursor: hand;
+}
+
+.home-question:hover {
+    -fx-background-color: -ls-hover;
+}
+
+.home-question:focus-visible {
+    -fx-background-color: -ls-focus, -ls-surface;
+    -fx-background-insets: 0, 2px;
+    -fx-background-radius: 10px, 8px;
+}
+
+.home-question-rule {
+    -fx-background-color: -ls-border;
+    -fx-min-height: 1px;
+    -fx-pref-height: 1px;
+    -fx-max-height: 1px;
+    -fx-background-insets: 0 20px 0 74px;
+}
+
+.home-question-text {
+    -fx-font-size: 18px;
+    -fx-line-spacing: 1px;
+    -fx-text-fill: -ls-text;
+}
+
+.home-question-answer {
+    -fx-font-size: 14px;
+    -fx-line-spacing: 3px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.home-question-footer {
+    -fx-padding: 6px 0 0 0;
+}
+
+.home-question-meta {
+    -fx-text-fill: -ls-text-muted;
+}
+
+.home-ask {
+    -fx-padding: 20px 24px 20px 24px;
+}
+
+.home-ask-icon {
+    -fx-icon-color: -ls-accent;
+}
+
+.home-ask-title {
+    -fx-font-size: 14px;
+    -fx-text-fill: -ls-text;
+}
+
+.home-ask-text {
+    -fx-font-size: 14px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+/* ---- Welcome ----------------------------------------------------------------------------------- */
+
+.home-welcome {
+    -fx-padding: 48px 24px 48px 24px;
+}

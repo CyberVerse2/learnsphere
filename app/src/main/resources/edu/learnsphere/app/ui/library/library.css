@@ -1,0 +1,370 @@
+/*
+ * Library: the shelves, the course cards with their menus, and the sheets that open over the page
+ * (New course, Import course, course code). Only the -ls-* tokens of the theme stylesheet are used.
+ */
+
+/* ---- Sheets ------------------------------------------------------------------------------------ */
+
+.sheet-card {
+    -fx-background-color: -ls-border, -ls-raised;
+    -fx-background-insets: 0, 1px;
+    -fx-background-radius: 16px, 15px;
+    -fx-padding: 28px 32px 24px 32px;
+    -fx-spacing: 24px;
+    -fx-effect: dropshadow(gaussian, -ls-shadow-pop, 48, 0, 0, 16);
+}
+
+.sheet-title {
+    -fx-font-size: 24px;
+    -fx-text-fill: -ls-text;
+}
+
+.sheet-subtitle {
+    -fx-font-size: 14px;
+    -fx-line-spacing: 4px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.sheet-body {
+    -fx-spacing: 16px;
+}
+
+.sheet-footer {
+    -fx-spacing: 10px;
+    -fx-padding: 4px 0 0 0;
+}
+
+.sheet-error {
+    -fx-font-size: 13px;
+    -fx-text-fill: -ls-danger-text;
+}
+
+.field-hint {
+    -fx-text-fill: -ls-text-muted;
+}
+
+.sheet-notice {
+    -fx-background-color: -ls-surface-sunken;
+    -fx-background-radius: 10px;
+    -fx-padding: 12px 14px 12px 14px;
+}
+
+.sheet-notice-text {
+    -fx-font-size: 14px;
+    -fx-line-spacing: 3px;
+    -fx-text-fill: -ls-text;
+}
+
+.sheet-notice .ikonli-font-icon {
+    -fx-icon-color: -ls-text-muted;
+    -fx-translate-y: 2px;
+}
+
+.sheet-notice.tone-accent {
+    -fx-background-color: -ls-accent-soft;
+}
+
+.sheet-notice.tone-accent .ikonli-font-icon {
+    -fx-icon-color: -ls-accent;
+}
+
+.sheet-notice.tone-warning {
+    -fx-background-color: -ls-warning-soft;
+}
+
+.sheet-notice.tone-warning .sheet-notice-text {
+    -fx-text-fill: -ls-warning-text;
+}
+
+.sheet-notice.tone-warning .ikonli-font-icon {
+    -fx-icon-color: -ls-warning-text;
+}
+
+.sheet-notice.tone-danger {
+    -fx-background-color: -ls-danger-soft;
+}
+
+.sheet-notice.tone-danger .sheet-notice-text {
+    -fx-text-fill: -ls-danger-text;
+}
+
+.sheet-notice.tone-danger .ikonli-font-icon {
+    -fx-icon-color: -ls-danger-text;
+}
+
+.sheet-notice.tone-success {
+    -fx-background-color: -ls-success-soft;
+}
+
+.sheet-notice.tone-success .sheet-notice-text {
+    -fx-text-fill: -ls-success-text;
+}
+
+.sheet-notice.tone-success .ikonli-font-icon {
+    -fx-icon-color: -ls-success-text;
+}
+
+/* ---- New course -------------------------------------------------------------------------------- */
+
+.new-course-form {
+    -fx-spacing: 18px;
+}
+
+.new-course-preview {
+    -fx-pref-width: 280px;
+    -fx-min-width: 280px;
+    -fx-max-width: 280px;
+}
+
+.new-course-preview-caption {
+    -fx-text-fill: -ls-text-faint;
+}
+
+.new-course-preview-note {
+    -fx-text-fill: -ls-text-muted;
+}
+
+.new-course-preview .course-card-title:placeholder {
+    -fx-text-fill: -ls-text-faint;
+}
+
+.hue-picker {
+    -fx-padding: 2px 0 0 0;
+}
+
+.hue-swatch {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 13px;
+    -fx-padding: 3px;
+    -fx-cursor: hand;
+}
+
+.hue-swatch:hover {
+    -fx-background-color: -ls-border-strong, -ls-raised;
+    -fx-background-insets: 0, 1.5px;
+    -fx-background-radius: 13px, 11.5px;
+}
+
+.hue-swatch:selected {
+    -fx-background-color: -ls-accent, -ls-raised;
+    -fx-background-insets: 0, 2px;
+    -fx-background-radius: 13px, 11px;
+}
+
+.hue-swatch:focus-visible {
+    -fx-background-color: -ls-focus, -ls-border-strong, -ls-raised;
+    -fx-background-insets: -3px, 0, 2px;
+    -fx-background-radius: 16px, 13px, 11px;
+}
+
+.hue-swatch:selected:focus-visible {
+    -fx-background-color: -ls-focus, -ls-accent, -ls-raised;
+    -fx-background-insets: -3px, 0, 2px;
+    -fx-background-radius: 16px, 13px, 11px;
+}
+
+/* ---- Import course ----------------------------------------------------------------------------- */
+
+.import-header {
+    -fx-spacing: 24px;
+    -fx-alignment: center-left;
+}
+
+.import-cover {
+    -fx-pref-width: 200px;
+    -fx-min-width: 200px;
+    -fx-max-width: 200px;
+}
+
+.import-author,
+.import-facts {
+    -fx-text-fill: -ls-text-muted;
+}
+
+.import-title {
+    -fx-text-fill: -ls-text;
+}
+
+.import-subtitle {
+    -fx-font-size: 14px;
+    -fx-line-spacing: 3px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.import-code:invalid {
+    -fx-background-color: -ls-danger, -ls-surface-sunken;
+    -fx-background-insets: 0, 1.5px;
+    -fx-background-radius: 6px, 4.5px;
+}
+
+.import-code:invalid:focused {
+    -fx-background-color: -ls-focus, -ls-danger, -ls-surface;
+    -fx-background-insets: -3px, 0, 1.5px;
+    -fx-background-radius: 9px, 6px, 4.5px;
+}
+
+.import-progress-line {
+    -fx-text-fill: -ls-text-muted;
+}
+
+.import-summary {
+    -fx-font-size: 15px;
+    -fx-line-spacing: 4px;
+    -fx-text-fill: -ls-text;
+}
+
+.import-done-badge {
+    -fx-background-color: -ls-success-soft;
+    -fx-background-radius: 999px;
+    -fx-min-width: 36px;
+    -fx-min-height: 36px;
+    -fx-max-width: 36px;
+    -fx-max-height: 36px;
+    -fx-alignment: center;
+}
+
+.import-done-badge .ikonli-font-icon {
+    -fx-icon-color: -ls-success-text;
+    -fx-icon-size: 18px;
+}
+
+/* ---- Shelves and toolbar ----------------------------------------------------------------------- */
+
+.library-toolbar {
+    -fx-padding: 0 0 4px 0;
+    /* As tall with or without the search field, so the shelves stay put when the library empties. */
+    -fx-min-height: 44px;
+}
+
+.segment-count {
+    -fx-font-size: 12px;
+    -fx-text-fill: -ls-text-faint;
+    -fx-background-color: -ls-track;
+    -fx-background-radius: 999px;
+    -fx-padding: 1px 7px 1px 7px;
+}
+
+.segmented > .segment:selected .segment-count {
+    -fx-text-fill: -ls-text-muted;
+    -fx-background-color: -ls-surface-sunken;
+}
+
+.library-search > .text-field {
+    -fx-padding: 0 36px 0 36px;
+}
+
+.library-search-icon {
+    -fx-translate-x: 12px;
+}
+
+.library-search .ikonli-font-icon.library-search-icon {
+    -fx-icon-color: -ls-text-faint;
+}
+
+.library-search-clear {
+    -fx-translate-x: -6px;
+}
+
+.library-sort {
+    -fx-pref-width: 210px;
+}
+
+.library-note {
+    -fx-font-size: 15px;
+    -fx-line-spacing: 4px;
+}
+
+/* ---- Cards ------------------------------------------------------------------------------------- */
+
+.library-card > .card-menu-button {
+    -fx-background-color: -ls-raised;
+    -fx-background-radius: 999px;
+    -fx-effect: dropshadow(gaussian, -ls-shadow-hover, 8, 0, 0, 2);
+    -fx-opacity: 0;
+}
+
+.library-card:hover > .card-menu-button,
+.library-card:focus-within > .card-menu-button {
+    -fx-opacity: 1;
+}
+
+.library-card > .card-menu-button:hover {
+    -fx-background-color: -ls-raised;
+}
+
+.library-card > .card-menu-button:focus-visible {
+    -fx-background-color: -ls-focus, -ls-raised;
+    -fx-background-insets: -3px, 0;
+    -fx-background-radius: 999px, 999px;
+}
+
+.library-card.archived > .course-card .course-cover,
+.library-card.not-studying > .course-card .course-cover {
+    -fx-opacity: 0.55;
+}
+
+.library-card.archived > .course-card .course-card-title,
+.library-card.not-studying > .course-card .course-card-title {
+    -fx-text-fill: -ls-text-muted;
+}
+
+.card-version {
+    -fx-background-color: -ls-raised;
+    -fx-background-radius: 999px;
+    -fx-padding: 2px 9px 2px 9px;
+    -fx-text-fill: -ls-text-muted;
+    -fx-opacity: 0.92;
+}
+
+.new-course-tile {
+    -fx-background-color: transparent;
+    -fx-border-color: -ls-border-strong;
+    -fx-border-width: 1.5px;
+    -fx-border-style: segments(6px, 5px);
+    -fx-border-radius: 14px;
+    -fx-background-radius: 14px;
+    -fx-padding: 24px;
+    -fx-cursor: hand;
+    -fx-min-height: 240px;
+}
+
+.new-course-tile:hover {
+    -fx-background-color: -ls-hover;
+    -fx-border-color: -ls-accent-muted;
+}
+
+.new-course-tile:focus-visible {
+    -fx-background-color: -ls-focus, -ls-bg;
+    -fx-background-insets: -3px, 0;
+    -fx-background-radius: 17px, 14px;
+    -fx-border-color: -ls-accent;
+}
+
+.new-course-tile-badge {
+    -fx-background-color: -ls-accent-soft;
+    -fx-background-radius: 999px;
+    -fx-min-width: 48px;
+    -fx-min-height: 48px;
+    -fx-pref-width: 48px;
+    -fx-pref-height: 48px;
+}
+
+.new-course-tile-icon {
+    -fx-icon-color: -ls-accent;
+}
+
+.new-course-tile-title {
+    -fx-font-size: 20px;
+    -fx-text-fill: -ls-text;
+}
+
+.new-course-tile-text {
+    -fx-font-size: 13px;
+    -fx-line-spacing: 2px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.course-menu .menu-item {
+    -fx-padding: 8px 14px 8px 12px;
+}

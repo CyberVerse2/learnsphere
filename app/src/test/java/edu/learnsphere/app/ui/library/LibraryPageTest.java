@@ -1,0 +1,287 @@
+package edu.learnsphere.app.ui.library;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import edu.learnsphere.ai.fake.FakeAi;
+import edu.learnsphere.app.testing.RealWorkspaces;
+import edu.learnsphere.app.ui.Destination;
+import edu.learnsphere.app.ui.StudioTab;
+import edu.learnsphere.app.ui.library.CourseFixtures.Built;
+import edu.learnsphere.core.error.UserMessage;
+import edu.learnsphere.core.model.Course;
+import edu.learnsphere.core.model.Visibility;
+import edu.learnsphere.core.service.CourseFilter;
+import edu.learnsphere.core.service.CourseSummary;
+import edu.learnsphere.core.service.ExportOptions;
+import edu.learnsphere.core.service.ProfileDraft;
+import edu.learnsphere.core.service.ProfileSummary;
+import edu.learnsphere.core.service.SessionRequest;
+import edu.learnsphere.core.service.Workspace;
+import edu.learnsphere.core.sharing.SharingMessages;
+import edu.learnsphere.core.testing.MutableClock;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
+import javafx.scene.Node;
+import javafx.scene.control.Button;
+import javafx.scene.control.Labeled;
+import javafx.stage.Stage;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
+import org.testfx.api.FxRobot;
+import org.testfx.framework.junit5.ApplicationExtension;
+import org.testfx.framework.junit5.Start;
+
+/**
+ * The Library over the real services: importing a shared course, refusing the profile's own, New course, search,
+ * one primary action per view, and cards that survive reloads.
+ */
+@ExtendWith(ApplicationExtension.class)
+class LibraryPageTest {
+
+    private static final String CODE = "orbit-42";
+
+    @TempDir
+    Path dir;
+
+    private Stage stage;
+    private RealWorkspaces real;
+    private ScreenHarness screen;
+    private final MutableClock clock = MutableClock.fixed();
+
+    @Start
+    void start(Stage stage) {
+        this.stage = stage;
+    }
+
+    @AfterEach
+    void tearDown() {
+        if (screen != null) {
+            screen.close();
+        }
+        if (real != null) {
+            real.close();
+        }
+    }
+
+    @Test
+    void importsAProtectedCourseSharedByAnotherProfile(FxRobot robot) {
+        real = RealWorkspaces.open(dir, FakeAi.create(), clock);
+        Path file = sharedCourse(real.workspace(), Visibility.PROTECTED);
+
+        // A second learner on the same computer imports the file.
+        ProfileSummary grace = real.context().profiles().create(new ProfileDraft("Grace Hopper", 150, null));
+        Workspace before = real.workspace();
+        real.context().open(grace.id(), null);
+        RealWorkspaces.await(() -> real.context().workspace() != before && real.context().workspace() != null,
+                Duration.ofSeconds(30), "the second profile to open");
+
+        screen = new ScreenHarness(robot);
+        screen.show(stage, real.context(), Destination.LIBRARY);
+        LibraryPage library = screen.view(LibraryPage.class);
+        assertThat(texts(robot, ".empty-state-title")).containsExactly("No courses to study yet");
+
+        AtomicReference<ImportCourseDialog> dialog = new AtomicReference<>();
+        robot.interact(() -> dialog.set(library.importFrom(file)));
+        ScreenHarness.settle();
+        ImportCourseDialog sheet = dialog.get();
+        assertThat(sheet.step()).isEqualTo(ImportCourseDialog.Step.PREVIEW);
+        assertThat(sheet.info().title()).isEqualTo("Cell Biology");
+        assertThat(texts(robot, ".import-facts")).singleElement().asString()
+                .startsWith("Version 1 · 1 module · 3 questions");
+        assertThat(sheet.primaryButton().getText()).isEqualTo("Add to library");
+        assertThat(sheet.primaryButton().isDisabled()).as("no code typed yet").isTrue();
+
+        robot.clickOn(sheet.codeField()).write("wrong-code");
+        robot.clickOn(sheet.primaryButton());
+        ScreenHarness.settle();
+        assertThat(sheet.step()).isEqualTo(ImportCourseDialog.Step.PREVIEW);
+        assertThat(sheet.codeErrorText()).isEqualTo(UserMessage.WRONG_COURSE_CODE.text());
+
+        robot.interact(() -> sheet.codeField().setText(CODE));
+        robot.clickOn(sheet.primaryButton());
+        ScreenHarness.until(() -> sheet.step() == ImportCourseDialog.Step.DONE);
+        assertThat(sheet.sheet().titleText()).isEqualTo("Cell Biology is in your library");
+        assertThat(texts(robot, ".import-summary")).singleElement().asString().startsWith("3 questions are ready to study");
+
+        ScreenHarness.until(() -> library.cards().size() == 1);
+        assertThat(library.cards().getFirst().course().title()).isEqualTo("Cell Biology");
+        assertThat(library.cards().getFirst().course().enrolled()).isTrue();
+
+        robot.clickOn(sheet.primaryButton());
+        ScreenHarness.settle();
+        String imported = library.cards().isEmpty() ? null : library.cards().getFirst().course().id();
+        assertThat(screen.window().navigator().current()).isInstanceOf(Destination.Course.class);
+        assertThat(((Destination.Course) screen.window().navigator().current()).courseId()).isEqualTo(imported);
+    }
+
+    @Test
+    void refusesToImportACourseMadeInThisProfile(FxRobot robot) {
+        real = RealWorkspaces.open(dir, FakeAi.create(), clock);
+        Path file = sharedCourse(real.workspace(), Visibility.SHAREABLE);
+
+        screen = new ScreenHarness(robot);
+        screen.show(stage, real.context(), Destination.LIBRARY);
+        LibraryPage library = screen.view(LibraryPage.class);
+        AtomicReference<ImportCourseDialog> dialog = new AtomicReference<>();
+        robot.interact(() -> dialog.set(library.importFrom(file)));
+        ScreenHarness.settle();
+
+        ImportCourseDialog sheet = dialog.get();
+        assertThat(sheet.step()).isEqualTo(ImportCourseDialog.Step.PREVIEW);
+        assertThat(texts(robot, ".sheet-notice-text")).containsExactly(SharingMessages.COURSE_MADE_HERE.text());
+        assertThat(sheet.primaryButton().getText()).isEqualTo("Open course");
+        assertThat(real.workspace().courses().list(CourseFilter.all())).hasSize(1);
+    }
+
+    @Test
+    void createsANewCourseAndOpensItInTheStudio(FxRobot robot) {
+        real = RealWorkspaces.open(dir, FakeAi.create(), clock);
+        screen = new ScreenHarness(robot);
+        screen.show(stage, real.context(), Destination.LIBRARY);
+        LibraryPage library = screen.view(LibraryPage.class);
+        robot.interact(() -> library.shelf().setValue(LibraryPage.Shelf.CREATING));
+        assertThat(texts(robot, ".empty-state-title")).containsExactly("Turn your PDFs into a course");
+
+        robot.clickOn("New course");
+        ScreenHarness.settle();
+        assertThat(texts(robot, ".sheet-title")).containsExactly("New course");
+        assertThat(robot.lookup(".button").queryAllAs(javafx.scene.control.Button.class).stream()
+                .filter(b -> b.getText() != null && b.getText().equals("Create course")).findFirst().orElseThrow()
+                .isDisabled()).as("a title is needed").isTrue();
+
+        robot.write("Cell Biology");
+        // Picked on the FX thread: a robot click on a small swatch can miss on a busy machine.
+        javafx.scene.control.ToggleButton coral = robot.lookup(".hue-swatch")
+                .queryAllAs(javafx.scene.control.ToggleButton.class).stream()
+                .filter(b -> b.getAccessibleText().equals("Cover colour: Coral")).findFirst().orElseThrow();
+        robot.interact(coral::fire);
+        assertThat(coral.isSelected()).isTrue();
+        robot.clickOn("Create course");
+        ScreenHarness.settle();
+
+        List<CourseSummary> courses = real.workspace().courses().list(CourseFilter.creating());
+        assertThat(courses).singleElement().satisfies(course -> {
+            assertThat(course.title()).isEqualTo("Cell Biology");
+            assertThat(course.authorName()).isEqualTo("Ada Lovelace");
+            assertThat(course.coverHue()).isZero();
+        });
+        assertThat(screen.window().navigator().current())
+                .isEqualTo(new Destination.Studio(courses.getFirst().id(), StudioTab.DETAILS));
+    }
+
+    @Test
+    void searchFiltersByTitleOrAuthorAndSaysWhenNothingMatches(FxRobot robot) {
+        real = RealWorkspaces.open(dir, FakeAi.create(), clock);
+        Workspace ws = real.workspace();
+        CourseFixtures.flashcardCourse(ws, "Cell Biology", true, 1);
+        CourseFixtures.flashcardCourse(ws, "Organic Chemistry", true, 1);
+        screen = new ScreenHarness(robot);
+        screen.show(stage, real.context(), Destination.LIBRARY);
+        LibraryPage library = screen.view(LibraryPage.class);
+        assertThat(library.cards()).hasSize(2);
+
+        LibraryCard chemistry = library.cards().stream()
+                .filter(card -> card.course().title().equals("Organic Chemistry")).findFirst().orElseThrow();
+
+        robot.interact(() -> library.searchField().setText("chem"));
+        assertThat(library.cards()).extracting(card -> card.course().title()).containsExactly("Organic Chemistry");
+        assertThat(library.cards().getFirst()).as("searching keeps the card").isSameAs(chemistry);
+
+        robot.interact(() -> library.searchField().setText("linear algebra"));
+        assertThat(library.cards()).isEmpty();
+        assertThat(texts(robot, ".empty-state-title")).containsExactly("No courses match “linear algebra”");
+        robot.clickOn("Clear search");
+        assertThat(library.cards()).hasSize(2);
+    }
+
+    @Test
+    void eachViewHasOnePrimaryAction(FxRobot robot) {
+        real = RealWorkspaces.open(dir, FakeAi.create(), clock);
+        screen = new ScreenHarness(robot);
+        screen.show(stage, real.context(), Destination.LIBRARY);
+        LibraryPage library = screen.view(LibraryPage.class);
+
+        // An empty library: its empty state carries the actions, and there is nothing to search.
+        assertThat(primaryButtons(robot)).containsExactly("Import a course");
+        assertThat(library.newCourseButton().getScene()).isNull();
+        assertThat(shown(library.searchField())).isFalse();
+
+        // A course made here and not studied: Studying leads with Import, so New course in the header is quiet.
+        CourseFixtures.flashcardCourse(real.workspace(), "Cell Biology", false, 1);
+        ScreenHarness.until(() -> library.newCourseButton().getScene() != null);
+        assertThat(texts(robot, ".empty-state-title")).containsExactly("No courses to study yet");
+        assertThat(primaryButtons(robot)).containsExactly("Import a course");
+        assertThat(shown(library.searchField())).isTrue();
+
+        // Creating shows the card, and New course in the header is the one primary.
+        robot.interact(() -> library.shelf().setValue(LibraryPage.Shelf.CREATING));
+        assertThat(library.cards()).hasSize(1);
+        assertThat(primaryButtons(robot)).containsExactly("New course");
+    }
+
+    @Test
+    void aReloadKeepsTheCardsOfUnchangedCourses(FxRobot robot) {
+        real = RealWorkspaces.open(dir, FakeAi.create(), clock);
+        Workspace ws = real.workspace();
+        Built biology = CourseFixtures.flashcardCourse(ws, "Cell Biology", true, 2);
+        CourseFixtures.flashcardCourse(ws, "Organic Chemistry", true, 2);
+        screen = new ScreenHarness(robot);
+        screen.show(stage, real.context(), Destination.LIBRARY);
+        LibraryPage library = screen.view(LibraryPage.class);
+        LibraryCard chemistry = library.cards().stream()
+                .filter(card -> card.course().title().equals("Organic Chemistry")).findFirst().orElseThrow();
+        robot.interact(() -> chemistry.card().requestFocus());
+        int loads = library.loads();
+
+        CourseFixtures.study(ws, SessionRequest.studyNext(biology.id()));
+        ScreenHarness.until(() -> library.loads() > loads && library.cards().stream()
+                .anyMatch(card -> card.course().id().equals(biology.id()) && card.course().progress() > 0));
+        assertThat(library.cards()).contains(chemistry);
+        assertThat(chemistry.card().isFocused()).as("the focus stays on the card").isTrue();
+    }
+
+    /** A course made in the open profile with three approved cards, published and saved as a course file. */
+    private Path sharedCourse(Workspace ws, Visibility visibility) {
+        Built built = CourseFixtures.flashcardCourse(ws, "Cell Biology", true, 3);
+        Course course = built.course();
+        ws.courses().setVisibility(course.id(), visibility);
+        ws.courses().publish(course.id(), "First release");
+        Path file = dir.resolve("cell-biology.learnsphere");
+        ws.sharing().exportCourse(course.id(), file, visibility == Visibility.PROTECTED
+                ? ExportOptions.protectedWith(CODE.toCharArray()) : ExportOptions.standard());
+        return file;
+    }
+
+    /** The labels of the primary buttons on screen. */
+    private static List<String> primaryButtons(FxRobot robot) {
+        return robot.lookup(".button.primary").queryAllAs(Button.class).stream()
+                .filter(LibraryPageTest::shown)
+                .map(Button::getText)
+                .toList();
+    }
+
+    /** True when {@code node} and every parent are visible in a window. */
+    private static boolean shown(Node node) {
+        if (node.getScene() == null) {
+            return false;
+        }
+        for (Node n = node; n != null; n = n.getParent()) {
+            if (!n.isVisible()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static List<String> texts(FxRobot robot, String query) {
+        return robot.lookup(query).queryAll().stream()
+                .filter(Node::isVisible)
+                .filter(Labeled.class::isInstance)
+                .map(node -> ((Labeled) node).getText())
+                .toList();
+    }
+}

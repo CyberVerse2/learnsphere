@@ -1,0 +1,331 @@
+/*
+ * Course page: the title-page header, notices, the module path, the material list and the side column.
+ * Only the -ls-* tokens of the theme stylesheet are used.
+ */
+
+/* ---- Header ------------------------------------------------------------------------------------ */
+
+.course-hero {
+    -fx-padding: 8px 0 8px 0;
+}
+
+.course-hero-cover {
+    -fx-effect: dropshadow(gaussian, -ls-shadow-hover, 28, 0, 0, 10);
+}
+
+.course-hero-meta {
+    -fx-text-fill: -ls-text-muted;
+}
+
+.course-hero-title {
+    -fx-font-size: 40px;
+    -fx-line-spacing: 0;
+    -fx-text-fill: -ls-text;
+}
+
+.course-hero-subtitle {
+    -fx-font-size: 19px;
+    -fx-line-spacing: 2px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.course-hero-description {
+    -fx-font-size: 15px;
+    -fx-line-spacing: 4px;
+    -fx-text-fill: -ls-text-muted;
+    -fx-padding: 4px 0 0 0;
+}
+
+.button.quiet.course-hero-more {
+    -fx-padding: 0 8px 0 0;
+}
+
+.course-hero-actions {
+    -fx-padding: 4px 0 0 0;
+}
+
+.button.icon-button.course-hero-more-button {
+    -fx-min-width: 48px;
+    -fx-pref-width: 48px;
+    -fx-max-width: 48px;
+    -fx-min-height: 48px;
+    -fx-pref-height: 48px;
+    -fx-max-height: 48px;
+    -fx-background-color: -ls-border-strong, -ls-surface;
+    -fx-background-insets: 0, 1px;
+    -fx-background-radius: 12px, 11px;
+}
+
+.button.icon-button.course-hero-more-button:hover {
+    -fx-background-color: -ls-border-strong, -ls-surface-sunken;
+}
+
+.button.icon-button.course-hero-more-button:focus-visible {
+    -fx-background-color: -ls-focus, -ls-border-strong, -ls-surface;
+    -fx-background-insets: -3px, 0, 1px;
+    -fx-background-radius: 15px, 12px, 11px;
+}
+
+/* ---- Notices ----------------------------------------------------------------------------------- */
+
+.course-notice {
+    -fx-background-color: -ls-surface-sunken;
+    -fx-background-radius: 14px;
+    -fx-padding: 16px 20px 16px 20px;
+}
+
+.course-notice-title {
+    -fx-font-size: 14px;
+    -fx-text-fill: -ls-text;
+}
+
+.course-notice-text {
+    -fx-font-size: 14px;
+    -fx-line-spacing: 3px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.course-notice.tone-accent {
+    -fx-background-color: -ls-accent-soft;
+}
+
+.course-notice.tone-accent .course-notice-icon {
+    -fx-icon-color: -ls-accent;
+}
+
+.course-notice.tone-warning {
+    -fx-background-color: -ls-warning-soft;
+}
+
+.course-notice.tone-warning .course-notice-icon,
+.course-notice.tone-warning .course-notice-title {
+    -fx-icon-color: -ls-warning-text;
+    -fx-text-fill: -ls-warning-text;
+}
+
+/* ---- Columns ----------------------------------------------------------------------------------- */
+
+.course-columns {
+    -fx-padding: 8px 0 0 0;
+}
+
+.course-none {
+    -fx-font-size: 15px;
+    -fx-line-spacing: 4px;
+}
+
+/* ---- Module path ------------------------------------------------------------------------------- */
+
+.module-trail {
+    -fx-spacing: 0;
+}
+
+.module-trail-step {
+    -fx-padding: 0 0 4px 0;
+}
+
+.module-trail-step > .module-trail-rail {
+    -fx-padding: 0 0 6px 0;
+}
+
+.module-trail-line {
+    -fx-background-color: -ls-border-strong;
+    -fx-min-width: 2px;
+    -fx-pref-width: 2px;
+    -fx-max-width: 2px;
+    -fx-min-height: 18px;
+    -fx-background-radius: 1px;
+}
+
+.module-trail-step.complete > .module-trail-rail > .module-trail-line {
+    -fx-background-color: -ls-success;
+    -fx-opacity: 0.5;
+}
+
+.module-trail-number {
+    -fx-font-size: 13px;
+    -fx-text-fill: -ls-text;
+}
+
+.module-trail-check {
+    -fx-icon-color: -ls-success;
+}
+
+.module-trail-title {
+    -fx-font-size: 20px;
+    -fx-line-spacing: 1px;
+    -fx-text-fill: -ls-text;
+    -fx-padding: 4px 0 0 0;
+}
+
+.module-trail-summary {
+    -fx-font-size: 14px;
+    -fx-line-spacing: 3px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.module-trail-facts {
+    -fx-padding: 6px 0 28px 0;
+}
+
+.module-trail-studied {
+    -fx-text-fill: -ls-text-muted;
+}
+
+.module-trail-step.complete .module-trail-studied {
+    -fx-text-fill: -ls-success-text;
+}
+
+.module-trail-due {
+    -fx-text-fill: -ls-accent;
+}
+
+.button.module-trail-quiz {
+    -fx-translate-y: 4px;
+}
+
+/* ---- Material ---------------------------------------------------------------------------------- */
+
+.course-material-card {
+    -fx-padding: 6px;
+}
+
+.course-material-rule {
+    -fx-background-color: -ls-border;
+    -fx-min-height: 1px;
+    -fx-pref-height: 1px;
+    -fx-max-height: 1px;
+    -fx-background-insets: 0 16px 0 48px;
+}
+
+/* ---- Side column ------------------------------------------------------------------------------- */
+
+.course-today,
+.course-practise,
+.course-concepts {
+    -fx-padding: 22px 24px 20px 24px;
+}
+
+.course-today-overline,
+.course-practise-overline,
+.course-concepts-overline {
+    -fx-text-fill: -ls-text-muted;
+}
+
+.course-today-numeral {
+    -fx-font-size: 40px;
+    -fx-text-fill: -ls-text;
+}
+
+.course-today-unit {
+    -fx-font-size: 15px;
+    -fx-text-fill: -ls-text;
+}
+
+.course-today-headline {
+    -fx-font-size: 22px;
+    -fx-text-fill: -ls-text;
+}
+
+.course-today-detail {
+    -fx-font-size: 14px;
+    -fx-line-spacing: 3px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.course-today-rule {
+    -fx-background-color: -ls-border;
+    -fx-min-height: 1px;
+    -fx-pref-height: 1px;
+    -fx-max-height: 1px;
+    -fx-translate-y: 4px;
+}
+
+.course-today-studied {
+    -fx-font-size: 14px;
+    -fx-text-fill: -ls-text;
+}
+
+.course-today .progress-ring {
+    -fx-translate-y: 4px;
+}
+
+.course-today .button.quiet {
+    -fx-translate-x: -10px;
+    -fx-translate-y: 6px;
+}
+
+/* Rows that act as buttons: the course's PDFs and the ways to practise. */
+.action-row {
+    -fx-background-radius: 10px;
+    -fx-padding: 12px 12px 12px 12px;
+    -fx-cursor: hand;
+}
+
+.course-material-row {
+    -fx-padding: 14px 16px 14px 16px;
+}
+
+.action-row:hover {
+    -fx-background-color: -ls-hover;
+}
+
+.action-row:pressed {
+    -fx-background-color: -ls-pressed;
+}
+
+.action-row:focus-visible {
+    -fx-background-color: -ls-focus, -ls-surface;
+    -fx-background-insets: 0, 2px;
+    -fx-background-radius: 10px, 8px;
+}
+
+.action-row:disabled {
+    -fx-opacity: 0.55;
+    -fx-cursor: default;
+}
+
+.action-row-icon {
+    -fx-icon-color: -ls-accent;
+}
+
+.action-row-title {
+    -fx-font-size: 14px;
+    -fx-text-fill: -ls-text;
+}
+
+.action-row-caption {
+    -fx-text-fill: -ls-text-muted;
+}
+
+.action-row-arrow {
+    -fx-icon-color: -ls-text-faint;
+}
+
+.action-row:hover .action-row-arrow {
+    -fx-icon-color: -ls-text-muted;
+}
+
+.course-concepts .button.quiet {
+    -fx-translate-x: -8px;
+}
+
+.course-concepts-hint {
+    -fx-text-fill: -ls-text-faint;
+}
+
+.chip.course-concept-chip {
+    -fx-font-size: 13px;
+    -fx-padding: 5px 12px 5px 12px;
+}
+
+.chip.course-concept-chip.unstudied {
+    -fx-background-color: transparent;
+    -fx-border-color: -ls-border-strong;
+    -fx-border-radius: 999px;
+    -fx-text-fill: -ls-text-muted;
+}
+
+.course-menu .menu-item {
+    -fx-padding: 8px 14px 8px 12px;
+}
