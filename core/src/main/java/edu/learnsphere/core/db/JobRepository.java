@@ -175,18 +175,6 @@ public final class JobRepository {
                 .bind("id", id).bind("now", clock.millis()).execute()) > 0;
     }
 
-    /** Queued and running jobs working on any of {@code subjectIds}, in run order. */
-    public List<Job> listActiveBySubjects(Collection<String> subjectIds) {
-        if (subjectIds.isEmpty()) {
-            return List.of();
-        }
-        return db.withHandle(h -> h.createQuery("""
-                        SELECT * FROM jobs WHERE subject_id IN (<subjects>) AND status IN ('queued', 'running')
-                        ORDER BY priority DESC, created_at, id
-                        """)
-                .bindList("subjects", List.copyOf(subjectIds)).map(JOB).list());
-    }
-
     /** Puts jobs left running by an interrupted run back in the queue; returns how many. */
     public int requeueRunning() {
         return db.withHandle(h -> h.createUpdate("UPDATE jobs SET status = 'queued', updated_at = :now WHERE status = 'running'")

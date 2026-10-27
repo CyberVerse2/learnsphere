@@ -267,6 +267,34 @@ public final class LearningItemRepository {
         return counts;
     }
 
+    /** How many items were drafted from passages of a document. */
+    public int countBySourceDocument(String documentId) {
+        return db.withHandle(h -> h.createQuery("""
+                        SELECT COUNT(*) FROM learning_items i JOIN chunks c ON c.id = i.source_chunk_id
+                        WHERE c.document_id = :d
+                        """)
+                .bind("d", documentId).mapTo(Integer.class).one());
+    }
+
+    /** Drafts of a course whose source passage does not support the answer. */
+    public int countUnsupportedDrafts(String courseId) {
+        return db.withHandle(h -> h.createQuery("""
+                        SELECT COUNT(*) FROM learning_items
+                        WHERE course_id = :c AND status = 'draft' AND support = 'unsupported'
+                        """)
+                .bind("c", courseId).mapTo(Integer.class).one());
+    }
+
+    /** How many items of a course have at least one open flag. */
+    public int countFlagged(String courseId) {
+        return db.withHandle(h -> h.createQuery("""
+                        SELECT COUNT(*) FROM learning_items i
+                        WHERE i.course_id = :c
+                          AND EXISTS (SELECT 1 FROM flags f WHERE f.item_id = i.id AND f.resolved_at IS NULL)
+                        """)
+                .bind("c", courseId).mapTo(Integer.class).one());
+    }
+
     public boolean setStatus(String id, ItemStatus status) {
         return setStatus(List.of(id), status) > 0;
     }
