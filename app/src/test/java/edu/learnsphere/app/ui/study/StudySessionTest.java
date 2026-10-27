@@ -15,23 +15,16 @@ import edu.learnsphere.core.model.Course;
 import edu.learnsphere.core.model.CourseModule;
 import edu.learnsphere.core.model.GradedBy;
 import edu.learnsphere.core.model.ItemType;
-import edu.learnsphere.core.model.JobStatus;
 import edu.learnsphere.core.model.Rating;
+import edu.learnsphere.core.model.SessionKind;
 import edu.learnsphere.core.service.CourseDraft;
-import edu.learnsphere.core.service.DocumentSummary;
+import edu.learnsphere.core.service.DashboardData;
 import edu.learnsphere.core.service.Feedback;
-import edu.learnsphere.core.service.GenerationRequest;
-import edu.learnsphere.core.service.ItemFilter;
 import edu.learnsphere.core.service.ItemStats;
-import edu.learnsphere.core.service.ItemSummary;
-import edu.learnsphere.core.service.JobUpdate;
 import edu.learnsphere.core.service.SessionItem;
 import edu.learnsphere.core.service.SessionRequest;
+import edu.learnsphere.core.service.SettingKeys;
 import edu.learnsphere.core.service.ThemePreference;
-import edu.learnsphere.core.service.Workspace;
-import edu.learnsphere.pdf.testing.TestPdf;
-import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.EnumSet;
@@ -110,6 +103,9 @@ class StudySessionTest {
 
     @Test
     void t05AStudySessionSchedulesReviews(FxRobot robot) {
+        DashboardData before = real.workspace().progress().dashboard();
+        assertThat(before.reviewsToday()).isZero();
+        assertThat(before.studyNext().newCount()).isEqualTo(5);
         assertThat(window.navigator().current()).isEqualTo(Destination.HOME);
         robot.clickOn(button(window.getScene().getRoot(), "Start studying"));
         settle();
@@ -196,6 +192,46 @@ class StudySessionTest {
         assertThat(stat("Time")).isEqualTo("<1");
         assertThat(texts(page().root(), ".summary-percent")).containsExactly("80%");
         assertThat(texts(page().root(), ".summary-headline")).containsExactly("Good session");
+
+        robot.type(KeyCode.ESCAPE);
+        settle();
+
+        // Home shows the reviews done today and nothing more due: every question was answered and scheduled.
+        assertThat(window.navigator().current()).isEqualTo(Destination.HOME);
+        DashboardData after = real.workspace().progress().dashboard();
+        assertThat(after.reviewsToday()).as("answers today, the comeback included").isEqualTo(6);
+        assertThat(after.studyNext().dueCount()).isZero();
+        assertThat(after.studyNext().newCount()).isZero();
+        List<String> home = texts(window.navigator().currentView().root(), ".label");
+        assertThat(home).as("Home's reviews done today").anyMatch(text -> text.contains("done today"));
+        assertThat(home).anyMatch(text -> text.equals("6") || text.startsWith("6 review"));
+    }
+
+    @Test
+    void newQuestionsStayWithinTheDailyLimit(FxRobot robot) {
+        real.workspace().settings().set(SettingKeys.NEW_ITEMS_PER_DAY, 2);
+        startStudy(robot, SessionRequest.studyNext());
+
+        assertThat(page().counterText()).isEqualTo("1 of 2");
+        assertThat(page().session().items()).allMatch(SessionItem::isNew);
+        for (int i = 0; i < 2; i++) {
+            answer(robot, page().currentItem(), true, null);
+            robot.type(KeyCode.ENTER);
+            settle();
+        }
+        assertThat(page().state()).isEqualTo(StudyPage.State.SUMMARY);
+        assertThat(stat("New questions")).isEqualTo("2");
+        assertThat(texts(page().root(), ".summary-ready")).as("nothing more today").isEmpty();
+
+        robot.type(KeyCode.ENTER);
+        settle();
+        assertThat(window.navigator().current()).isEqualTo(Destination.HOME);
+        robot.interact(() -> window.navigator().navigate(new Destination.Study(SessionRequest.studyNext())));
+        settle();
+
+        assertThat(page().state()).as("nothing new until tomorrow").isEqualTo(StudyPage.State.EMPTY);
+        assertThat(texts(page().root(), ".empty-state-title")).containsExactly("Nothing to review right now");
+        assertThat(real.workspace().practice().studyNext(null).newCount()).isZero();
     }
 
     // ---- each kind of question --------------------------------------------------------------------------
@@ -213,11 +249,13 @@ class StudySessionTest {
         assertThat(question.options().get(1).getPseudoClassStates()).doesNotContain(CHOSEN);
         assertThat(question.options().get(0).getPseudoClassStates()).contains(CHOSEN);
         assertThat(page().checkButton().isDisabled()).isFalse();
+        double column = columnX();
 
         robot.type(KeyCode.ENTER);
         settle();
 
         assertThat(page().state()).isEqualTo(StudyPage.State.FEEDBACK);
+        assertThat(columnX()).as("the column stays put when the page starts to scroll").isCloseTo(column, within(1.0));
         assertThat(question.options()).anyMatch(option -> option.getStyleClass().contains("correct")
                 || option.getStyleClass().contains("revealed"));
     }
@@ -323,6 +361,9 @@ class StudySessionTest {
         for (Rating rating : Rating.values()) {
             assertThat(card.intervalText(rating)).as(rating.name()).isNotBlank();
         }
+        List<Double> widths = page().root().lookupAll(".rating-button").stream()
+                .map(node -> node.getLayoutBounds().getWidth()).toList();
+        assertThat(widths).hasSize(4).allSatisfy(width -> assertThat(width).isCloseTo(widths.getFirst(), within(1.0)));
         long previewGood = real.workspace().practice().nextReviews(page().currentItem().itemId()).get(Rating.GOOD);
 
         robot.type(KeyCode.DIGIT3);
@@ -356,7 +397,7 @@ class StudySessionTest {
     // ---- hints, the source page and leaving ---------------------------------------------------------------
 
     @Test
-    void aHintRulesOptionsOutAndIsCounted(FxRobot robot) {
+    void hintsComeOneStepAtATimeAndAreCounted(FxRobot robot) {
         startStudy(robot, SessionRequest.studyNext());
         advanceTo(robot, ItemType.MCQ);
 
@@ -364,13 +405,68 @@ class StudySessionTest {
         settle();
 
         assertThat(page().hintsUsed()).isEqualTo(1);
-        assertThat(page().root().lookupAll(".study-option.ruled-out")).isNotEmpty();
         assertThat(page().root().lookup(".hint-callout")).isNotNull();
-        assertThat(page().hintButton().getParent()).as("one hint per question").isNull();
+        assertThat(texts(page().root(), ".hint-title")).containsExactly("Hint 1 of 2");
+        assertThat(texts(page().root(), ".hint-text")).singleElement().asString().startsWith("Look back at page");
+        assertThat(page().root().lookupAll(".study-option.ruled-out")).as("not yet").isEmpty();
+        assertThat(page().hintButton().getText()).isEqualTo("Another hint");
 
         robot.type(KeyCode.H);
         settle();
+
+        assertThat(page().hintsUsed()).isEqualTo(2);
+        assertThat(texts(page().root(), ".hint-title")).containsExactly("Hint 2 of 2");
+        assertThat(texts(page().root(), ".hint-text")).hasSize(2).last().asString().endsWith("hidden.");
+        assertThat(page().root().lookupAll(".study-option.ruled-out")).isNotEmpty();
+        assertThat(page().hintButton().getParent()).as("no more steps").isNull();
+
+        robot.type(KeyCode.H);
+        settle();
+        assertThat(page().hintsUsed()).isEqualTo(2);
+
+        answer(robot, page().currentItem(), true, Confidence.CERTAIN);
+        assertThat(feedback().rating()).as("a hint caps the rating").isEqualTo(Rating.HARD);
+    }
+
+    @Test
+    void clickingAHintKeepsTheKeyboardOnTheQuestion(FxRobot robot) {
+        startStudy(robot, SessionRequest.studyNext());
+        advanceTo(robot, ItemType.MCQ);
+
+        robot.clickOn(page().hintButton());
+        settle();
+
         assertThat(page().hintsUsed()).isEqualTo(1);
+        assertThat(leaveButton().isFocused()).isFalse();
+        assertThat(window.getScene().getFocusOwner()).isSameAs(page().root());
+        answer(robot, page().currentItem(), true, null);
+        assertThat(window.navigator().current()).isInstanceOf(Destination.Study.class);
+        assertThat(window.getScene().getRoot().lookup(".modal")).isNull();
+    }
+
+    @Test
+    void lettersTypedAfterClickingAHintGoInTheBlank(FxRobot robot) {
+        startStudy(robot, SessionRequest.studyNext());
+        advanceTo(robot, ItemType.CLOZE);
+        ClozeQuestion question = (ClozeQuestion) page().question();
+
+        robot.clickOn(page().hintButton());
+        settle();
+        robot.write("mi");
+
+        assertThat(page().hintsUsed()).isEqualTo(1);
+        assertThat(question.field().getText()).isEqualTo("mi");
+    }
+
+    @Test
+    void theLeaveButtonNeverTakesTheKeyboard(FxRobot robot) {
+        startStudy(robot, SessionRequest.studyNext());
+        assertThat(leaveButton().isFocusTraversable()).isFalse();
+
+        for (int i = 0; i < 12; i++) {
+            robot.type(KeyCode.TAB);
+            assertThat(leaveButton().isFocused()).as("Tab " + (i + 1)).isFalse();
+        }
     }
 
     @Test
@@ -379,7 +475,7 @@ class StudySessionTest {
         advanceTo(robot, ItemType.MCQ);
         answer(robot, page().currentItem(), true, null);
 
-        robot.interact(sourceLink()::fire);
+        robot.clickOn(sourceLink());
         settle();
 
         assertThat(page().isSourceOpen()).isTrue();
@@ -393,6 +489,13 @@ class StudySessionTest {
         assertThat(page().isSourceOpen()).isFalse();
         assertThat(page().state()).isEqualTo(StudyPage.State.FEEDBACK);
         assertThat(window.navigator().current()).isInstanceOf(Destination.Study.class);
+        assertThat(window.getScene().getFocusOwner()).as("Enter continues").isSameAs(page().feedback().continueButton());
+
+        robot.type(KeyCode.ENTER);
+        settle();
+
+        assertThat(page().isSourceOpen()).isFalse();
+        assertThat(page().state()).isIn(StudyPage.State.QUESTION, StudyPage.State.SUMMARY);
     }
 
     @Test
@@ -400,14 +503,21 @@ class StudySessionTest {
         startStudy(robot, SessionRequest.studyNext());
         answer(robot, page().currentItem(), true, null);
 
-        robot.type(KeyCode.ESCAPE);
+        robot.clickOn(leaveButton());
         settle();
         assertThat(texts(window.getScene().getRoot(), ".modal-message").getFirst())
                 .startsWith("Your answers so far are saved.");
-        robot.clickOn((Node) window.getScene().getRoot().lookup(".modal .modal-cancel"));
+        robot.clickOn(window.getScene().getRoot().lookup(".modal .modal-cancel"));
         settle();
         assertThat(window.navigator().current()).isInstanceOf(Destination.Study.class);
         assertThat(page().state()).isEqualTo(StudyPage.State.FEEDBACK);
+        assertThat(leaveButton().isFocused()).as("Keep studying").isFalse();
+
+        robot.type(KeyCode.ENTER);
+        settle();
+        assertThat(page().state()).as("Enter carries on").isEqualTo(StudyPage.State.QUESTION);
+        assertThat(page().counterText()).startsWith("2 of");
+        answer(robot, page().currentItem(), true, null);
 
         robot.type(KeyCode.ESCAPE);
         settle();
@@ -416,6 +526,24 @@ class StudySessionTest {
         robot.clickOn(leave);
         settle();
 
+        assertThat(window.navigator().current()).isEqualTo(Destination.HOME);
+    }
+
+    @Test
+    void anotherPageTakingOverClosesTheLeaveQuestion(FxRobot robot) {
+        startStudy(robot, SessionRequest.studyNext());
+        answer(robot, page().currentItem(), true, null);
+        robot.type(KeyCode.ESCAPE);
+        settle();
+        assertThat(window.getScene().getRoot().lookup(".modal")).isNotNull();
+
+        // As the Go menu's Home would.
+        robot.interact(() -> window.navigator().navigate(Destination.HOME));
+        settle();
+        WaitForAsyncUtils.sleep(400, java.util.concurrent.TimeUnit.MILLISECONDS);
+        settle();
+
+        assertThat(window.getScene().getRoot().lookup(".modal")).isNull();
         assertThat(window.navigator().current()).isEqualTo(Destination.HOME);
     }
 
@@ -465,6 +593,40 @@ class StudySessionTest {
     }
 
     @Test
+    void anEmptyModuleQuizOffersTheRestOfTheCourse(FxRobot robot) {
+        CourseModule tissues = real.workspace().courses().addModule(courseId, "Tissues");
+
+        robot.interact(() -> window.navigator().navigate(
+                new Destination.Study(SessionRequest.moduleQuiz(courseId, tissues.id()))));
+        settle();
+
+        assertThat(page().state()).isEqualTo(StudyPage.State.EMPTY);
+        assertThat(texts(page().root(), ".empty-state-title"))
+                .containsExactly("Nothing to practise in this module right now");
+        assertThat(texts(page().root(), ".empty-state-message")).containsExactly("5 questions are ready in this course.");
+
+        robot.type(KeyCode.ENTER);
+        settle();
+
+        assertThat(page().state()).isEqualTo(StudyPage.State.QUESTION);
+        assertThat(page().session().kind()).isEqualTo(SessionKind.STUDY_NEXT);
+        assertThat(page().counterText()).isEqualTo("1 of 5");
+    }
+
+    @Test
+    void noWeakSpotsSaysSoAndOffersStudyNext(FxRobot robot) {
+        robot.interact(() -> window.navigator().navigate(
+                new Destination.Study(SessionRequest.weakConcepts(courseId))));
+        settle();
+
+        assertThat(page().state()).isEqualTo(StudyPage.State.EMPTY);
+        assertThat(texts(page().root(), ".empty-state-title")).containsExactly("No weak spots right now");
+        assertThat(texts(page().root(), ".empty-state-message")).containsExactly(
+                "Concepts you find hard show up here as you study. 5 questions are ready in this course.");
+        assertThat(button(page().root(), "Start studying").isVisible()).isTrue();
+    }
+
+    @Test
     void studyMoreStartsAgainOnTheSamePage(FxRobot robot) {
         startStudy(robot, SessionRequest.studyNext().withSize(1));
         SessionItem first = page().currentItem();
@@ -488,49 +650,7 @@ class StudySessionTest {
 
     /** A course with one approved, generated question of every kind, enrolled. */
     private String seedCourse() {
-        Workspace ws = real.workspace();
-        Course course = ws.courses().create(CourseDraft.titled("Cell Biology"));
-        CourseModule module = ws.courses().addModule(course.id(), "Cells");
-        DocumentSummary document = ws.documents().importPdf(course.id(), module.id(), cellsPdf());
-        real.awaitSettled(document.id());
-        // One request for every kind: the questions come from different passages, so none is a near-duplicate.
-        JobUpdate job = ws.generation().generate(new GenerationRequest(course.id(), module.id(),
-                EnumSet.allOf(ItemType.class), ItemType.values().length, null, Set.of()));
-        RealWorkspaces.await(() -> {
-            JobStatus status = ws.jobs().find(job.jobId()).orElseThrow().status();
-            return status == JobStatus.DONE || status == JobStatus.FAILED || status == JobStatus.CANCELLED;
-        }, Duration.ofSeconds(60), "questions to be written");
-        assertThat(ws.jobs().find(job.jobId()).orElseThrow().status()).isEqualTo(JobStatus.DONE);
-        List<ItemSummary> drafts = ws.items().list(ItemFilter.reviewQueue(course.id()));
-        assertThat(drafts).extracting(summary -> summary.item().type()).containsExactlyInAnyOrder(ItemType.values());
-        ws.items().approveAll(drafts.stream().map(summary -> summary.item().id()).toList());
-        ws.courses().enrol(course.id());
-        return course.id();
-    }
-
-    /** Six pages, each opening with a plain statement the questions are written from. */
-    private Path cellsPdf() {
-        String[][] pages = {
-                {"Membranes", "The cell membrane controls which substances enter and leave the cell."},
-                {"Mitochondria", "Mitochondria release energy from glucose during aerobic respiration."},
-                {"Ribosomes", "Ribosomes build proteins by joining amino acids in the order messenger RNA sets."},
-                {"The nucleus", "The nucleus stores the genetic material of the cell as chromosomes."},
-                {"Chloroplasts", "Chloroplasts capture light energy and use it to make glucose in plant cells."},
-                {"Enzymes", "Enzymes speed up chemical reactions without being used up themselves."}};
-        TestPdf.Builder pdf = TestPdf.builder().title("Cells").pageNumbers();
-        for (int i = 0; i < pages.length; i++) {
-            if (i > 0) {
-                pdf.pageBreak();
-            }
-            pdf.heading(pages[i][0])
-                    .paragraph(pages[i][1] + " " + TestPdf.sentences(i + 1, 6))
-                    .paragraph(TestPdf.sentences((i + 1) * 31L, 5));
-        }
-        try {
-            return pdf.write(dir.resolve("cells.pdf"));
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
+        return StudySeed.course(real.workspace(), dir);
     }
 
     private StudyPage page() {
@@ -551,6 +671,16 @@ class StudySessionTest {
 
     private Button sourceLink() {
         return (Button) page().feedback().root().lookup(".source-link");
+    }
+
+    private Button leaveButton() {
+        return (Button) page().root().lookup(".study-leave");
+    }
+
+    /** Where the question column starts on screen. */
+    private double columnX() {
+        Node column = page().root().lookup(".study-stage");
+        return column.localToScene(column.getLayoutBounds()).getMinX();
     }
 
     private String stat(String label) {

@@ -96,6 +96,18 @@ class OverlaysTest {
     }
 
     @Test
+    void aDismissedConfirmDialogClosesAsCancelled(FxRobot robot) throws Exception {
+        ConfirmDialog dialog = ConfirmDialog.of("Leave this session?", "Your answers so far are kept.", "Leave");
+        CompletableFuture<Boolean> answer = onFx(() -> dialog.show(behind));
+        assertThat(overlays.hasModal()).isTrue();
+
+        robot.interact(dialog::dismiss);
+
+        assertThat(answer.get(2, TimeUnit.SECONDS)).isFalse();
+        WaitForAsyncUtils.waitFor(2, TimeUnit.SECONDS, () -> !overlays.hasModal());
+    }
+
+    @Test
     void confirmDialogKeepsFocusInside(FxRobot robot) {
         robot.interact(() -> ConfirmDialog.of("Leave this session?", "Your answers so far are kept.", "Leave").show(behind));
 

@@ -262,6 +262,19 @@ final class DemoPractice implements PracticeService {
     }
 
     @Override
+    public List<Hint> hints(String sessionId, String itemId) {
+        Hint last = hint(sessionId, itemId);
+        synchronized (store) {
+            LearningItem item = store.item(itemId);
+            SourcePassage source = store.sourcePassage(item);
+            if (source == null || (item.type() != ItemType.MCQ && item.type() != ItemType.CLOZE)) {
+                return List.of(last);
+            }
+            return List.of(new Hint("Think about what “" + source.sectionTitle() + "” says.", List.of()), last);
+        }
+    }
+
+    @Override
     public SessionSummary finish(String sessionId) {
         SessionSummary summary;
         synchronized (store) {

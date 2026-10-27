@@ -4,6 +4,7 @@ import edu.learnsphere.core.error.InvalidInputException;
 import edu.learnsphere.core.error.NotFoundException;
 import edu.learnsphere.core.error.UnavailableException;
 import edu.learnsphere.core.model.Rating;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -46,6 +47,17 @@ public interface PracticeService {
 
     /** A hint for an item in the session; marks the item's answer as hinted. */
     Hint hint(String sessionId, String itemId);
+
+    /**
+     * Every hint for an item in the session, gentlest first, for the study screen to show one step at a time
+     * (where to look in the material, then the hint itself). Marks the item's answer as hinted, as {@link #hint}
+     * does; one or several steps cap the rating the same way.
+     *
+     * <p>The default offers {@link #hint} as the only step.
+     */
+    default List<Hint> hints(String sessionId, String itemId) {
+        return List.of(hint(sessionId, itemId));
+    }
 
     /** Finishes the session and summarizes it. Unanswered items stay as they were. */
     SessionSummary finish(String sessionId);

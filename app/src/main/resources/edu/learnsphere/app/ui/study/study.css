@@ -168,7 +168,7 @@
 }
 
 .study-option.tile .option-text {
-    -fx-font-size: 26px;
+    -fx-font-size: 24px;
 }
 
 .study-check {
@@ -186,7 +186,7 @@
 }
 
 .text-field.study-input.cloze-field {
-    -fx-font-size: 32px;
+    -fx-font-size: 34px;
     -fx-text-fill: -ls-accent;
     -fx-prompt-text-fill: -ls-text-faint;
     -fx-highlight-fill: -ls-selection;
@@ -223,9 +223,9 @@
 }
 
 .cloze-answer {
-    -fx-font-size: 32px;
+    -fx-font-size: 34px;
     -fx-text-fill: -ls-success-text;
-    -fx-padding: 0 4px 0 12px;
+    -fx-padding: 0 0 0 12px;
     -fx-graphic-text-gap: 6px;
 }
 
@@ -236,7 +236,7 @@
 
 /* Short answer. */
 .text-area.study-input.short-answer-input {
-    -fx-font-size: 18px;
+    -fx-font-size: 17px;
 }
 
 .text-area.study-input.short-answer-input .content {
@@ -318,6 +318,10 @@
 
 .hint-title .ikonli-font-icon {
     -fx-icon-color: -ls-warning-text;
+}
+
+.hint-lines {
+    -fx-spacing: 4px;
 }
 
 .hint-text {
@@ -586,7 +590,7 @@
 }
 
 .flashcard-front {
-    -fx-font-size: 32px;
+    -fx-font-size: 34px;
     -fx-text-alignment: center;
 }
 
@@ -611,7 +615,7 @@
 }
 
 .flashcard-back {
-    -fx-font-size: 22px;
+    -fx-font-size: 24px;
     -fx-line-spacing: 6px;
     -fx-text-alignment: center;
     -fx-text-fill: -ls-text;
@@ -625,7 +629,10 @@
     -fx-spacing: 12px;
 }
 
+/* Four equal buttons: each starts from the same width and takes an equal share of the row. */
 .button.rating-button {
+    -fx-min-width: 96px;
+    -fx-pref-width: 0;
     -fx-min-height: 68px;
     -fx-pref-height: 68px;
     -fx-padding: 10px 16px 10px 14px;
@@ -745,10 +752,6 @@
 
 .source-overline {
     -fx-text-fill: -ls-accent;
-}
-
-.source-title {
-    -fx-font-size: 22px;
 }
 
 .source-pager {

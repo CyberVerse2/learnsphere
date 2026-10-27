@@ -134,7 +134,13 @@ public final class StudyPage implements View {
     private Runnable primary;
     /** The node the page last gave focus to; a delayed focus request applies only while it is still this one. */
     private Node focusTarget;
-    private boolean hinted;
+    /** The question's hint, step by step, once asked for (null before); {@link #hintsShown} are on screen. */
+    private List<Hint> hintSteps;
+    private int hintsShown;
+    private Label hintTitle;
+    private VBox hintLines;
+    private ConfirmDialog leaveDialog;
+    private boolean disposed;
     private long shownAt;
     private int answered;
     private int hintsUsed;
@@ -152,6 +158,9 @@ public final class StudyPage implements View {
         Button leave = leaveButton;
         leave.getStyleClass().addAll("quiet", "small", "study-leave");
         leave.setOnAction(event -> requestLeave());
+        // Escape leaves. The button never takes the keyboard focus (not by Tab, a click or the window's own
+        // focus pass when a focused button goes away), so Enter can't leave the session by accident.
+        leave.setFocusTraversable(false);
         where.getStyleClass().addAll("medium", "study-where");
         where.setMinWidth(0);
         counter.getStyleClass().addAll("medium", "study-counter");
@@ -173,7 +182,12 @@ public final class StudyPage implements View {
         scroller.setFitToWidth(true);
         scroller.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
         scroller.getStyleClass().add("study-scroller");
-        scroller.viewportBoundsProperty().addListener((obs, old, bounds) -> centring.setMinHeight(bounds.getHeight()));
+        scroller.viewportBoundsProperty().addListener((obs, old, bounds) -> {
+            centring.setMinHeight(bounds.getHeight());
+            recentre();
+        });
+        scroller.widthProperty().addListener((obs, old, width) -> recentre());
+        stage.widthProperty().addListener((obs, old, width) -> recentre());
         VBox.setVgrow(scroller, Priority.ALWAYS);
         footer.getStyleClass().add("study-footer");
 
@@ -196,6 +210,12 @@ public final class StudyPage implements View {
 
     @Override
     public void dispose() {
+        disposed = true;
+        if (leaveDialog != null) {
+            // Another page took over while "Leave this session?" was open: it no longer applies.
+            leaveDialog.dismiss();
+            leaveDialog = null;
+        }
         tasks.dispose();
         disposer.dispose();
     }
@@ -335,21 +355,41 @@ public final class StudyPage implements View {
         showEmptyState(empty, this::start);
     }
 
+    /**
+     * Nothing in the session. A module quiz or weak spots with nothing to practise offers the rest of the course
+     * when it has questions ready; otherwise the page says when the next review is.
+     */
     private void showEmpty(StudyNext next) {
         state = State.EMPTY;
-        EmptyState empty;
-        if (request.kind() == SessionKind.MODULE_QUIZ) {
-            empty = new EmptyState(EmptyIllustration.Kind.QUESTIONS, "No questions in this module yet",
-                    "Study next covers the rest of the course.").primary(homeLabel(), this::home);
+        boolean readyElsewhere = next != null && !next.caughtUp()
+                && (request.kind() == SessionKind.MODULE_QUIZ || request.kind() == SessionKind.WEAK_CONCEPTS);
+        String nextReview = next == null ? null : StudyText.nextReview(next.nextReviewAt(), clock());
+        String ready = next == null ? null : StudyText.readyToStudy(next.total(), request.courseId() != null);
+        EmptyState empty = switch (request.kind()) {
+            case MODULE_QUIZ -> new EmptyState(EmptyIllustration.Kind.QUESTIONS,
+                    "Nothing to practise in this module right now", readyElsewhere ? ready
+                    : nextReview != null ? nextReview
+                    : "When this module has questions ready, you can practise them here.");
+            case WEAK_CONCEPTS -> new EmptyState(EmptyIllustration.Kind.CAUGHT_UP, "No weak spots right now",
+                    "Concepts you find hard show up here as you study." + (readyElsewhere ? " " + ready : ""));
+            case FLASHCARDS -> new EmptyState(EmptyIllustration.Kind.CAUGHT_UP, "Nothing to review right now",
+                    nextReview != null ? nextReview : "Flashcards you study come back here when they're due.");
+            case STUDY_NEXT -> new EmptyState(EmptyIllustration.Kind.CAUGHT_UP, "Nothing to review right now",
+                    nextReview != null ? nextReview : "Questions you study come back here when they're due.");
+        };
+        if (readyElsewhere) {
+            empty.primary("Start studying", this::studyNextInCourse).secondary(homeLabel(), this::home);
+            showEmptyState(empty, this::studyNextInCourse);
         } else {
-            String sentence = next == null ? null : StudyText.nextReview(next.nextReviewAt(), clock());
-            String body = sentence != null ? sentence
-                    : request.kind() == SessionKind.FLASHCARDS ? "Flashcards you study come back here when they're due."
-                    : "Questions you study come back here when they're due.";
-            empty = new EmptyState(EmptyIllustration.Kind.CAUGHT_UP, "Nothing to review right now", body)
-                    .primary(homeLabel(), this::home);
+            empty.primary(homeLabel(), this::home);
+            showEmptyState(empty, this::home);
         }
-        showEmptyState(empty, this::home);
+    }
+
+    /** Study next in the session's course (or every course), in this page. */
+    private void studyNextInCourse() {
+        request = new SessionRequest(SessionKind.STUDY_NEXT, request.courseId(), null, request.size());
+        start();
     }
 
     private void showEnded() {
@@ -397,7 +437,10 @@ public final class StudyPage implements View {
         checkError = null;
         actionRow = null;
         actionChildren = null;
-        hinted = false;
+        hintSteps = null;
+        hintsShown = 0;
+        hintTitle = null;
+        hintLines = null;
         shownAt = clock().millis();
         centring.setAlignment(Pos.TOP_CENTER);
         leaveButton.setText("Leave session");
@@ -475,6 +518,40 @@ public final class StudyPage implements View {
         });
     }
 
+    /**
+     * Moves the keyboard focus to the question (the page itself for choices and flashcards) when it is on
+     * {@code control} or inside it, before {@code control} is disabled or removed. Otherwise the window would hand
+     * the focus on to the next button, and the next Enter would press that.
+     */
+    private void moveFocusOff(Node control) {
+        Node owner = root.getScene() == null ? null : root.getScene().getFocusOwner();
+        if (control == null || owner == null || !isInside(owner, control)) {
+            return;
+        }
+        Node target = question == null ? null : question.initialFocus();
+        focus(target != null && !target.isDisabled() && target.isVisible() ? target : root);
+    }
+
+    private static boolean isInside(Node node, Node ancestor) {
+        for (Node n = node; n != null; n = n.getParent()) {
+            if (n == ancestor) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Keeps the column where it is when the vertical scroll bar comes and goes: the bar takes its width from the
+     * right of the page, which would shift the centred column left by half of it.
+     */
+    private void recentre() {
+        double viewport = scroller.getViewportBounds().getWidth();
+        double bar = scroller.getWidth() - scroller.snappedLeftInset() - scroller.snappedRightInset() - viewport;
+        double room = viewport - centring.snappedLeftInset() - centring.snappedRightInset() - stage.getWidth();
+        stage.setTranslateX(bar > 0.5 && room > 0 ? Math.min(bar, room) / 2 : 0);
+    }
+
     /** Enter on a flashcard: turns it, then presses the rating that has focus. */
     private void flashcardEnter() {
         if (flashcard == null) {
@@ -522,8 +599,8 @@ public final class StudyPage implements View {
             }
         }
         keys.addAll(List.of("Enter", "Check answer"));
-        if (item.hintAvailable() && !hinted && item.type() != ItemType.CLOZE && item.type() != ItemType.SHORT_ANSWER) {
-            keys.addAll(List.of("H", "Hint"));
+        if (hintLeft() && item.type() != ItemType.CLOZE && item.type() != ItemType.SHORT_ANSWER) {
+            keys.addAll(List.of("H", hintsShown == 0 ? "Hint" : "Another hint"));
         }
         keys.addAll(List.of("Esc", "Leave"));
         return StudyParts.legend(keys.toArray(String[]::new));
@@ -586,48 +663,91 @@ public final class StudyPage implements View {
 
     // ---- hints --------------------------------------------------------------------------------------
 
-    /** Shows the hint for the question on screen (H). */
+    /** True while the question on screen has a hint step not shown yet. */
+    private boolean hintLeft() {
+        return hintButton != null && actionRow != null && actionRow.getChildren().contains(hintButton);
+    }
+
+    /**
+     * Shows the next step of the hint for the question on screen (H, or "Show a hint"): where to look in the
+     * material first, then the hint itself. The steps are fetched once, with the first; asking marks the answer
+     * as hinted.
+     */
     public void showHint() {
-        if (state != State.QUESTION || question == null || hintButton == null || hinted) {
+        if (state != State.QUESTION || question == null || !hintLeft()) {
+            return;
+        }
+        if (hintSteps != null) {
+            revealHint();
             return;
         }
         SessionItem item = question.item();
-        hintButton.setDisable(true);
+        Button button = hintButton;
+        moveFocusOff(button);
+        button.setDisable(true);
         Workspace workspace = workspace();
-        tasks.add(UiTasks.run(() -> workspace.practice().hint(session.id(), item.itemId()), hint -> {
-            if (question != null && question.item() == item) {
-                applyHint(hint);
+        String sessionId = session.id();
+        tasks.add(UiTasks.run(() -> workspace.practice().hints(sessionId, item.itemId()), steps -> {
+            button.setDisable(false);
+            if (state == State.QUESTION && question != null && question.item() == item && !steps.isEmpty()) {
+                hintSteps = List.copyOf(steps);
+                revealHint();
             }
         }, message -> {
+            button.setDisable(false);
+            if (state != State.QUESTION || question == null || question.item() != item) {
+                return;
+            }
             if (ended(message)) {
                 showEnded();
             } else {
-                hintButton.setDisable(false);
                 Toasts.error(root, message);
             }
         }));
     }
 
-    private void applyHint(Hint hint) {
-        hinted = true;
+    /** Adds the next hint step to the hint callout (opening it with the first). */
+    private void revealHint() {
+        if (hintSteps == null || hintsShown >= hintSteps.size()) {
+            return;
+        }
+        Hint step = hintSteps.get(hintsShown);
+        hintsShown++;
         hintsUsed++;
-        question.applyHint(hint);
-        actionRow.getChildren().remove(hintButton);
-        Label title = new Label("Hint", Icons.of(Feather.HELP_CIRCLE, 14));
-        title.getStyleClass().addAll("semibold", "hint-title");
-        Label text = new Label(hint.text());
+        question.applyHint(step);
+        Label text = new Label(step.text());
         text.getStyleClass().addAll("text-reading", "hint-text");
         text.setWrapText(true);
         text.setMinHeight(Region.USE_PREF_SIZE);
-        Label cost = new Label("A question answered with a hint comes back a little sooner.");
-        cost.getStyleClass().addAll("text-caption", "hint-cost");
-        cost.setWrapText(true);
-        VBox callout = new VBox(6, title, text, cost);
-        callout.getStyleClass().add("hint-callout");
-        hintBox.getChildren().setAll(callout);
-        hintBox.setManaged(true);
-        hintBox.setVisible(true);
-        Motion.enter(hintBox);
+        if (hintLines == null) {
+            hintTitle = new Label("Hint", Icons.of(Feather.HELP_CIRCLE, 14));
+            hintTitle.getStyleClass().addAll("semibold", "hint-title");
+            hintLines = new VBox(4);
+            hintLines.getStyleClass().add("hint-lines");
+            Label cost = new Label("A question answered with a hint comes back a little sooner.");
+            cost.getStyleClass().addAll("text-caption", "hint-cost");
+            cost.setWrapText(true);
+            cost.setMinHeight(Region.USE_PREF_SIZE);
+            VBox callout = new VBox(6, hintTitle, hintLines, cost);
+            callout.getStyleClass().add("hint-callout");
+            hintBox.getChildren().setAll(callout);
+            hintBox.setManaged(true);
+            hintBox.setVisible(true);
+            hintLines.getChildren().add(text);
+            Motion.enter(hintBox);
+        } else {
+            hintLines.getChildren().add(text);
+            Motion.fadeIn(text, Motion.ROUTE);
+        }
+        if (hintSteps.size() > 1) {
+            hintTitle.setText("Hint " + hintsShown + " of " + hintSteps.size());
+        }
+        if (hintsShown < hintSteps.size()) {
+            hintButton.setText("Another hint");
+        } else {
+            moveFocusOff(hintButton);
+            actionRow.getChildren().remove(hintButton);
+        }
         footer.getChildren().setAll(questionLegend(question.item()));
     }
 
@@ -644,8 +764,10 @@ public final class StudyPage implements View {
         }
         SessionItem item = question.item();
         Response response = Response.answer(item.itemId(), question.answer(),
-                confidence == null ? null : confidence.getConfidence(), hinted, elapsed());
+                confidence == null ? null : confidence.getConfidence(), hintsShown > 0, elapsed());
         state = State.CHECKING;
+        // "Check answer" (or a confidence chip) goes quiet or away while the answer is checked.
+        moveFocusOff(actionRow.getParent());
         question.setLocked(true);
         hideCheckError();
         if (confidence != null) {
@@ -670,6 +792,7 @@ public final class StudyPage implements View {
             return;
         }
         state = State.CHECKING;
+        moveFocusOff(flashcard.root());
         flashcard.setLocked(true);
         submit(item, Response.flashcard(item.itemId(), rating, elapsed()));
     }
@@ -791,6 +914,10 @@ public final class StudyPage implements View {
     private void dispute(SessionItem item, Feedback feedback) {
         Workspace workspace = workspace();
         FeedbackView view = feedbackView;
+        Node owner = root.getScene() == null ? null : root.getScene().getFocusOwner();
+        if (owner != null && view.disputeButton() != null && isInside(owner, view.disputeButton())) {
+            focus(view.continueButton());
+        }
         view.setDisputing(true);
         tasks.add(UiTasks.run(() -> workspace.practice().dispute(feedback.attemptId()), disputed -> {
             if (feedbackView != view) {
@@ -837,12 +964,10 @@ public final class StudyPage implements View {
         if (isSourceOpen()) {
             return;
         }
-        Node returnFocus = root.getScene() == null ? null : root.getScene().getFocusOwner();
         sheet = new SourceSheet(workspace(), tasks, item.itemId(), source, () -> {
             sheet = null;
-            if (returnFocus != null && returnFocus.getScene() != null) {
-                returnFocus.requestFocus();
-            }
+            // Back to Continue, as the key legend says, rather than the link that opened the page.
+            focus(feedbackView != null && state == State.FEEDBACK ? feedbackView.continueButton() : root);
         });
         root.getChildren().add(sheet);
         sheet.open();
@@ -947,15 +1072,21 @@ public final class StudyPage implements View {
         int left = Math.max(0, queue.total() - queue.finished() - (state == State.FEEDBACK ? 1 : 0));
         String message = "Your answers so far are saved."
                 + (left > 0 ? " The questions you haven't reached stay ready for next time." : "");
-        ConfirmDialog.of("Leave this session?", message, "Leave session")
-                .cancelLabel("Keep studying")
-                .show(root)
-                .thenAccept(confirmed -> {
-                    if (confirmed) {
-                        finishQuietly();
-                        leave();
-                    }
-                });
+        if (leaveDialog != null) {
+            return;
+        }
+        ConfirmDialog dialog = ConfirmDialog.of("Leave this session?", message, "Leave session")
+                .cancelLabel("Keep studying");
+        leaveDialog = dialog;
+        dialog.show(root).thenAccept(confirmed -> {
+            if (leaveDialog == dialog) {
+                leaveDialog = null;
+            }
+            if (confirmed && !disposed) {
+                finishQuietly();
+                leave();
+            }
+        });
     }
 
     /** Wraps the session up in the background as the learner leaves, so it counts in their progress. */
@@ -1035,7 +1166,7 @@ public final class StudyPage implements View {
             return;
         }
         if (state == State.QUESTION && question != null) {
-            if (code == KeyCode.H && hintButton != null && !hinted) {
+            if (code == KeyCode.H && hintLeft()) {
                 event.consume();
                 showHint();
                 return;

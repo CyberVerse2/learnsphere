@@ -300,6 +300,16 @@ public final class PracticeServiceImpl implements PracticeService {
 
     @Override
     public Hint hint(String sessionId, String itemId) {
+        return hintSteps(sessionId, itemId, false).getFirst();
+    }
+
+    @Override
+    public List<Hint> hints(String sessionId, String itemId) {
+        return hintSteps(sessionId, itemId, true);
+    }
+
+    /** The one hint ({@code steps} false) or every step of it, after marking the item's answer as hinted. */
+    private List<Hint> hintSteps(String sessionId, String itemId, boolean steps) {
         LiveSession session = requireLive(sessionId);
         session.lastUsedAt = clock.millis();
         Entry entry = session.entries.get(itemId);
@@ -316,11 +326,12 @@ public final class PracticeServiceImpl implements PracticeService {
         if (!entry.hintAvailable || !Hints.available(item, source)) {
             throw new InvalidInputException(StudyMessages.NO_HINT, "no hint for item " + itemId);
         }
-        Hint hint = Hints.hint(item, entry.choices, source);
+        List<Hint> hints = steps ? Hints.steps(item, entry.choices, source)
+                : List.of(Hints.hint(item, entry.choices, source));
         synchronized (session) {
             entry.hinted = true;
         }
-        return hint;
+        return hints;
     }
 
     // ---- finish -------------------------------------------------------------------------------

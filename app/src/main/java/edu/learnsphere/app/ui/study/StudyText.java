@@ -163,6 +163,16 @@ final class StudyText {
         return at == null ? null : "Your next review is " + when(at, clock) + ".";
     }
 
+    /**
+     * How many questions Study next has ready, e.g. "5 questions are ready in this course."
+     *
+     * @param inCourse true for one course, false across every course being studied
+     */
+    static String readyToStudy(int count, boolean inCourse) {
+        return Formats.count(count, "question is", "questions are") + " ready "
+                + (inCourse ? "in this course." : "across your courses.");
+    }
+
     /** The summary's headline. */
     static String headline(SessionSummary summary) {
         if (summary.answered() == 0) {

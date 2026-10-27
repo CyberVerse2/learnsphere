@@ -36,6 +36,12 @@ class StudyTextTest {
     }
 
     @Test
+    void anEmptySessionSaysWhatIsReadyElsewhere() {
+        assertThat(StudyText.readyToStudy(1, true)).isEqualTo("1 question is ready in this course.");
+        assertThat(StudyText.readyToStudy(12, false)).isEqualTo("12 questions are ready across your courses.");
+    }
+
+    @Test
     void ratingButtonsSayHowLongUntilTheCardComesBack() {
         assertThat(StudyText.interval(NOW, NOW + 20_000)).isEqualTo("1 min");
         assertThat(StudyText.interval(NOW, NOW + 10 * MINUTE)).isEqualTo("10 min");

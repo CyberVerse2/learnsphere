@@ -41,6 +41,8 @@ final class StudyShots {
                 }),
                 at("study-choice-correct", ItemType.MCQ, window -> answer(window, true)),
                 at("study-choice-hint", ItemType.MCQ, window -> page(window).showHint()),
+                at("study-choice-hint-steps", ItemType.MCQ, window -> page(window).showHint(),
+                        window -> page(window).showHint()),
                 at("study-true-false", ItemType.TRUE_FALSE, window -> press(window, KeyCode.T, "t")),
                 at("study-cloze", ItemType.CLOZE, window -> type(window, "")),
                 at("study-cloze-wrong", ItemType.CLOZE, window -> answer(window, false)),
@@ -56,10 +58,16 @@ final class StudyShots {
                 new Shot("study-comeback", window -> window.navigator().reset(study(SessionRequest.studyNext().withSize(2))),
                         new Steps(window -> page(window).state() == StudyPage.State.QUESTION
                                 && page(window).counterText().startsWith("3 of"), StudyShots::wrongThenOn, MAX_STEPS)),
-                new Shot("study-summary", window -> window.navigator().reset(study(SessionRequest.studyNext().withSize(4))),
+                // Research Methods has only just started, so a few right answers lift its concepts.
+                new Shot("study-summary", window -> window.navigator().reset(study(
+                        SessionRequest.studyNext(DemoContent.RESEARCH_METHODS).withSize(4))),
                         new Steps(window -> page(window).state() == StudyPage.State.SUMMARY, StudyShots::rightThenOn,
                                 MAX_STEPS)),
                 new Shot("study-empty", window -> window.navigator().reset(study(emptyQuiz(window)))),
+                new Shot("study-weak-spots", window -> window.navigator().reset(study(
+                        SessionRequest.weakConcepts(DemoContent.RESEARCH_METHODS)))),
+                new Shot("study-empty-weak", window -> window.navigator().reset(study(
+                        SessionRequest.weakConcepts(DemoContent.OPERATING_SYSTEMS)))),
                 new Shot("study-ended", window -> window.navigator().reset(study(SessionRequest.studyNext())),
                         window -> {
                             // The session ends behind the page's back (as when the app was away), then the learner
