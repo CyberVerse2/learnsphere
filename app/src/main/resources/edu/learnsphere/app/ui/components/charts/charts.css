@@ -1,0 +1,47 @@
+/*
+ * Charts: canvas colours, the tooltip and the keyboard focus ring. Every colour is a theme token from
+ * learnsphere.css, so charts follow light and dark.
+ */
+
+.chart {
+    -chart-accent: -ls-accent;
+    -chart-accent-soft: -ls-accent-muted;
+    -chart-track: -ls-track;
+    -chart-text: -ls-text;
+    -chart-text-muted: -ls-text-muted;
+    -chart-text-faint: -ls-text-faint;
+    -chart-grid: -ls-border;
+    -chart-warning: -ls-warning;
+    -chart-warning-text: -ls-warning-text;
+    -chart-surface: -ls-surface;
+    -chart-hover: -ls-hover;
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 8px;
+}
+
+/* A soft ring outside the drawing area while the keyboard inspects the chart. */
+.chart:focus-visible {
+    -fx-background-color: -ls-focus, -ls-surface;
+    -fx-background-insets: -6px, -4px;
+    -fx-background-radius: 10px, 8px;
+}
+
+.chart-tooltip {
+    -fx-background-color: -ls-tooltip-bg;
+    -fx-background-radius: 6px;
+    -fx-padding: 6px 10px 7px 10px;
+    -fx-spacing: 1px;
+    -fx-effect: dropshadow(gaussian, -ls-shadow-pop, 14, 0, 0, 4);
+}
+
+.chart-tooltip-title {
+    -fx-text-fill: -ls-tooltip-text;
+    -fx-font-size: 12px;
+}
+
+.chart-tooltip-value {
+    -fx-text-fill: -ls-tooltip-text;
+    -fx-font-size: 12px;
+    -fx-opacity: 0.8;
+}

@@ -2,6 +2,7 @@ package edu.learnsphere.core.service.impl;
 
 import static edu.learnsphere.core.learning.StudyData.DAY;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -449,6 +450,31 @@ class ProgressServiceImplTest {
         assertThat(local.reviewsToday()).isZero();
         assertThat(local.week().get(5)).isEqualTo(new DayActivity(LocalDate.of(2026, 3, 1), 2, false));
         assertThat(local.streakDays()).isEqualTo(1);
+    }
+
+    @Test
+    void activityCountsReviewsPerDayInAnyCourseEndingToday() {
+        Course studied = t.enrolledCourse("Biology");
+        Course mine = t.course("Draft course");
+        LearningItem x = data.item(studied, null, ItemType.MCQ, "x");
+        LearningItem y = data.item(mine, null, ItemType.MCQ, "y");
+        SessionRecord session = t.session(null);
+        data.attempt(x, session, true, t.now() - 20 * DAY);
+        data.attempt(y, session, false, t.now() - 20 * DAY + 1);
+        data.attempt(x, session, true, t.now() - 2 * DAY);
+        data.attempt(y, session, true, t.now());
+
+        List<DayActivity> days = progress().activity(35);
+
+        assertThat(days).hasSize(35);
+        assertThat(days.getFirst().date()).isEqualTo(LocalDate.of(2026, 1, 27));
+        assertThat(days.getLast()).isEqualTo(new DayActivity(LocalDate.of(2026, 3, 2), 1, true));
+        assertThat(days.get(34 - 20).reviews()).as("both courses count").isEqualTo(2);
+        assertThat(days.get(34 - 2).reviews()).isEqualTo(1);
+        assertThat(days).extracting(DayActivity::reviews).containsOnly(0, 1, 2);
+        assertThat(days.stream().filter(DayActivity::today)).hasSize(1);
+        assertThatThrownBy(() -> progress().activity(0))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     // ---- creator statistics -------------------------------------------------------------------

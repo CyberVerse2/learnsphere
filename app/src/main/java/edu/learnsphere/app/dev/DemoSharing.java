@@ -263,15 +263,52 @@ final class DemoSharing implements SharingService {
             people.add(new LearnerInsight(insight.id(), insight.learnerLabel(), insight.importedAt(), 40 + i * 7,
                     0.55 + (i % 4) * 0.1));
         }
+        List<LearningItem> approved = store.itemsOf(courseId).stream().filter(i -> i.status() == ItemStatus.APPROVED)
+                .toList();
+        if (approved.stream().anyMatch(i -> store.classResults.containsKey(i.id()))) {
+            return classSummary(courseId, people, approved);
+        }
         List<ConceptInsight> concepts = progress.mastery(courseId).stream()
                 .map(c -> new ConceptInsight(c.conceptId(), c.name(), c.accuracy(), learners.size(),
                         c.mastery() != null && c.mastery() < ConceptMastery.WEAK_THRESHOLD ? Math.max(1, learners.size() / 2) : 0))
                 .toList();
-        List<ItemInsight> items = store.itemsOf(courseId).stream().filter(i -> i.status() == ItemStatus.APPROVED)
+        List<ItemInsight> items = approved.stream()
                 .map(i -> {
                     var stats = progress.stats(i);
                     return new ItemInsight(i.id(), i.prompt(), stats.attempts(), stats.accuracy(), learners.size());
                 }).toList();
+        return new ClassInsightSummary(courseId, people, concepts, items);
+    }
+
+    /** The summary from the class's own results ({@link DemoClassProgress}), concepts weakest first. */
+    private ClassInsightSummary classSummary(String courseId, List<LearnerInsight> people, List<LearningItem> approved) {
+        List<ItemInsight> items = new ArrayList<>();
+        for (LearningItem item : approved) {
+            DemoClassProgress.ItemResult result = store.classResults.get(item.id());
+            if (result != null) {
+                items.add(new ItemInsight(item.id(), item.prompt(), result.attempts(), result.accuracy(), result.learners()));
+            }
+        }
+        List<ConceptInsight> concepts = new ArrayList<>();
+        for (ConceptMastery concept : progress.mastery(courseId)) {
+            int attempts = 0;
+            double correct = 0;
+            int learners = 0;
+            for (LearningItem item : approved) {
+                DemoClassProgress.ItemResult result = store.classResults.get(item.id());
+                if (result != null && store.itemConcepts.getOrDefault(item.id(), java.util.Set.of()).contains(concept.conceptId())) {
+                    attempts += result.attempts();
+                    correct += result.attempts() * result.accuracy();
+                    learners = Math.max(learners, result.learners());
+                }
+            }
+            Double accuracy = attempts == 0 ? null : correct / attempts;
+            int struggling = accuracy == null ? 0
+                    : (int) Math.min(learners, Math.round(learners * Math.max(0, 0.8 - accuracy) * 2));
+            concepts.add(new ConceptInsight(concept.conceptId(), concept.name(), accuracy, learners, struggling));
+        }
+        concepts.sort(java.util.Comparator.comparing(ConceptInsight::accuracy,
+                java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())));
         return new ClassInsightSummary(courseId, people, concepts, items);
     }
 

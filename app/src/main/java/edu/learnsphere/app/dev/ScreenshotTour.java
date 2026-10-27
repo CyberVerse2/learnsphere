@@ -138,6 +138,41 @@ public final class ScreenshotTour {
                         ScreenshotTour::answerCurrentQuestion),
                 Shot.of("progress", Destination.Progress.overview()),
                 Shot.of("progress-course", new Destination.Progress(os)),
+                new Shot("progress-scrolled", window -> window.navigator().reset(Destination.Progress.overview()),
+                        ScreenshotTour::scrollToEnd),
+                new Shot("progress-tooltip", window -> window.navigator().reset(Destination.Progress.overview()),
+                        window -> {
+                            scrollToEnd(window);
+                            inspectChart(window, ".forecast-chart", 4);
+                        }),
+                new Shot("progress-course-scrolled", window -> window.navigator().reset(new Destination.Progress(os)),
+                        ScreenshotTour::scrollToEnd),
+                new Shot("progress-week-off", window -> {
+                    forgetWeek(window, 2);
+                    window.navigator().reset(new Destination.Progress(os));
+                }, window -> {
+                    scrollToEnd(window);
+                    inspectChart(window, ".retention-chart", 2);
+                }),
+                new Shot("progress-creator", window -> {
+                    DemoClassProgress.seed(window.context().workspace(), chemistry);
+                    window.navigator().reset(new Destination.Progress(chemistry));
+                }),
+                new Shot("progress-creator-scrolled", window -> {
+                    DemoClassProgress.seed(window.context().workspace(), chemistry);
+                    window.navigator().reset(new Destination.Progress(chemistry));
+                }, ScreenshotTour::scrollToEnd),
+                Shot.of("progress-creator-empty", new Destination.Progress(chemistry)),
+                new Shot("progress-new-learner", window -> {
+                    forgetStudy(window);
+                    window.navigator().reset(Destination.Progress.overview());
+                }),
+                Shot.of("progress-error", new Destination.Progress("a-course-that-does-not-exist")),
+                new Shot("progress-no-courses", window -> {
+                    var courses = window.context().workspace().courses();
+                    courses.list(edu.learnsphere.core.service.CourseFilter.studying()).forEach(c -> courses.leave(c.id()));
+                    window.navigator().reset(Destination.Progress.overview());
+                }),
                 Shot.of("studio", Destination.Studio.courses()),
                 Shot.of("studio-review", new Destination.Studio(chemistry, StudioTab.REVIEW)),
                 Shot.of("studio-documents", new Destination.Studio(chemistry, StudioTab.DOCUMENTS)),
@@ -401,6 +436,54 @@ public final class ScreenshotTour {
         context.profiles().create(new ProfileDraft(PROTECTED_PROFILE, 190, DEMO_PASSWORD.toCharArray()));
         context.profiles().create(new ProfileDraft(LONG_PROFILE, 268, null));
         context.profiles().create(new ProfileDraft("Lena Fischer", 320, null));
+    }
+
+    /** Scrolls the page on screen to its end. FX thread. */
+    private static void scrollToEnd(MainWindow window) {
+        if (window.navigator().currentView().root() instanceof javafx.scene.control.ScrollPane page) {
+            page.applyCss();
+            page.layout();
+            page.setVvalue(page.getVmax());
+        }
+    }
+
+    /** Shows the tooltip of item {@code index} of the first chart matching {@code selector}. FX thread. */
+    private static void inspectChart(MainWindow window, String selector, int index) {
+        Node root = window.navigator().currentView().root();
+        if (window.getScene() != null) {
+            window.getScene().getRoot().applyCss();
+            window.getScene().getRoot().layout();
+        }
+        if (root.lookup(selector) instanceof edu.learnsphere.app.ui.components.charts.CanvasChart chart) {
+            chart.inspect(index);
+        }
+    }
+
+    /** Takes the demo profile back to before its first study session. FX thread. */
+    private static void forgetStudy(MainWindow window) {
+        if (window.context().workspace().progress() instanceof DemoProgress demo) {
+            DemoStore store = demo.store();
+            synchronized (store) {
+                store.attempts.clear();
+                store.reviews.clear();
+                store.studyTime.clear();
+            }
+        }
+    }
+
+    /** Removes the demo's answers from the week {@code weeksAgo} weeks before this one: a week off. FX thread. */
+    private static void forgetWeek(MainWindow window, int weeksAgo) {
+        if (window.context().workspace().progress() instanceof DemoProgress demo) {
+            DemoStore store = demo.store();
+            synchronized (store) {
+                java.time.LocalDate monday = store.today()
+                        .with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY))
+                        .minusWeeks(weeksAgo);
+                long from = store.startOfDay(monday);
+                long to = store.startOfDay(monday.plusWeeks(1));
+                store.attempts.removeIf(attempt -> attempt.createdAt() >= from && attempt.createdAt() < to);
+            }
+        }
     }
 
     /** The demo conversation about {@code courseId} with its first citation open in the source viewer. */

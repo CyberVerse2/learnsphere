@@ -209,6 +209,17 @@ public final class ProgressServiceImpl implements ProgressService {
         return points;
     }
 
+    /** Longest stretch {@link #activity(int)} returns (a year). */
+    public static final int MAX_ACTIVITY_DAYS = 366;
+
+    @Override
+    public List<DayActivity> activity(int days) {
+        if (days < 1 || days > MAX_ACTIVITY_DAYS) {
+            throw new IllegalArgumentException("days must be between 1 and " + MAX_ACTIVITY_DAYS + ": " + days);
+        }
+        return calendar.lastDays(days);
+    }
+
     @Override
     public List<ConceptMastery> conceptMastery(String courseId) {
         Course course = repos.courses().get(courseId);
