@@ -120,6 +120,10 @@
     -fx-text-fill: -ls-text-faint;
 }
 
+.new-course-preview-note {
+    -fx-text-fill: -ls-text-muted;
+}
+
 .new-course-preview .course-card-title:placeholder {
     -fx-text-fill: -ls-text-faint;
 }
@@ -300,6 +304,62 @@
 
 .library-card.archived > .course-card .course-card-title,
 .library-card.not-studying > .course-card .course-card-title {
+    -fx-text-fill: -ls-text-muted;
+}
+
+.card-version {
+    -fx-background-color: -ls-raised;
+    -fx-background-radius: 999px;
+    -fx-padding: 2px 9px 2px 9px;
+    -fx-text-fill: -ls-text-muted;
+    -fx-opacity: 0.92;
+}
+
+.new-course-tile {
+    -fx-background-color: transparent;
+    -fx-border-color: -ls-border-strong;
+    -fx-border-width: 1.5px;
+    -fx-border-style: segments(6px, 5px);
+    -fx-border-radius: 14px;
+    -fx-background-radius: 14px;
+    -fx-padding: 24px;
+    -fx-cursor: hand;
+    -fx-min-height: 240px;
+}
+
+.new-course-tile:hover {
+    -fx-background-color: -ls-hover;
+    -fx-border-color: -ls-accent-muted;
+}
+
+.new-course-tile:focus-visible {
+    -fx-background-color: -ls-focus, -ls-bg;
+    -fx-background-insets: -3px, 0;
+    -fx-background-radius: 17px, 14px;
+    -fx-border-color: -ls-accent;
+}
+
+.new-course-tile-badge {
+    -fx-background-color: -ls-accent-soft;
+    -fx-background-radius: 999px;
+    -fx-min-width: 48px;
+    -fx-min-height: 48px;
+    -fx-pref-width: 48px;
+    -fx-pref-height: 48px;
+}
+
+.new-course-tile-icon {
+    -fx-icon-color: -ls-accent;
+}
+
+.new-course-tile-title {
+    -fx-font-size: 20px;
+    -fx-text-fill: -ls-text;
+}
+
+.new-course-tile-text {
+    -fx-font-size: 13px;
+    -fx-line-spacing: 2px;
     -fx-text-fill: -ls-text-muted;
 }
 

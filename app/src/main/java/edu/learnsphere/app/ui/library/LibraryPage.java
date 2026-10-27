@@ -352,7 +352,15 @@ public final class LibraryPage extends PageView {
                 return;
             }
             List<CourseSummary> shown = visible.stream().filter(matches).sorted(order).toList();
-            body.getChildren().setAll(shown.isEmpty() ? noMatches(query) : grid(shown, CourseCard.Mode.CREATING));
+            if (shown.isEmpty()) {
+                body.getChildren().setAll(noMatches(query));
+                return;
+            }
+            ResponsiveGrid grid = grid(shown, CourseCard.Mode.CREATING);
+            if (query.isEmpty()) {
+                grid.getChildren().add(newCourseTile());
+            }
+            body.getChildren().setAll(grid);
         }
     }
 
@@ -382,6 +390,36 @@ public final class LibraryPage extends PageView {
             card.card().animateIn();
         }
         return grid;
+    }
+
+    /** The last tile of the Creating shelf: starts a new course. */
+    private Node newCourseTile() {
+        var plus = Icons.of(Feather.PLUS, 22);
+        plus.getStyleClass().add("new-course-tile-icon");
+        StackPane badge = new StackPane(plus);
+        badge.getStyleClass().add("new-course-tile-badge");
+        badge.setMaxSize(Region.USE_PREF_SIZE, Region.USE_PREF_SIZE);
+        Label title = new Label("New course");
+        title.getStyleClass().addAll("serif-medium", "new-course-tile-title");
+        Label text = new Label("Turn lecture notes or a textbook chapter into questions to study.");
+        text.getStyleClass().add("new-course-tile-text");
+        text.setWrapText(true);
+        text.setMaxWidth(220);
+        text.setTextAlignment(javafx.scene.text.TextAlignment.CENTER);
+        VBox tile = new VBox(10, badge, title, text);
+        tile.setAlignment(Pos.CENTER);
+        tile.getStyleClass().add("new-course-tile");
+        tile.setFocusTraversable(true);
+        tile.setAccessibleRole(javafx.scene.AccessibleRole.BUTTON);
+        tile.setAccessibleText("New course");
+        tile.setOnMouseClicked(event -> openNewCourse());
+        tile.setOnKeyPressed(event -> {
+            if (event.getCode() == KeyCode.ENTER || event.getCode() == KeyCode.SPACE) {
+                event.consume();
+                openNewCourse();
+            }
+        });
+        return tile;
     }
 
     private void updateArchivedToggle() {

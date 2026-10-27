@@ -34,6 +34,8 @@ public final class RecentQuestions extends Card {
 
     /** Characters of an answer shown under its question. */
     static final int PREVIEW_LENGTH = 180;
+    /** Widest an answer preview runs, for a comfortable line length. */
+    static final double ANSWER_WIDTH = 760;
 
     private final Consumer<RecentQuestion> onOpen;
     private final BiConsumer<RecentQuestion, Citation> onCitation;
@@ -93,6 +95,7 @@ public final class RecentQuestions extends Card {
             Label answer = new Label(preview);
             answer.getStyleClass().add("home-question-answer");
             answer.setWrapText(true);
+            answer.setMaxWidth(ANSWER_WIDTH);
             answer.setVisible(!preview.isEmpty());
             answer.setManaged(!preview.isEmpty());
 

@@ -9,6 +9,7 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.geometry.Side;
 import javafx.scene.control.ContextMenu;
+import javafx.scene.control.Label;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.StackPane;
@@ -17,7 +18,8 @@ import org.kordamp.ikonli.feather.Feather;
 /**
  * A course card in the Library with its menu: a round "more" button on the cover (shown on hover and for the
  * keyboard), the same menu on right-click, and on the keyboard with the context-menu key or Shift+F10 while
- * the card has focus. Archived courses and courses the learner left look quieter than the rest.
+ * the card has focus. A shared course shows its version on the cover. Archived courses and courses the learner
+ * left look quieter than the rest.
  */
 public final class LibraryCard extends StackPane {
 
@@ -43,7 +45,16 @@ public final class LibraryCard extends StackPane {
         more.setOnAction(event -> showMenu(true));
         StackPane.setAlignment(more, Pos.TOP_RIGHT);
         StackPane.setMargin(more, new Insets(10, 10, 0, 0));
-        getChildren().addAll(card, more);
+        getChildren().add(card);
+        if (mode == CourseCard.Mode.STUDYING && !course.createdHere() && course.versionNumber() > 0) {
+            Label version = new Label("Version " + course.versionNumber());
+            version.getStyleClass().addAll("text-caption", "card-version");
+            version.setMouseTransparent(true);
+            StackPane.setAlignment(version, Pos.TOP_LEFT);
+            StackPane.setMargin(version, new Insets(12, 0, 0, 12));
+            getChildren().add(version);
+        }
+        getChildren().add(more);
 
         card.setOnContextMenuRequested(event -> {
             event.consume();

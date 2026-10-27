@@ -91,7 +91,6 @@ public final class ImportCourseDialog {
         this.chooseAnother = chooseAnother;
         sheet.setCardWidth(600);
         sheet.getStyleClass().add("import-sheet");
-        code.setPromptText("Course code");
         code.setAccessibleText("Course code");
         codeError.getStyleClass().add("sheet-error");
         codeError.setWrapText(true);

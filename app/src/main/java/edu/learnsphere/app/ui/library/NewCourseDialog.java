@@ -190,7 +190,11 @@ public final class NewCourseDialog {
         card.setFocusTraversable(false);
         Label caption = new Label("PREVIEW");
         caption.getStyleClass().addAll("text-overline", "new-course-preview-caption");
-        VBox box = new VBox(8, caption, card);
+        Label later = new Label("You can change the title, author and cover later in the Studio.");
+        later.getStyleClass().addAll("text-caption", "new-course-preview-note");
+        later.setWrapText(true);
+        VBox box = new VBox(8, caption, card, later);
+        VBox.setMargin(later, new javafx.geometry.Insets(4, 0, 0, 0));
         box.setMinWidth(280);
         box.setPrefWidth(280);
         box.setMaxWidth(280);

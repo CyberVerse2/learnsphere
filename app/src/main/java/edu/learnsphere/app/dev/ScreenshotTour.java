@@ -9,9 +9,16 @@ import edu.learnsphere.app.ui.MainWindow;
 import edu.learnsphere.app.ui.StudioTab;
 import edu.learnsphere.app.ui.UiExecutors;
 import edu.learnsphere.app.ui.library.LibraryPage;
+import edu.learnsphere.app.ui.library.NewCourseDialog;
 import edu.learnsphere.app.ui.study.StudyPage;
 import edu.learnsphere.core.model.Citation;
+import edu.learnsphere.core.model.Rating;
+import edu.learnsphere.core.service.ExportOptions;
+import edu.learnsphere.core.service.Response;
+import edu.learnsphere.core.service.SessionItem;
 import edu.learnsphere.core.service.SessionRequest;
+import edu.learnsphere.core.service.StudySession;
+import edu.learnsphere.core.service.Workspace;
 import edu.learnsphere.core.service.ThemePreference;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -80,7 +87,7 @@ public final class ScreenshotTour {
     static List<Shot> shots() {
         String os = DemoContent.OPERATING_SYSTEMS;
         String chemistry = DemoContent.ORGANIC_CHEMISTRY;
-        return List.of(
+        List<Shot> shots = new ArrayList<>(List.of(
                 Shot.of("home", Destination.HOME),
                 Shot.of("library", Destination.LIBRARY),
                 new Shot("library-creating", window -> {
@@ -112,7 +119,129 @@ public final class ScreenshotTour {
                 new Shot("onboarding-profile", window -> window.navigator().reset(Destination.ONBOARDING),
                         window -> ((javafx.scene.control.Button) window.navigator().currentView().root()
                                 .lookup(".button.primary")).fire()),
-                Shot.of("gallery", Destination.GALLERY));
+                Shot.of("gallery", Destination.GALLERY)));
+        shots.addAll(homeLibraryCourseShots());
+        return shots;
+    }
+
+    /** States of Home, the Library (with its sheets) and the course page. */
+    private static List<Shot> homeLibraryCourseShots() {
+        String os = DemoContent.OPERATING_SYSTEMS;
+        String methods = DemoContent.RESEARCH_METHODS;
+        String chemistry = DemoContent.ORGANIC_CHEMISTRY;
+        return List.of(
+                new Shot("home-scrolled", window -> window.navigator().reset(Destination.HOME),
+                        ScreenshotTour::scrollToBottom),
+                new Shot("home-caught-up", window -> {
+                    Workspace workspace = window.context().workspace();
+                    workspace.courses().leave(os);
+                    studyEverything(workspace);
+                    window.navigator().reset(Destination.HOME);
+                }),
+                new Shot("home-not-studying", window -> {
+                    Workspace workspace = window.context().workspace();
+                    workspace.courses().leave(os);
+                    workspace.courses().leave(methods);
+                    window.navigator().reset(Destination.HOME);
+                }),
+                new Shot("home-empty", window -> {
+                    Workspace workspace = window.context().workspace();
+                    for (String id : List.of(os, methods, chemistry)) {
+                        workspace.courses().delete(id);
+                    }
+                    window.navigator().reset(Destination.HOME);
+                }),
+                new Shot("library-search-empty", window -> window.navigator().reset(Destination.LIBRARY),
+                        window -> {
+                            if (window.navigator().currentView() instanceof LibraryPage library) {
+                                library.searchField().setText("Linear algebra");
+                            }
+                        }),
+                new Shot("library-empty", window -> {
+                    Workspace workspace = window.context().workspace();
+                    for (String id : List.of(os, methods, chemistry)) {
+                        workspace.courses().delete(id);
+                    }
+                    window.navigator().reset(Destination.LIBRARY);
+                }),
+                new Shot("library-new-course", window -> window.navigator().reset(Destination.LIBRARY),
+                        window -> {
+                            if (window.navigator().currentView() instanceof LibraryPage library) {
+                                NewCourseDialog dialog = library.openNewCourse();
+                                dialog.titleField().setText("Cell Biology");
+                                dialog.subtitleField().setText("From molecules to tissues");
+                                dialog.picker().select(150);
+                            }
+                        }),
+                new Shot("library-import", window -> window.navigator().reset(Destination.LIBRARY),
+                        window -> {
+                            // A protected course that is not in the library yet: the methods course, saved
+                            // with a code and then removed.
+                            Workspace workspace = window.context().workspace();
+                            Path file = tourFile();
+                            workspace.sharing().exportCourse(methods, file,
+                                    ExportOptions.protectedWith("orbit".toCharArray()));
+                            workspace.courses().delete(methods);
+                            if (window.navigator().currentView() instanceof LibraryPage library) {
+                                library.importFrom(file);
+                            }
+                        }),
+                new Shot("library-import-own", window -> window.navigator().reset(Destination.LIBRARY),
+                        window -> {
+                            Workspace workspace = window.context().workspace();
+                            Path file = tourFile();
+                            workspace.sharing().exportCourse(chemistry, file, ExportOptions.standard());
+                            if (window.navigator().currentView() instanceof LibraryPage library) {
+                                library.importFrom(file);
+                            }
+                        }),
+                new Shot("course-scrolled", window -> {
+                    window.navigator().reset(Destination.LIBRARY);
+                    window.navigator().navigate(new Destination.Course(os));
+                }, ScreenshotTour::scrollToBottom),
+                new Shot("course-creator", window -> {
+                    window.navigator().reset(Destination.LIBRARY);
+                    window.navigator().navigate(new Destination.Course(chemistry));
+                }),
+                new Shot("course-caught-up", window -> {
+                    studyEverything(window.context().workspace());
+                    window.navigator().reset(Destination.LIBRARY);
+                    window.navigator().navigate(new Destination.Course(methods));
+                }));
+    }
+
+    /** Answers every question the courses being studied offer today, so nothing is left to do. */
+    private static void studyEverything(Workspace workspace) {
+        for (int round = 0; round < 40 && !workspace.practice().studyNext(null).caughtUp(); round++) {
+            StudySession session = workspace.practice().start(SessionRequest.studyNext());
+            if (session.items().isEmpty()) {
+                break;
+            }
+            for (SessionItem item : session.items()) {
+                workspace.practice().submit(session.id(), Response.flashcard(item.itemId(), Rating.GOOD, 9_000));
+            }
+            workspace.practice().finish(session.id());
+        }
+    }
+
+    /** Scrolls the page on screen to its end. */
+    private static void scrollToBottom(MainWindow window) {
+        if (window.navigator().currentView().root() instanceof javafx.scene.control.ScrollPane scroll) {
+            scroll.applyCss();
+            scroll.layout();
+            scroll.setVvalue(scroll.getVmax());
+        }
+    }
+
+    /** A course file for the import shots, removed when the tour ends. */
+    private static Path tourFile() {
+        try {
+            Path file = Files.createTempFile("learnsphere-tour-", ".learnsphere");
+            file.toFile().deleteOnExit();
+            return file;
+        } catch (IOException e) {
+            throw new IllegalStateException("Cannot create a course file for the tour", e);
+        }
     }
 
     /** The demo conversation about {@code courseId} with its first citation open in the source viewer. */

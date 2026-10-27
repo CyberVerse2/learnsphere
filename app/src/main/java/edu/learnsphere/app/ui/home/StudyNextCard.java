@@ -18,6 +18,8 @@ import javafx.scene.control.Label;
 import javafx.scene.input.KeyCombination;
 import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import org.kordamp.ikonli.feather.Feather;
 
@@ -88,7 +90,10 @@ public final class StudyNextCard extends Card {
 
         VBox heading = new VBox(8, overline, headline, detail);
         VBox work = new VBox(10, beads, beadsCaption, courses);
-        getChildren().setAll(heading, work, actions);
+        Region push = new Region();
+        push.setMinHeight(0);
+        VBox.setVgrow(push, Priority.ALWAYS);
+        getChildren().setAll(heading, work, push, actions);
         setSpacing(24);
     }
 
