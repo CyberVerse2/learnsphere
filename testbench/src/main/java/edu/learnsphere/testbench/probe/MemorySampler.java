@@ -28,6 +28,9 @@ import org.slf4j.LoggerFactory;
  * resident size does not always show, so it is the better measure of what the servers take from the computer.
  * Peaks are kept per server role, for the servers together, and per phase. On other systems only the resident
  * size is sampled.
+ *
+ * <p>It also records how busy the computer was, since timings depend on it: the system load average, and other
+ * llama-server processes (not started by this run) competing for the GPU.
  */
 public final class MemorySampler implements AutoCloseable {
 
@@ -46,9 +49,10 @@ public final class MemorySampler implements AutoCloseable {
      * @param footprintByPhase highest total footprint while each phase ran (resident size when footprint is not
      *                         measured)
      * @param samples         how many times the processes were sampled
+     * @param activity        how busy the computer was meanwhile
      */
     public record Peaks(Map<ServerRole, Long> rssByRole, Map<ServerRole, Long> footprintByRole, long totalRss,
-                        long totalFootprint, Map<String, Long> footprintByPhase, int samples) {
+                        long totalFootprint, Map<String, Long> footprintByPhase, int samples, Activity activity) {
 
         public Peaks {
             rssByRole = Map.copyOf(rssByRole);
@@ -60,6 +64,20 @@ public final class MemorySampler implements AutoCloseable {
         public boolean hasFootprint() {
             return !footprintByRole.isEmpty();
         }
+    }
+
+    /**
+     * How busy the computer was while the servers ran.
+     *
+     * @param meanLoad              mean one-minute load average (negative when the system does not report it)
+     * @param maxLoad               highest one-minute load average
+     * @param maxOtherServers       most llama-server processes from elsewhere running at the same time
+     * @param shareWithOtherServers share of checks that found at least one llama-server from elsewhere
+     */
+    public record Activity(double meanLoad, double maxLoad, int maxOtherServers, double shareWithOtherServers) {
+
+        /** No measurements. */
+        public static final Activity NONE = new Activity(-1, -1, 0, 0);
     }
 
     private final Supplier<Map<ServerRole, Long>> processes;
@@ -74,6 +92,12 @@ public final class MemorySampler implements AutoCloseable {
     private long peakTotalRss;
     private long peakTotalFootprint;
     private int samples;
+    private double loadSum;
+    private int loadSamples;
+    private double maxLoad = -1;
+    private int otherChecks;
+    private int otherSeen;
+    private int maxOther;
     private volatile boolean running = true;
 
     /**
@@ -120,8 +144,20 @@ public final class MemorySampler implements AutoCloseable {
             }
         }
         String current = phase.get();
+        double load = java.lang.management.ManagementFactory.getOperatingSystemMXBean().getSystemLoadAverage();
+        int others = withFootprint || !footprintAvailable ? otherServers(pids.values()) : -1;
         synchronized (lock) {
             samples++;
+            if (load >= 0) {
+                loadSum += load;
+                loadSamples++;
+                maxLoad = Math.max(maxLoad, load);
+            }
+            if (others >= 0) {
+                otherChecks++;
+                otherSeen += others > 0 ? 1 : 0;
+                maxOther = Math.max(maxOther, others);
+            }
             long total = 0;
             for (Map.Entry<ServerRole, Long> entry : pids.entrySet()) {
                 Long bytes = rss.get(entry.getValue());
@@ -148,7 +184,9 @@ public final class MemorySampler implements AutoCloseable {
     /** The peaks so far. */
     public Peaks peaks() {
         synchronized (lock) {
-            return new Peaks(peakRss, peakFootprint, peakTotalRss, peakTotalFootprint, peakByPhase, samples);
+            Activity activity = new Activity(loadSamples == 0 ? -1 : loadSum / loadSamples, maxLoad, maxOther,
+                    otherChecks == 0 ? 0 : otherSeen / (double) otherChecks);
+            return new Peaks(peakRss, peakFootprint, peakTotalRss, peakTotalFootprint, peakByPhase, samples, activity);
         }
     }
 
@@ -170,6 +208,15 @@ public final class MemorySampler implements AutoCloseable {
     }
 
     // ------------------------------------------------------------------ measuring
+
+    /** llama-server processes running that are not among {@code ours}. */
+    static int otherServers(java.util.Collection<Long> ours) {
+        return (int) ProcessHandle.allProcesses()
+                .filter(p -> !ours.contains(p.pid()))
+                .filter(p -> p.info().command().map(c -> c.endsWith("/llama-server") || c.equals("llama-server"))
+                        .orElse(false))
+                .count();
+    }
 
     /** Resident size in bytes of each process that is still running. */
     static Map<Long, Long> residentSizes(List<Long> pids) throws InterruptedException {

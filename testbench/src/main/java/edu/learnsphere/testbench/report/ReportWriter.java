@@ -156,12 +156,31 @@ public final class ReportWriter {
             if (!result.complete()) {
                 out.append(" The run ended early: ").append(result.failure()).append('.');
             }
+            activity(result.memory());
             if (!result.leftover().isEmpty()) {
                 out.append(" Server processes still running after the run were stopped: ").append(result.leftover())
                         .append('.');
             }
             out.append("\n\n");
         }
+    }
+
+    /** One sentence on how busy the computer was, which the timings depend on. */
+    private void activity(MemorySampler.Peaks memory) {
+        if (memory == null || memory.activity().meanLoad() < 0) {
+            return;
+        }
+        MemorySampler.Activity activity = memory.activity();
+        out.append(" While it ran, the one-minute load average was ").append(number(activity.meanLoad(), 1))
+                .append(" on average (peak ").append(number(activity.maxLoad(), 1)).append(") on ")
+                .append(in.environment().processors()).append(" cores");
+        if (activity.maxOtherServers() > 0) {
+            out.append(", and llama-server processes from other programs shared the GPU for ")
+                    .append(percent(activity.shareWithOtherServers())).append(" of the run (up to ")
+                    .append(activity.maxOtherServers()).append(" at once)");
+        }
+        out.append(activity.maxOtherServers() > 0 || activity.meanLoad() > in.environment().processors() / 2.0
+                ? "; timings are higher than on an otherwise idle computer." : ".");
     }
 
     // ------------------------------------------------------------------ setup

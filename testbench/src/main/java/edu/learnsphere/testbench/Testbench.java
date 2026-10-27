@@ -81,7 +81,14 @@ public final class Testbench {
             }
             for (ModelChoice model : models) {
                 LOG.info("Evaluating {}", model.code());
-                results.add(ModelRun.run(model, runtime.get(), work.resolve("home-" + model.code()), material, truth));
+                ModelRun.Result result = ModelRun.run(model, runtime.get(), work.resolve("home-" + model.code()), material,
+                        truth, partial -> {
+                            List<ModelRun.Result> sofar = new ArrayList<>(results);
+                            sofar.add(partial);
+                            writeQuietly(report, ReportWriter.write(new ReportWriter.Inputs(started,
+                                    (System.nanoTime() - start) / 1_000_000, environment, material, truth, sofar, null)));
+                        });
+                results.add(result);
             }
         }
         if (skipped != null) {
@@ -121,6 +128,15 @@ public final class Testbench {
             LOG.warn("Not available in {}: {}", runtime, missing.stream().map(ModelChoice::code).collect(Collectors.joining(", ")));
         }
         return wanted.stream().filter(available::contains).distinct().toList();
+    }
+
+    /** Writes an interim report; a failure here must not end the run. */
+    private static void writeQuietly(Path report, String content) {
+        try {
+            write(report, content);
+        } catch (IOException | RuntimeException e) {
+            LOG.warn("Could not write the interim report", e);
+        }
     }
 
     private static void write(Path report, String content) throws IOException {

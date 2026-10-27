@@ -78,7 +78,7 @@ class ReportTest {
                 List.of(new IngestionEval.ScannedPage(1, 4, 0.97, 0.93, 16_000, 0, 2000, "Transcribed text")),
                 3, List.of(new IngestionEval.FigureNotes("os", 4, List.of("A state diagram"))));
         MemorySampler.Peaks memory = new MemorySampler.Peaks(Map.of(ServerRole.CHAT, 3L << 30), Map.of(ServerRole.CHAT, 4L << 30),
-                3L << 30, 4L << 30, Map.of("ingest:os", 4L << 30), 120);
+                3L << 30, 4L << 30, Map.of("ingest:os", 4L << 30), 120, new MemorySampler.Activity(12.5, 30, 3, 0.4));
         ModelRun.Result result = new ModelRun.Result(ModelChoice.CHAT_4B, 200_000,
                 new ModelRun.LoadTimes(Map.of(ServerRole.CHAT, 12_000L, ServerRole.EMBED, 4_000L), 12_000), ingestion, null,
                 null, null, null, memory, Map.of(), List.of(), "IllegalStateException: the chat server stopped", List.of());
@@ -94,7 +94,8 @@ class ReportTest {
                 List.of(result), null));
         assertThat(report).contains("| chat-4b | Met |", "The run ended early: IllegalStateException",
                 "Not measured: the run ended before this evaluation.", "A state diagram", "| 1 | 4 | 97.0% | 93.0% |",
-                "## Resource use", "## Appendix B: every generated item");
+                "## Resource use", "## Appendix B: every generated item",
+                "load average was 12.5 on average (peak 30.0) on 8 cores", "40.0% of the run (up to 3 at once)");
         assertThat(report).doesNotContain("null");
     }
 }

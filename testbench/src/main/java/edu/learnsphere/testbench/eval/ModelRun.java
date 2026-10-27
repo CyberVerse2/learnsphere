@@ -38,6 +38,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -89,39 +90,28 @@ public final class ModelRun {
     /**
      * Runs every evaluation with {@code model}.
      *
-     * @param home a folder for the profile and server logs; emptied first
+     * @param home     a folder for the profile and server logs; emptied first
+     * @param progress receives the results so far after each evaluation (with the step that comes next as the
+     *                 reason the run is incomplete), so a report can be written even if the process is stopped
      */
-    public static Result run(ModelChoice model, Path runtimeDirectory, Path home, Material material, EvaluationSet truth)
-            throws IOException {
+    public static Result run(ModelChoice model, Path runtimeDirectory, Path home, Material material, EvaluationSet truth,
+                             Consumer<Result> progress) throws IOException {
         deleteRecursively(home);
         AppPaths paths = AppPaths.at(home);
         Files.createDirectories(paths.logsDir());
-        long started = System.nanoTime();
         Recorder recorder = new Recorder();
         ChatLog chatLog = ChatLog.install(recorder::currentLabel);
         LocalAi ai = LocalAi.create(Optional.of(runtimeDirectory), HardwareProbe.probe(), paths.logsDir(),
                 ServerOptions.defaults());
-        LlamaServerManager runtime = ai.runtime();
-        Set<Long> seen = ConcurrentHashMap.newKeySet();
-        MemorySampler sampler = new MemorySampler(() -> {
-            Map<ServerRole, Long> ids = runtime.processIds();
-            seen.addAll(ids.values());
-            return ids;
-        }, recorder::currentLabel);
-
-        LoadTimes load = null;
-        IngestionEval.Result ingestion = null;
-        RetrievalEval.Result retrieval = null;
-        AnswerEval.Result answers = null;
-        GenerationEval.Result generation = null;
-        GradingEval.Result grading = null;
-        String failure = null;
+        Partial run = new Partial(model, ai.runtime(), recorder, chatLog);
         Workspace workspace = null;
+        String failure = null;
         try {
             recorder.label("load");
             LOG.info("Starting the servers with {}", model.code());
-            load = measureLoad(runtime, model);
-            LOG.info("Servers ready in {} s", String.format("%.1f", load.allMs() / 1000.0));
+            run.load = measureLoad(ai.runtime(), model);
+            LOG.info("Servers ready in {} s", String.format("%.1f", run.load.allMs() / 1000.0));
+            progress.accept(run.snapshot("it was stopped while importing the material"));
             Capabilities base = PdfModule.install(Capabilities.builder())
                     .searchIndexFactory(new LuceneSearchIndexFactory())
                     .ai(ai.capabilities())
@@ -132,11 +122,15 @@ public final class ModelRun {
             ProfileSummary profile = profiles.create(ProfileDraft.of("Testbench", 200));
             workspace = profiles.open(profile.id(), null);
             Session session = new Session(workspace, capabilities, recorder, chatLog, material, truth);
-            ingestion = IngestionEval.run(session);
-            retrieval = RetrievalEval.run(session);
-            answers = AnswerEval.run(session);
-            generation = GenerationEval.run(session, retrieval.bestPassages());
-            grading = GradingEval.run(session);
+            run.ingestion = IngestionEval.run(session);
+            progress.accept(run.snapshot("it was stopped during the retrieval evaluation"));
+            run.retrieval = RetrievalEval.run(session);
+            progress.accept(run.snapshot("it was stopped while asking the questions"));
+            run.answers = AnswerEval.run(session);
+            progress.accept(run.snapshot("it was stopped while generating items"));
+            run.generation = GenerationEval.run(session, run.retrieval.bestPassages());
+            progress.accept(run.snapshot("it was stopped while grading short answers"));
+            run.grading = GradingEval.run(session);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             failure = "Interrupted";
@@ -154,17 +148,50 @@ public final class ModelRun {
             }
             ai.close();
         }
-        MemorySampler.Peaks memory = sampler.finish();
-        List<ChatLog.Completion> completions = chatLog.completions();
+        run.sampler.close();
+        Result result = run.snapshot(failure);
         chatLog.close();
-        List<Long> leftover = stopLeftovers(seen);
-        Map<ServerRole, ServerLogs.Buffers> buffers = new EnumMap<>(ServerRole.class);
-        for (ServerRole role : ServerRole.values()) {
-            buffers.put(role, ServerLogs.read(runtime.logFile(role)));
+        List<Long> leftover = stopLeftovers(run.seen);
+        return new Result(result.model(), result.totalMs(), result.load(), result.ingestion(), result.retrieval(),
+                result.answers(), result.generation(), result.grading(), result.memory(), result.buffers(),
+                result.completions(), result.failure(), leftover);
+    }
+
+    /** The results of a run as they come in. */
+    private static final class Partial {
+
+        private final ModelChoice model;
+        private final LlamaServerManager runtime;
+        private final ChatLog chatLog;
+        private final long started = System.nanoTime();
+        private final Set<Long> seen = ConcurrentHashMap.newKeySet();
+        private final MemorySampler sampler;
+        private LoadTimes load;
+        private IngestionEval.Result ingestion;
+        private RetrievalEval.Result retrieval;
+        private AnswerEval.Result answers;
+        private GenerationEval.Result generation;
+        private GradingEval.Result grading;
+
+        Partial(ModelChoice model, LlamaServerManager runtime, Recorder recorder, ChatLog chatLog) {
+            this.model = model;
+            this.runtime = runtime;
+            this.chatLog = chatLog;
+            this.sampler = new MemorySampler(() -> {
+                Map<ServerRole, Long> ids = runtime.processIds();
+                seen.addAll(ids.values());
+                return ids;
+            }, recorder::currentLabel);
         }
-        long totalMs = (System.nanoTime() - started) / 1_000_000;
-        return new Result(model, totalMs, load, ingestion, retrieval, answers, generation, grading, memory, buffers,
-                completions, failure, leftover);
+
+        Result snapshot(String failure) {
+            Map<ServerRole, ServerLogs.Buffers> buffers = new EnumMap<>(ServerRole.class);
+            for (ServerRole role : ServerRole.values()) {
+                buffers.put(role, ServerLogs.read(runtime.logFile(role)));
+            }
+            return new Result(model, (System.nanoTime() - started) / 1_000_000, load, ingestion, retrieval, answers,
+                    generation, grading, sampler.peaks(), buffers, chatLog.completions(), failure, List.of());
+        }
     }
 
     /** Starts the servers with {@code model} and waits until every role answers its health check. */
