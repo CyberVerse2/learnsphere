@@ -18,6 +18,8 @@ import edu.learnsphere.core.model.Document;
 import edu.learnsphere.core.model.JobKind;
 import edu.learnsphere.core.model.JobStatus;
 import edu.learnsphere.core.service.AssistantState;
+import edu.learnsphere.core.service.CourseDraft;
+import edu.learnsphere.core.service.DocumentSummary;
 import edu.learnsphere.core.service.JobUpdate;
 import edu.learnsphere.core.service.ModelOption;
 import edu.learnsphere.core.service.ProfileContext;
@@ -180,10 +182,24 @@ class WorkspaceImplTest {
     }
 
     @Test
-    void servicesWithoutAnImplementationSaySo() {
+    void createsCoursesAndQueuesDocumentsWhoseImportWasInterrupted() {
+        Course course = t.course("Biology");
+        Document waiting = t.document(course, null, "Cells");
+        Document ready = t.document(course, null, "Tissues");
+        t.repos.documents().markReady(ready.id());
+
         try (WorkspaceImpl workspace = WorkspaceImpl.open(context, capabilities)) {
-            assertThatThrownBy(() -> workspace.courses().get("x")).isInstanceOf(UnsupportedOperationException.class)
-                    .hasMessageContaining("CourseService.get");
+            assertThat(workspace.jobs().active())
+                    .extracting(JobUpdate::kind, JobUpdate::subjectId)
+                    .containsExactly(org.assertj.core.groups.Tuple.tuple(JobKind.INGEST_DOCUMENT, waiting.id()));
+
+            Course created = workspace.courses().create(CourseDraft.titled("Chemistry"));
+            workspace.courses().addModule(created.id(), "Atoms");
+            assertThat(workspace.courses().get(created.id()).modules()).extracting(m -> m.title())
+                    .containsExactly("Atoms");
+            assertThat(workspace.documents().list(course.id())).extracting(DocumentSummary::title)
+                    .containsExactlyInAnyOrder("Cells", "Tissues");
+            assertThat(workspace.items().counts(created.id()).total()).isZero();
         }
     }
 }

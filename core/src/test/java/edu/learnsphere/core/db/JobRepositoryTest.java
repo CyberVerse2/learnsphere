@@ -79,4 +79,22 @@ class JobRepositoryTest extends RepositoryTestBase {
         assertThat(repos.jobs().deleteFinishedBefore(t.now() + 1)).isEqualTo(3);
         assertThat(repos.jobs().find(queued.id())).isPresent();
     }
+
+    @Test
+    void raisesThePriorityOfActiveJobsOnly() {
+        Job queued = queue(JobKind.INGEST_DOCUMENT, "doc-1", 0);
+        Job done = queue(JobKind.INGEST_DOCUMENT, "doc-2", 0);
+        repos.jobs().claimNext(JobKind.INGEST_DOCUMENT);
+        repos.jobs().markDone(queued.id(), null);
+        Job running = repos.jobs().claimNext(JobKind.INGEST_DOCUMENT).orElseThrow();
+        assertThat(running.id()).isEqualTo(done.id());
+
+        assertThat(repos.jobs().raisePriority(running.id(), 10)).isTrue();
+        assertThat(repos.jobs().raisePriority(running.id(), 10)).isFalse();
+        assertThat(repos.jobs().raisePriority(running.id(), 5)).isFalse();
+        assertThat(repos.jobs().raisePriority(queued.id(), 10)).isFalse();
+        assertThat(repos.jobs().find(running.id())).get().extracting(Job::priority, Job::status)
+                .containsExactly(10, JobStatus.RUNNING);
+        assertThat(repos.jobs().find(queued.id())).get().extracting(Job::priority).isEqualTo(0);
+    }
 }

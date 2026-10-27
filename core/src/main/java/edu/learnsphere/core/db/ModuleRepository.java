@@ -23,6 +23,28 @@ public final class ModuleRepository {
             rs.getLong("created_at"),
             rs.getLong("updated_at"));
 
+    /**
+     * A module with what the course page's module path shows.
+     *
+     * @param approvedItems approved items
+     * @param draftItems    items waiting for review
+     * @param documents     PDFs in the module
+     * @param startedItems  approved items reviewed at least once
+     * @param dueItems      approved, reviewed items due now in the study scope that was asked for
+     */
+    public record ModuleCounts(CourseModule module, int approvedItems, int draftItems, int documents, int startedItems,
+                               int dueItems) {
+
+        public ModuleCounts {
+            Objects.requireNonNull(module, "module");
+        }
+
+        /** Share of approved items reviewed at least once, 0–1 (0 without approved items). */
+        public double completion() {
+            return approvedItems == 0 ? 0 : Math.min(1, (double) startedItems / approvedItems);
+        }
+    }
+
     private final Database db;
     private final Clock clock;
 
@@ -76,6 +98,30 @@ public final class ModuleRepository {
         return db.withHandle(h -> h.createQuery(
                         "SELECT * FROM modules WHERE course_id = :c ORDER BY position, created_at")
                 .bind("c", courseId).map(MODULE).list());
+    }
+
+    /**
+     * Modules of a course in order, with their counts. Due items are approved, reviewed items of the module
+     * due at or before {@code now} and inside {@code dueScope} (pass {@link StudyScope#enrolled()} so a course
+     * the learner is not studying shows nothing due).
+     */
+    public List<ModuleCounts> listWithCounts(String courseId, StudyScope dueScope, long now) {
+        String sql = """
+                SELECT m.*,
+                  (SELECT COUNT(*) FROM learning_items i WHERE i.module_id = m.id AND i.status = 'approved') AS approved_items,
+                  (SELECT COUNT(*) FROM learning_items i WHERE i.module_id = m.id AND i.status = 'draft') AS draft_items,
+                  (SELECT COUNT(*) FROM documents d WHERE d.module_id = m.id) AS document_count,
+                  (SELECT COUNT(*) FROM learning_items i JOIN review_states r ON r.item_id = i.id
+                     WHERE i.module_id = m.id AND i.status = 'approved' AND r.state <> 'new') AS started_items,
+                  (SELECT COUNT(*) FROM learning_items i JOIN review_states r ON r.item_id = i.id"""
+                + dueScope.joins()
+                + " WHERE i.module_id = m.id AND i.status = 'approved' AND r.state <> 'new' AND r.due_at <= :now AND "
+                + dueScope.condition() + ") AS due_items"
+                + " FROM modules m WHERE m.course_id = :c ORDER BY m.position, m.created_at";
+        return db.withHandle(h -> dueScope.bind(h.createQuery(sql)).bind("c", courseId).bind("now", now)
+                .map((rs, ctx) -> new ModuleCounts(MODULE.map(rs, ctx), rs.getInt("approved_items"), rs.getInt("draft_items"),
+                        rs.getInt("document_count"), rs.getInt("started_items"), rs.getInt("due_items")))
+                .list());
     }
 
     public int countByCourse(String courseId) {

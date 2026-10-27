@@ -5,11 +5,13 @@ import edu.learnsphere.core.model.Job;
 import edu.learnsphere.core.model.JobKind;
 import edu.learnsphere.core.model.JobStatus;
 import java.time.Clock;
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import org.jdbi.v3.core.mapper.RowMapper;
+import org.jdbi.v3.core.statement.Query;
 
 /** Persistent background jobs. */
 public final class JobRepository {
@@ -90,12 +92,24 @@ public final class JobRepository {
      * and counts the attempt.
      */
     public Optional<Job> claimNext(JobKind kind) {
+        return claimNext(kind, Set.of());
+    }
+
+    /**
+     * Like {@link #claimNext(JobKind)}, passing over the queued jobs in {@code skip} (for example jobs
+     * waiting before they are tried again).
+     */
+    public Optional<Job> claimNext(JobKind kind, Collection<String> skip) {
+        List<String> skipped = List.copyOf(skip);
         return db.inTransaction(h -> {
-            Optional<Job> next = h.createQuery("""
-                            SELECT * FROM jobs WHERE status = 'queued' AND kind = :k
-                            ORDER BY priority DESC, created_at, id LIMIT 1
-                            """)
-                    .bind("k", kind.code()).map(JOB).findOne();
+            Query query = h.createQuery("SELECT * FROM jobs WHERE status = 'queued' AND kind = :k"
+                            + (skipped.isEmpty() ? "" : " AND id NOT IN (<skip>)")
+                            + " ORDER BY priority DESC, created_at, id LIMIT 1")
+                    .bind("k", kind.code());
+            if (!skipped.isEmpty()) {
+                query.bindList("skip", skipped);
+            }
+            Optional<Job> next = query.map(JOB).findOne();
             if (next.isEmpty()) {
                 return Optional.<Job>empty();
             }
@@ -147,6 +161,30 @@ public final class JobRepository {
                         WHERE id = :id AND status IN ('queued', 'running')
                         """)
                 .bind("id", id).bind("now", clock.millis()).execute()) > 0;
+    }
+
+    /**
+     * Puts one running job back in the queue (it was stopped to make way for other work, or will be tried
+     * again), clearing its progress line. Returns false when it was not running.
+     */
+    public boolean requeue(String id) {
+        return db.withHandle(h -> h.createUpdate("""
+                        UPDATE jobs SET status = 'queued', message = NULL, updated_at = :now
+                        WHERE id = :id AND status = 'running'
+                        """)
+                .bind("id", id).bind("now", clock.millis()).execute()) > 0;
+    }
+
+    /**
+     * Raises the priority of a queued or running job to {@code priority}; returns false when the job is not
+     * active or already has that priority or a higher one.
+     */
+    public boolean raisePriority(String id, int priority) {
+        return db.withHandle(h -> h.createUpdate("""
+                        UPDATE jobs SET priority = :p, updated_at = :now
+                        WHERE id = :id AND priority < :p AND status IN ('queued', 'running')
+                        """)
+                .bind("id", id).bind("p", priority).bind("now", clock.millis()).execute()) > 0;
     }
 
     /** Puts jobs left running by an interrupted run back in the queue; returns how many. */

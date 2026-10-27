@@ -81,8 +81,8 @@ public final class CourseRepository {
         }
     }
 
-    private static final String COUNTS_SQL = """
-            SELECT c.id AS course_id,
+    /** The {@link CourseCounts} columns for the course aliased {@code c}; due items are counted up to {@code :now}. */
+    private static final String COUNT_COLUMNS = """
               (SELECT COUNT(*) FROM modules m WHERE m.course_id = c.id) AS module_count,
               (SELECT COUNT(*) FROM documents d WHERE d.course_id = c.id) AS document_count,
               (SELECT COUNT(*) FROM documents d WHERE d.course_id = c.id
@@ -97,8 +97,36 @@ public final class CourseRepository {
                  WHERE i.course_id = c.id AND i.status = 'approved' AND r.state <> 'new' AND r.due_at <= :now) AS due_items,
               (SELECT COUNT(*) FROM flags f JOIN learning_items i ON i.id = f.item_id
                  WHERE i.course_id = c.id AND f.resolved_at IS NULL) AS open_flags
-            FROM courses c
             """;
+
+    private static final String COUNTS_SQL = "SELECT c.id AS course_id,\n" + COUNT_COLUMNS + "FROM courses c\n";
+
+    private static final RowMapper<CourseCounts> COUNTS = (rs, ctx) -> new CourseCounts(
+            rs.getInt("module_count"), rs.getInt("document_count"), rs.getInt("documents_processing"),
+            rs.getInt("documents_attention"), rs.getInt("approved_items"), rs.getInt("draft_items"),
+            rs.getInt("started_items"), rs.getInt("due_items"), rs.getInt("open_flags"));
+
+    /**
+     * A course with its enrolment and {@link CourseCounts}, as course cards need it.
+     *
+     * @param enrolled true while the learner has an active enrolment
+     */
+    public record CourseRow(Course course, boolean enrolled, CourseCounts counts) {
+
+        public CourseRow {
+            Objects.requireNonNull(course, "course");
+            Objects.requireNonNull(counts, "counts");
+        }
+    }
+
+    private static final RowMapper<CourseRow> ROW = (rs, ctx) ->
+            new CourseRow(COURSE.map(rs, ctx), Rows.bool(rs, "enrolled"), COUNTS.map(rs, ctx));
+
+    private static final String ROWS_SQL = "SELECT c.*,\n"
+            + "  EXISTS (SELECT 1 FROM enrolments e WHERE e.course_id = c.id AND e.status = 'active') AS enrolled,\n"
+            + COUNT_COLUMNS + "FROM courses c WHERE 1 = 1";
+
+    private static final String ROWS_ORDER = " ORDER BY COALESCE(c.last_opened_at, 0) DESC, c.updated_at DESC, c.id";
 
     private final Database db;
     private final Clock clock;
@@ -274,10 +302,7 @@ public final class CourseRepository {
         return db.withHandle(h -> {
             Map<String, CourseCounts> result = new HashMap<>();
             h.createQuery(COUNTS_SQL).bind("now", now)
-                    .map((rs, ctx) -> Map.entry(rs.getString("course_id"), new CourseCounts(
-                            rs.getInt("module_count"), rs.getInt("document_count"), rs.getInt("documents_processing"),
-                            rs.getInt("documents_attention"), rs.getInt("approved_items"), rs.getInt("draft_items"),
-                            rs.getInt("started_items"), rs.getInt("due_items"), rs.getInt("open_flags"))))
+                    .map((rs, ctx) -> Map.entry(rs.getString("course_id"), COUNTS.map(rs, ctx)))
                     .forEach(e -> result.put(e.getKey(), e.getValue()));
             return result;
         });
@@ -286,11 +311,52 @@ public final class CourseRepository {
     /** {@link CourseCounts} for one course ({@link CourseCounts#EMPTY} when it does not exist). */
     public CourseCounts counts(String courseId, long now) {
         return db.withHandle(h -> h.createQuery(COUNTS_SQL + " WHERE c.id = :id").bind("now", now).bind("id", courseId)
-                .map((rs, ctx) -> new CourseCounts(
-                        rs.getInt("module_count"), rs.getInt("document_count"), rs.getInt("documents_processing"),
-                        rs.getInt("documents_attention"), rs.getInt("approved_items"), rs.getInt("draft_items"),
-                        rs.getInt("started_items"), rs.getInt("due_items"), rs.getInt("open_flags")))
-                .findOne().orElse(CourseCounts.EMPTY));
+                .map(COUNTS).findOne().orElse(CourseCounts.EMPTY));
+    }
+
+    /**
+     * Courses with their enrolment and counts, most recently opened (then updated) first. Due items in the
+     * counts are counted up to {@code now}.
+     *
+     * @param origin          only courses of this origin, or null for every origin
+     * @param enrolledOnly    only courses with an active enrolment
+     * @param search          case-insensitive text in title, subtitle or author; null or blank for none
+     * @param includeArchived whether archived courses are included
+     */
+    public List<CourseRow> listRows(CourseOrigin origin, boolean enrolledOnly, String search, boolean includeArchived,
+                                    long now) {
+        StringBuilder sql = new StringBuilder(ROWS_SQL);
+        if (origin != null) {
+            sql.append(" AND c.origin = :origin");
+        }
+        if (enrolledOnly) {
+            sql.append(" AND EXISTS (SELECT 1 FROM enrolments e WHERE e.course_id = c.id AND e.status = 'active')");
+        }
+        if (!includeArchived) {
+            sql.append(" AND c.status <> 'archived'");
+        }
+        boolean searching = search != null && !search.isBlank();
+        if (searching) {
+            sql.append(" AND (c.title LIKE :search ESCAPE '!' OR c.subtitle LIKE :search ESCAPE '!'"
+                    + " OR c.author_name LIKE :search ESCAPE '!')");
+        }
+        sql.append(ROWS_ORDER);
+        return db.withHandle(h -> {
+            var query = h.createQuery(sql.toString()).bind("now", now);
+            if (origin != null) {
+                query.bind("origin", origin.code());
+            }
+            if (searching) {
+                query.bind("search", "%" + LearningItemRepository.escapeLike(search.strip()) + "%");
+            }
+            return query.map(ROW).list();
+        });
+    }
+
+    /** One course with its enrolment and counts (due items counted up to {@code now}). */
+    public Optional<CourseRow> findRow(String id, long now) {
+        return db.withHandle(h -> h.createQuery(ROWS_SQL + " AND c.id = :id").bind("id", id).bind("now", now)
+                .map(ROW).findOne());
     }
 
     // ---- versions -----------------------------------------------------------------------------

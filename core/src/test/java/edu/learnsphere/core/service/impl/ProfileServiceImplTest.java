@@ -2,6 +2,7 @@ package edu.learnsphere.core.service.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -9,7 +10,9 @@ import edu.learnsphere.core.AppPaths;
 import edu.learnsphere.core.error.ConflictException;
 import edu.learnsphere.core.error.InvalidInputException;
 import edu.learnsphere.core.error.UserMessage;
+import edu.learnsphere.core.model.AuditLogEntry;
 import edu.learnsphere.core.model.Course;
+import edu.learnsphere.core.model.EntityType;
 import edu.learnsphere.core.profile.ProfileRegistry;
 import edu.learnsphere.core.security.PasswordHasher;
 import edu.learnsphere.core.service.ProfileContext;
@@ -162,6 +165,14 @@ class ProfileServiceImplTest {
         assertThat(paths.profile(restored.id()).filesDir().resolve("a".repeat(64) + ".pdf")).hasContent("%PDF-1.7");
         try (Workspace _ = profiles.open(restored.id(), "secret".toCharArray())) {
             assertThat(opened.getLast().repositories().courses().find(course.id())).isPresent();
+            assertThat(opened.getLast().repositories().audit().listForEntity(EntityType.PROFILE, restored.id()))
+                    .extracting(AuditLogEntry::action, AuditLogEntry::detail)
+                    .containsExactly(tuple(AuditAction.RESTORE.code(), ada.id()));
+        }
+        try (Workspace _ = profiles.open(ada.id(), "secret".toCharArray())) {
+            assertThat(opened.getLast().repositories().audit().listForEntity(EntityType.PROFILE, ada.id()))
+                    .extracting(AuditLogEntry::action, AuditLogEntry::detail)
+                    .containsExactly(tuple(AuditAction.BACKUP.code(), "ada.zip"));
         }
     }
 

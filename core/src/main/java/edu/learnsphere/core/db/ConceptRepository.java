@@ -28,6 +28,16 @@ public final class ConceptRepository {
             VALUES (:id, :courseId, :moduleId, :name, :description, :createdAt, :updatedAt)
             """;
 
+    /**
+     * How much study a concept has had.
+     *
+     * @param approvedItems approved items tagged with it
+     * @param reviewedItems of those, items reviewed at least once
+     * @param attempts      attempts on items tagged with it
+     */
+    public record ConceptCounts(String conceptId, int approvedItems, int reviewedItems, int attempts) {
+    }
+
     private final Database db;
     private final Clock clock;
 
@@ -105,6 +115,29 @@ public final class ConceptRepository {
     /** Deletes a module's concepts (before extracting them again). Item tags go with them. */
     public int deleteByModule(String moduleId) {
         return db.withHandle(h -> h.createUpdate("DELETE FROM concepts WHERE module_id = :m").bind("m", moduleId).execute());
+    }
+
+    /** {@link ConceptCounts} for every concept of a course, keyed by concept id. */
+    public Map<String, ConceptCounts> studyCounts(String courseId) {
+        return db.withHandle(h -> {
+            Map<String, ConceptCounts> result = new HashMap<>();
+            h.createQuery("""
+                            SELECT c.id,
+                              (SELECT COUNT(*) FROM item_concepts ic JOIN learning_items i ON i.id = ic.item_id
+                                 WHERE ic.concept_id = c.id AND i.status = 'approved') AS approved_items,
+                              (SELECT COUNT(*) FROM item_concepts ic JOIN learning_items i ON i.id = ic.item_id
+                                 JOIN review_states r ON r.item_id = i.id
+                                 WHERE ic.concept_id = c.id AND i.status = 'approved' AND r.state <> 'new') AS reviewed_items,
+                              (SELECT COUNT(*) FROM item_concepts ic JOIN attempts a ON a.item_id = ic.item_id
+                                 WHERE ic.concept_id = c.id) AS attempts
+                            FROM concepts c WHERE c.course_id = :c
+                            """)
+                    .bind("c", courseId)
+                    .map((rs, ctx) -> new ConceptCounts(rs.getString("id"), rs.getInt("approved_items"),
+                            rs.getInt("reviewed_items"), rs.getInt("attempts")))
+                    .forEach(counts -> result.put(counts.conceptId(), counts));
+            return result;
+        });
     }
 
     /** Approved items tagged with each concept of a course, keyed by concept id. */
