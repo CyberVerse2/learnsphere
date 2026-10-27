@@ -12,9 +12,11 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import javax.imageio.ImageIO;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -82,6 +84,33 @@ class PdfBoxPageRendererTest {
             }
         } finally {
             pool.shutdownNow();
+        }
+    }
+
+    @Test
+    void rendersAtMostTheAllowedNumberOfPagesAtOnce() throws Exception {
+        for (int limit : new int[] {1, 2}) {
+            PdfBoxPageRenderer bounded = new PdfBoxPageRenderer(limit, PdfBoxPageRenderer.DEFAULT_MAX_PIXELS);
+            ExecutorService pool = Executors.newFixedThreadPool(6);
+            CountDownLatch start = new CountDownLatch(1);
+            try {
+                List<Future<byte[]>> renders = new ArrayList<>();
+                for (int i = 0; i < 12; i++) {
+                    int page = 1 + i % Lecture.PAGES;
+                    renders.add(pool.submit(() -> {
+                        start.await();
+                        return bounded.renderPng(lecture, page, 1.5f);
+                    }));
+                }
+                start.countDown();
+                for (Future<byte[]> render : renders) {
+                    assertTrue(render.get(60, TimeUnit.SECONDS).length > 0, "every caller gets its page");
+                }
+            } finally {
+                pool.shutdownNow();
+            }
+            int peak = bounded.peakConcurrentRenders();
+            assertTrue(peak >= 1 && peak <= limit, "6 callers, at most " + limit + " at once: " + peak);
         }
     }
 

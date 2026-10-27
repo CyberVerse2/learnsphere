@@ -8,6 +8,7 @@ import java.io.InterruptedIOException;
 import java.nio.file.Path;
 import java.util.Iterator;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicInteger;
 import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
 import javax.imageio.ImageWriteParam;
@@ -40,6 +41,8 @@ public final class PdfBoxPageRenderer implements PageRenderer {
 
     private final Semaphore permits;
     private final long maxPixels;
+    private final AtomicInteger activeRenders = new AtomicInteger();
+    private final AtomicInteger peakRenders = new AtomicInteger();
 
     /** A renderer with {@link #DEFAULT_MAX_CONCURRENT_RENDERS} and {@link #DEFAULT_MAX_PIXELS}. */
     public PdfBoxPageRenderer() {
@@ -84,6 +87,8 @@ public final class PdfBoxPageRenderer implements PageRenderer {
             interrupted.initCause(e);
             throw interrupted;
         }
+        int active = activeRenders.incrementAndGet();
+        peakRenders.accumulateAndGet(active, Math::max);
         try (PDDocument document = PdfDocuments.open(pdf)) {
             PageGeometry geometry = PageGeometry.of(PdfDocuments.page(document, pageNumber, pdf));
             float effectiveScale = fitScale(geometry.displayWidth(), geometry.displayHeight(), scale);
@@ -102,8 +107,14 @@ public final class PdfBoxPageRenderer implements PageRenderer {
                 image.flush();
             }
         } finally {
+            activeRenders.decrementAndGet();
             permits.release();
         }
+    }
+
+    /** The largest number of pages this renderer has drawn at the same time so far. */
+    int peakConcurrentRenders() {
+        return peakRenders.get();
     }
 
     /** {@code scale}, reduced when needed so the image stays within the pixel and side limits. */
