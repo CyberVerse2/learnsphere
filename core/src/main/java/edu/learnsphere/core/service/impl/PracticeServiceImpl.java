@@ -320,13 +320,22 @@ public final class PracticeServiceImpl implements PracticeService {
         long endedAt = endedNow ? now : repos.sessions().findSession(sessionId).map(SessionRecord::endedAt).orElse(now);
         LiveSession session = live.remove(sessionId);
 
-        List<Attempt> attempts = repos.sessions().listAttemptsForSession(sessionId);
-        Map<String, Attempt> firstByItem = new LinkedHashMap<>();
-        for (Attempt a : attempts) {
-            firstByItem.putIfAbsent(a.itemId(), a);
-        }
+        // Each item's first answer in the session (insertion order breaks a tie in time).
+        Map<String, Boolean> firstByItem = new LinkedHashMap<>();
+        repos.database().withHandle(h -> h.createQuery("""
+                        SELECT a.item_id, a.correct FROM attempts a
+                        WHERE a.session_id = :s
+                          AND NOT EXISTS (SELECT 1 FROM attempts b
+                                          WHERE b.session_id = a.session_id AND b.item_id = a.item_id
+                                            AND (b.created_at < a.created_at
+                                                 OR (b.created_at = a.created_at AND b.rowid < a.rowid)))
+                        ORDER BY a.created_at, a.rowid
+                        """)
+                .bind("s", sessionId)
+                .map((rs, ctx) -> Map.entry(rs.getString("item_id"), rs.getInt("correct") != 0)).list())
+                .forEach(e -> firstByItem.put(e.getKey(), e.getValue()));
         int answered = firstByItem.size();
-        int correct = (int) firstByItem.values().stream().filter(Attempt::correct).count();
+        int correct = (int) firstByItem.values().stream().filter(Boolean::booleanValue).count();
         int itemCount = session == null ? answered : session.entries.size();
         int newLearned = repos.database().withHandle(h -> h.createQuery("""
                         SELECT COUNT(*) FROM (SELECT item_id, MIN(created_at) AS first FROM attempts
@@ -429,16 +438,19 @@ public final class PracticeServiceImpl implements PracticeService {
      * is applied to it at {@code now} instead.
      */
     private ReviewState replay(String itemId, FsrsScheduler scheduler, long now) {
-        List<Attempt> history = new ArrayList<>(repos.sessions().listAttemptsForItem(itemId, Integer.MAX_VALUE));
-        Collections.reverse(history);
+        // Oldest first; insertion order breaks a tie in time.
+        List<Map.Entry<Rating, Long>> history = repos.database().withHandle(h -> h.createQuery(
+                        "SELECT rating, created_at FROM attempts WHERE item_id = :i ORDER BY created_at, rowid")
+                .bind("i", itemId)
+                .map((rs, ctx) -> Map.entry(Rating.fromValue(rs.getInt("rating")), rs.getLong("created_at"))).list());
         Optional<ReviewState> stored = repos.reviews().find(itemId);
         if (stored.isPresent() && stored.get().reps() > history.size()) {
             return scheduler.review(stored.get(), RatingRules.DISPUTED, now);
         }
         long createdAt = stored.map(ReviewState::createdAt).orElse(now);
         ReviewState state = ReviewState.newItem(itemId, createdAt);
-        for (Attempt a : history) {
-            state = scheduler.review(state, a.rating(), a.createdAt());
+        for (Map.Entry<Rating, Long> a : history) {
+            state = scheduler.review(state, a.getKey(), a.getValue());
         }
         return new ReviewState(state.itemId(), state.phase(), state.stability(), state.difficulty(), state.dueAt(),
                 state.lastReviewAt(), state.reps(), state.lapses(), state.scheduledDays(), state.step(), createdAt, now);
