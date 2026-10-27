@@ -1,0 +1,58 @@
+LearnSphere: third-party notices
+================================
+
+LearnSphere includes the software, fonts and model weights listed below. Each is used under the
+licence named next to it. The licence texts are in this folder:
+
+  fonts/        licences shipped with the fonts
+  licenses/     licences of components that do not carry their own copy
+  libraries/    licence and notice files copied from each Java library, one folder per library
+
+The Java runtime's own notices are in the legal folder of the bundled runtime.
+
+
+Fonts
+-----
+Inter                                  SIL Open Font License 1.1     fonts/OFL-Inter.txt
+Newsreader                             SIL Open Font License 1.1     fonts/OFL-Newsreader.txt
+
+
+Java runtime and user interface
+-------------------------------
+OpenJDK                                GPL v2 with the Classpath Exception (legal folder of the runtime)
+OpenJFX (JavaFX)                       GPL v2 with the Classpath Exception
+                                       licenses/javafx/LICENSE, ASSEMBLY_EXCEPTION, ADDITIONAL_LICENSE_INFO
+  with GStreamer, GLib and libffi      licenses/javafx/gstreamer.md, glib.md, libffi.md (LGPL 2.1, MIT)
+  and the libraries in                 licenses/javafx/jpeg_fx.md, mesa3d.md, directshow.md
+AtlantaFX                              MIT                           licenses/AtlantaFX-LICENSE.txt
+Ikonli and its Feather and Material
+Design icon packs                      Apache 2.0                    libraries/ikonli-*/
+
+
+Libraries
+---------
+SQLite JDBC (Xerial)                   Apache 2.0, and BSD for the parts from Zentus; SQLite itself is in
+                                       the public domain             libraries/sqlite-jdbc-*/
+Jdbi                                   Apache 2.0                    licenses/Apache-2.0.txt
+GeantyRef                              Apache 2.0                    licenses/Apache-2.0.txt
+Apache Lucene                          Apache 2.0                    libraries/lucene-*/
+Apache PDFBox, FontBox and PDFBox IO   Apache 2.0                    libraries/pdfbox-*/, libraries/fontbox-*/
+Apache Commons Logging                 Apache 2.0                    libraries/commons-logging-*/
+JBIG2 ImageIO (Apache PDFBox)          Apache 2.0                    libraries/jbig2-imageio-*/
+Java Advanced Imaging Image I/O        BSD 3-Clause                  libraries/jai-imageio-core-*/
+JPEG 2000 plugin (jai-imageio-jpeg2000)
+                                       BSD 3-Clause, plus the JJ2000 licence for the JPEG 2000 codec
+                                                                     libraries/jai-imageio-jpeg2000-*/LICENSE
+Jackson                                Apache 2.0                    libraries/jackson-*/
+commonmark-java                        BSD 2-Clause                  libraries/commonmark-*/
+SLF4J                                  MIT                           libraries/slf4j-api-*/
+Logback                                EPL 2.0 or LGPL 2.1           licenses/Logback-LICENSE.txt, licenses/EPL-2.0.txt
+
+
+Study assistant
+---------------
+llama.cpp and ggml                     MIT                           licenses/llama.cpp-LICENSE.txt
+LLVM OpenMP runtime (Windows)          Apache 2.0 with LLVM exceptions; shipped next to llama-server
+Qwen3.5 4B (GGUF by Unsloth)           Apache 2.0                    licenses/Apache-2.0.txt
+Qwen3 Embedding 0.6B (GGUF by Qwen)    Apache 2.0                    licenses/Apache-2.0.txt
+Qwen3 Reranker 0.6B (GGUF by ggml-org) Apache 2.0                    licenses/Apache-2.0.txt

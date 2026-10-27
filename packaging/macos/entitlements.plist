@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- Hardened-runtime entitlements: the JVM compiles code at run time and loads native libraries
-     (JavaFX, SQLite, llama.cpp) that are signed with the same identity but extracted at run time. -->
+<!-- Hardened-runtime entitlements of the app's Java launcher, and nothing broader. The Java virtual
+     machine compiles code at run time (allow-jit, allow-unsigned-executable-memory), and JavaFX and SQLite
+     load the native libraries they extract from their jars at run time (disable-library-validation).
+     llama-server and the other executables are signed without entitlements. -->
 <plist version="1.0">
 <dict>
     <key>com.apple.security.cs.allow-jit</key>
