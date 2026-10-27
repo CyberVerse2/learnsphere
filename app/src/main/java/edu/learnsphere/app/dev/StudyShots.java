@@ -67,7 +67,7 @@ final class StudyShots {
                 new Shot("study-weak-spots", window -> window.navigator().reset(study(
                         SessionRequest.weakConcepts(DemoContent.RESEARCH_METHODS)))),
                 new Shot("study-empty-weak", window -> window.navigator().reset(study(
-                        SessionRequest.weakConcepts(DemoContent.OPERATING_SYSTEMS)))),
+                        SessionRequest.weakConcepts(DemoContent.ORGANIC_CHEMISTRY)))),
                 new Shot("study-ended", window -> window.navigator().reset(study(SessionRequest.studyNext())),
                         window -> {
                             // The session ends behind the page's back (as when the app was away), then the learner

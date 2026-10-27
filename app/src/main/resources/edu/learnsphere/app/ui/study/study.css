@@ -157,9 +157,9 @@
     -fx-min-height: 24px;
 }
 
-/* True or false: two tiles. */
+/* True or false: two equal tiles, whatever their words. */
 .study-tiles {
-    -fx-spacing: 16px;
+    -fx-hgap: 16px;
 }
 
 .study-option.tile {

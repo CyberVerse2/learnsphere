@@ -17,6 +17,8 @@ import javafx.scene.control.Label;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.input.MouseButton;
+import javafx.scene.layout.ColumnConstraints;
+import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Pane;
 import javafx.scene.layout.Priority;
@@ -50,14 +52,20 @@ final class ChoiceQuestion extends QuestionView {
             options.add(new Option(value, trueFalse ? StudyText.answerText(ItemType.TRUE_FALSE, value) : value, key));
         }
         if (trueFalse) {
-            HBox tiles = new HBox(16);
+            // A grid of equal columns, so both tiles are the same width whatever their words.
+            GridPane tiles = new GridPane();
+            tiles.setHgap(16);
             tiles.getStyleClass().add("study-tiles");
-            options.forEach(option -> {
+            for (int i = 0; i < options.size(); i++) {
+                Option option = options.get(i);
                 option.getStyleClass().add("tile");
-                HBox.setHgrow(option, Priority.ALWAYS);
                 option.setMaxWidth(Double.MAX_VALUE);
-                tiles.getChildren().add(option);
-            });
+                ColumnConstraints column = new ColumnConstraints();
+                column.setPercentWidth(100.0 / options.size());
+                column.setFillWidth(true);
+                tiles.getColumnConstraints().add(column);
+                tiles.add(option, i, 0);
+            }
             body = tiles;
         } else {
             VBox rows = new VBox(12);

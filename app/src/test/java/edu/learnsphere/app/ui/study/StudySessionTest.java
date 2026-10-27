@@ -622,7 +622,7 @@ class StudySessionTest {
         assertThat(page().state()).isEqualTo(StudyPage.State.EMPTY);
         assertThat(texts(page().root(), ".empty-state-title")).containsExactly("No weak spots right now");
         assertThat(texts(page().root(), ".empty-state-message")).containsExactly(
-                "Concepts you find hard show up here as you study. 5 questions are ready in this course.");
+                "Concepts you find hard show up here as you study.\n5 questions are ready in this course.");
         assertThat(button(page().root(), "Start studying").isVisible()).isTrue();
     }
 

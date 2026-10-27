@@ -92,7 +92,9 @@ final class DemoPractice implements PracticeService {
                     pool.stream().filter(i -> !store.started(i.id())).limit(10).forEach(picked::add);
                 }
             }
-            if (picked.isEmpty() && request.kind() != SessionKind.STUDY_NEXT) {
+            // Weak spots stay empty when nothing is weak, as on the real services.
+            if (picked.isEmpty() && request.kind() != SessionKind.STUDY_NEXT
+                    && request.kind() != SessionKind.WEAK_CONCEPTS) {
                 picked.addAll(pool);
             }
             List<LearningItem> chosen = picked.stream().distinct().limit(request.size()).toList();

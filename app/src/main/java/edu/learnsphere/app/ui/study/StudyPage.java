@@ -371,7 +371,7 @@ public final class StudyPage implements View {
                     : nextReview != null ? nextReview
                     : "When this module has questions ready, you can practise them here.");
             case WEAK_CONCEPTS -> new EmptyState(EmptyIllustration.Kind.CAUGHT_UP, "No weak spots right now",
-                    "Concepts you find hard show up here as you study." + (readyElsewhere ? " " + ready : ""));
+                    "Concepts you find hard show up here as you study." + (readyElsewhere ? "\n" + ready : ""));
             case FLASHCARDS -> new EmptyState(EmptyIllustration.Kind.CAUGHT_UP, "Nothing to review right now",
                     nextReview != null ? nextReview : "Flashcards you study come back here when they're due.");
             case STUDY_NEXT -> new EmptyState(EmptyIllustration.Kind.CAUGHT_UP, "Nothing to review right now",
