@@ -179,6 +179,8 @@ public final class OnboardingPage implements View {
     }
 
     private void create(Button next, Label error) {
+        // The button's disabled state follows the name field until the profile is being created.
+        next.disableProperty().unbind();
         next.setDisable(true);
         String displayName = name.getText().strip();
         int hue = (Integer) hues.getSelectedToggle().getUserData();
