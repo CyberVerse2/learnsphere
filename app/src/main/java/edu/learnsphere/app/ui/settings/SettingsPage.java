@@ -112,6 +112,7 @@ public final class SettingsPage extends PageView {
     private final VBox modelChoices = new VBox(12);
     private final StatusPill assistantPill = new StatusPill(StatusPill.Status.WORKING, "Getting ready");
     private final Label assistantMessage = new Label();
+    private final Label choiceDetail = new Label("Changing this restarts the study assistant, which takes a moment.");
     private final Button restart = new Button("Restart");
     private final HBox profileLine = new HBox(16);
     private final Label spaceUsed = new Label();
@@ -506,7 +507,6 @@ public final class SettingsPage extends PageView {
         showModels(data.models());
         Label choiceTitle = new Label("How it answers");
         choiceTitle.getStyleClass().add("settings-row-title");
-        Label choiceDetail = new Label("Changing this restarts the study assistant, which takes a moment.");
         choiceDetail.getStyleClass().add("settings-row-detail");
         choiceDetail.setWrapText(true);
         VBox choice = new VBox(16, new VBox(4, choiceTitle, choiceDetail), modelChoices);
@@ -543,6 +543,8 @@ public final class SettingsPage extends PageView {
     private void showModels(List<ModelOption> options) {
         // While it can't run on this computer there is nothing to choose: the options only say what each is.
         boolean canRun = assistantState != AssistantState.UNAVAILABLE;
+        choiceDetail.setVisible(canRun);
+        choiceDetail.setManaged(canRun);
         ToggleGroup group = new ToggleGroup();
         List<Node> rows = new ArrayList<>();
         ModelChoice recommended = canRun ? options.stream().filter(ModelOption::recommended).map(ModelOption::choice)

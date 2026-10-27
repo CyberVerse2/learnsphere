@@ -155,6 +155,12 @@ public final class ScreenshotTour {
                 new Shot("profiles-delete", window -> window.navigator().reset(Destination.PROFILES),
                         window -> profiles(window).actions().delete(profileNamed(window, LONG_PROFILE),
                                 profiles(window).root(), () -> { }, () -> { })),
+                new Shot("profiles-backup-protected", window -> window.navigator().reset(Destination.PROFILES),
+                        window -> profiles(window).actions().backup(profileNamed(window, PROTECTED_PROFILE),
+                                profiles(window).root())),
+                new Shot("profiles-delete-protected", window -> window.navigator().reset(Destination.PROFILES),
+                        window -> profiles(window).actions().delete(profileNamed(window, PROTECTED_PROFILE),
+                                profiles(window).root(), () -> { }, () -> { })),
                 new Shot("unlock", window -> window.navigator().reset(
                         new Destination.Unlock(profileNamed(window, PROTECTED_PROFILE).id()))),
                 new Shot("unlock-wrong", window -> window.navigator().reset(

@@ -78,17 +78,19 @@ public final class RealRun {
 
     /** Deletes the run's own home once every step passed (no process is left using it); keeps it otherwise. */
     private static void cleanUp(boolean passed) {
-        AppPaths paths = AppPaths.resolve();
         if (!TemporaryHome.isTemporary()) {
             return;
         }
+        AppPaths paths = AppPaths.resolve();
+        // Read once: asking AppPaths for the home again would make the folder anew.
+        Path home = paths.home();
         if (!passed) {
-            report("home_kept", paths.home() + " (for its logs)");
+            report("home_kept", home + " (for its logs)");
             return;
         }
         try {
             TemporaryHome.deleteIfTemporary(paths);
-            report("home_deleted", !Files.exists(paths.home()));
+            report("home_deleted", !Files.exists(home));
         } catch (RuntimeException e) {
             report("home_deleted", "false: " + e.getMessage());
         }

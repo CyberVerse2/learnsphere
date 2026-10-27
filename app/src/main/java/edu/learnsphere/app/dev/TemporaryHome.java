@@ -29,7 +29,8 @@ public final class TemporaryHome {
 
     /**
      * Deletes the app home of {@code paths} with everything in it when it was made for this run alone; does
-     * nothing otherwise.
+     * nothing otherwise. Afterwards, check the folder through a path read before this call: {@link AppPaths#home()}
+     * makes the folder again when asked for it.
      *
      * @return true when the home was deleted
      */

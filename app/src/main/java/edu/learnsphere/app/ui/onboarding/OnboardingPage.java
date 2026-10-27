@@ -368,8 +368,8 @@ public final class OnboardingPage implements View {
         Label title = new Label("Meet your study assistant");
         title.getStyleClass().add("text-title");
         title.setWrapText(true);
-        Label body = new Label("It answers your questions from your own PDFs and shows the page each answer comes "
-                + "from. It also writes practice questions for you to check.");
+        Label body = new Label("It answers from your PDFs, showing the page each answer comes from, and drafts "
+                + "practice questions for you to check.");
         body.getStyleClass().add("onboarding-body");
         body.setWrapText(true);
 
