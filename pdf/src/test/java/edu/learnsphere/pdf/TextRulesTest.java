@@ -33,6 +33,17 @@ class TextRulesTest {
         assertEquals(List.of("Use e.g. salt or sugar.", "Visit example.com today."),
                 texts("Use e.g. salt or sugar. Visit example.com today."));
         assertEquals(List.of("Smith et al. showed it in 2019."), texts("Smith et al. showed it in 2019."));
+        assertEquals(List.of("See No. 5 and Art. 12 on p. 7.", "St. Louis is far."), texts("See No. 5 and Art. 12 on p. 7. St. Louis is far."));
+        assertEquals(List.of("1. General terms apply.", "2. Water boils."), texts("1. General terms apply. 2. Water boils."));
+        assertEquals(List.of("b. Water boils.", "(iv) Ice melts."), texts("b. Water boils.\n(iv) Ice melts."));
+    }
+
+    @Test
+    void endsSentencesAtShortWordsThatAreNotAbbreviationsThere() {
+        assertEquals(List.of("The answer is no.", "Then we stop."), texts("The answer is no. Then we stop."));
+        assertEquals(List.of("She ate a fig.", "Then a date."), texts("She ate a fig. Then a date."));
+        assertEquals(List.of("He came 1st.", "Then he rested."), texts("He came 1st. Then he rested."));
+        assertEquals(List.of("It is modern art.", "People like it."), texts("It is modern art. People like it."));
     }
 
     @Test
@@ -71,6 +82,10 @@ class TextRulesTest {
         assertEquals("Chapter 4 Genetics", heading("Chapter 4 Genetics", 11, false));
         assertEquals("2 Phase 1", heading("2 Phase 1", 14, true));
         assertEquals("1.1 Topic 1", heading("1.1 Topic 1", 12.5f, true));
+        assertEquals("Question 3", heading("Question 3", 11, false));
+        assertEquals("1. General.", heading("1. General.", 11, true), "numbered heading ending in a full stop");
+        assertEquals("2. Permitted License Uses and Restrictions.", heading("2. Permitted License Uses and Restrictions.", 11, true));
+        assertEquals("10. U.S. Government End Users.", heading("10. U.S. Government End Users.", 11, true));
         assertEquals("Methods", HeadingDetector.headingText(TextBlock.plain("## Methods"), 0));
         assertEquals("Chapter 4 Genetics", HeadingDetector.headingText(TextBlock.plain("Chapter 4 Genetics"), 0));
         assertEquals("4 Genetics", HeadingDetector.headingText(TextBlock.plain("4 Genetics"), 0));
@@ -86,6 +101,9 @@ class TextRulesTest {
         assertNull(heading("3.2 Membranes 47", 11, false), "contents entry");
         assertNull(heading("Note:", 11, true), "label");
         assertNull(heading("This bold sentence ends with a full stop.", 11, true), "bold sentence");
+        assertNull(heading("1. Mix the salt and the water.", 11, false), "numbered step in body type");
+        assertNull(heading("10. Government End Users. The Apple Software and related", 11, true), "heading run into its paragraph");
+        assertNull(heading("Scope. This licence covers the software", 11, true), "unnumbered run-in heading");
         assertNull(heading("Small print", 8, true), "smaller than the body");
         assertNull(HeadingDetector.headingText(new TextBlock("Long heading", 5, 16, true, null), 11), "five lines");
         assertNull(HeadingDetector.headingText(TextBlock.plain("This is text"), 0));

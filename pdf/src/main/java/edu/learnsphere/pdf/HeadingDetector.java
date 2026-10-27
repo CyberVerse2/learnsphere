@@ -9,20 +9,33 @@ import java.util.regex.Pattern;
  * and from numbering such as "3.2", "Chapter 4" or "IV.". Blocks without type information (text read from a
  * scanned page) count as headings when they are Markdown headings ("## Cell membranes") or short numbered
  * lines. Captions ("Figure 3: …", "Table 2. …"), figure descriptions, table-of-contents lines ending in a page
- * number and anything that reads like a sentence are never headings.
+ * number, anything that reads like a sentence and a heading run into its paragraph ("Scope. This licence
+ * covers …") are never headings. A full stop ends a heading only when it is short, numbered and set in
+ * larger or bold type ("1. General."), as in contracts and policies.
  */
 final class HeadingDetector {
 
     private static final int MAX_WORDS = 16;
+    /** Longest numbered heading that may end with a full stop ("2. Permitted Uses and Restrictions."). */
+    private static final int MAX_WORDS_WITH_FULL_STOP = 10;
+    /** Words that number the sections of course material: "Chapter 4", "Question 3". */
+    private static final String SECTION_WORDS =
+            "chapter|section|part|unit|lecture|module|lesson|appendix|topic|week|question|exercise|problem|task|activity|example";
     private static final int MAX_CHARS = 140;
     private static final Pattern MARKDOWN = Pattern.compile("^#{1,6}\\s+(.+?)\\s*#*$");
     private static final Pattern NUMBERED = Pattern.compile(
-            "^((chapter|section|part|unit|lecture|module|lesson|appendix|topic|week)\\s+[\\dIVXLC]+[A-Z]?[.:]?"
+            "^((" + SECTION_WORDS + ")\\s+[\\dIVXLC]+[A-Z]?[.:]?"
                     + "|\\d{1,2}(\\.\\d{1,2}){1,3}\\.?|\\d{1,2}\\.?|[IVXLC]{1,6}\\.|[A-Z]\\.)\\s+\\S",
             Pattern.CASE_INSENSITIVE);
+    /** The numbering at the start of a numbered heading, with the space after it. */
+    private static final Pattern NUMBERING = Pattern.compile(
+            "^((" + SECTION_WORDS + ")\\s+[\\dIVXLC]+[A-Z]?[.:]?|\\d{1,2}(\\.\\d{1,2}){0,3}\\.?|[IVXLC]{1,6}\\.|[A-Z]\\.|\\(?[a-z\\d]{1,3}\\))\\s+",
+            Pattern.CASE_INSENSITIVE);
     private static final Pattern MULTI_LEVEL = Pattern.compile("^\\d{1,2}(\\.\\d{1,2}){1,3}\\.?\\s");
-    private static final Pattern CHAPTER_WORD = Pattern.compile(
-            "^(chapter|section|part|unit|lecture|module|lesson|appendix|topic|week)\\s", Pattern.CASE_INSENSITIVE);
+    private static final Pattern CHAPTER_WORD = Pattern.compile("^(" + SECTION_WORDS + ")\\s", Pattern.CASE_INSENSITIVE);
+    /** "Chapter 4", "Question 3", "Week 2A": a section word and its number. */
+    private static final Pattern SECTION_NUMBER = Pattern.compile(
+            "^(" + SECTION_WORDS + ")\\s+([\\dIVXLC]+[A-Z]?)(\\b|$)", Pattern.CASE_INSENSITIVE);
     private static final Pattern CAPTION = Pattern.compile(
             "^(fig(ure)?|table|tab|chart|graph|listing|algorithm|eq(uation)?|exhibit|plate|source|note)s?\\.?\\s*[\\dIVX]",
             Pattern.CASE_INSENSITIVE);
@@ -62,11 +75,15 @@ final class HeadingDetector {
         if (!emphasised && NUMBERED_ENTRY.matcher(text).find()) {
             return null;
         }
+        boolean numbered = NUMBERED.matcher(text).find();
         char last = text.charAt(text.length() - 1);
-        if (last == '.' || last == ',' || last == ';' || last == '!' || last == '?') {
+        boolean numberedWithFullStop = last == '.' && numbered && emphasised && words(text) <= MAX_WORDS_WITH_FULL_STOP;
+        if ((last == '.' && !numberedWithFullStop) || last == ',' || last == ';' || last == '!' || last == '?') {
             return null;
         }
-        boolean numbered = NUMBERED.matcher(text).find();
+        if (SentenceSplitter.split(afterNumbering(text)).size() > 1) {
+            return null; // a heading run into the first sentence of its paragraph
+        }
         float size = block.fontSize();
         if (bodySize > 0 && size > 0) {
             if (size >= bodySize * 1.15f) {
@@ -86,25 +103,39 @@ final class HeadingDetector {
         return numbered && block.lineCount() <= 1 && words(text) <= 12 && last != ':' && startsTitle(text) ? text : null;
     }
 
-    /** True when the first word after the numbering starts with a capital letter. */
+    /**
+     * True when {@code text} starts with a section number: "3.2 Membranes", "Chapter 4", "Question 3". A lone
+     * number ("12 Angry Men", "3 Lecture Notes") does not count.
+     */
+    static boolean startsWithSectionNumber(String text) {
+        return MULTI_LEVEL.matcher(text).find() || SECTION_NUMBER.matcher(text).find();
+    }
+
+    /** {@code text} without the numbering at its start. */
+    private static String afterNumbering(String text) {
+        Matcher numbering = NUMBERING.matcher(text);
+        return numbering.find() ? text.substring(numbering.end()) : text;
+    }
+
+    /**
+     * True when the first word after the numbering starts with a capital letter, or when a section word and its
+     * number ("Question 3") make up the whole text.
+     */
     private static boolean startsTitle(String text) {
-        int i = 0;
-        // skip the numbering token(s)
         Matcher chapter = CHAPTER_WORD.matcher(text);
-        if (chapter.find()) {
-            i = chapter.end();
-            while (i < text.length() && !Character.isWhitespace(text.charAt(i))) {
-                i++;
-            }
-        } else {
-            while (i < text.length() && !Character.isWhitespace(text.charAt(i))) {
-                i++;
-            }
+        boolean sectionWord = chapter.find();
+        int i = sectionWord ? chapter.end() : 0;
+        // skip the number
+        while (i < text.length() && !Character.isWhitespace(text.charAt(i))) {
+            i++;
         }
         while (i < text.length() && !Character.isLetter(text.charAt(i))) {
             i++;
         }
-        return i < text.length() && !Character.isLowerCase(text.charAt(i));
+        if (i == text.length()) {
+            return sectionWord; // "Question 3" on its own
+        }
+        return !Character.isLowerCase(text.charAt(i));
     }
 
     private static boolean hasLetter(String text) {

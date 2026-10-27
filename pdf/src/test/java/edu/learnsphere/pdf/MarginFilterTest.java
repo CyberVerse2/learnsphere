@@ -2,6 +2,7 @@ package edu.learnsphere.pdf;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
@@ -26,6 +27,41 @@ class MarginFilterTest {
         assertEquals(MarginFilter.key("Chapter 3  \u00b7 41"), MarginFilter.key("chapter 3 \u00b7 42"));
         assertEquals(MarginFilter.key("BIO 101 Lecture Notes 3"), MarginFilter.key("BIO 101 Lecture Notes"));
         assertEquals("bio lecture notes", MarginFilter.key("3 BIO 101 Lecture Notes"));
+    }
+
+    @Test
+    void comparesHeadingLikeLinesWithTheirNumbers() {
+        assertEquals(MarginFilter.headingKey("Chapter 3 Cells 41"), MarginFilter.headingKey("chapter 3  Cells 42"));
+        assertEquals(MarginFilter.headingKey("41 Chapter 3 Cells"), MarginFilter.headingKey("42 Chapter 3 Cells"));
+        assertNotEquals(MarginFilter.headingKey("Question 3"), MarginFilter.headingKey("Question 4"));
+        assertNotEquals(MarginFilter.headingKey("2.1 Diffusion"), MarginFilter.headingKey("2.2 Diffusion"));
+
+        assertTrue(MarginFilter.looksLikeHeading("Question 3", 11, true, 11), "bold");
+        assertTrue(MarginFilter.looksLikeHeading("Overview", 12, false, 11), "larger");
+        assertTrue(MarginFilter.looksLikeHeading("Question 3", 11, false, 11), "section number at body size");
+        assertFalse(MarginFilter.looksLikeHeading("Question 3", 9, true, 11), "small type");
+        assertFalse(MarginFilter.looksLikeHeading("Cell Biology 41", 11, false, 11), "plain body-size line");
+        assertFalse(MarginFilter.looksLikeHeading("3 BIO 101 Lecture Notes", 11, false, 11), "page number first");
+    }
+
+    @Test
+    void keepsNumberedHeadingsThatStartEachPage() {
+        // A past paper with one question per page, in bold, slightly larger or plain type at the top margin.
+        List<PageLayout> out = run(6, p -> page(p).text("Question " + p, 72, 60, p % 2 == 0 ? 12 : 11, p % 3 != 0));
+        for (PageLayout page : out) {
+            assertEquals("Question " + page.pageNumber(), SyntheticPage.blockTexts(page).get(0));
+        }
+    }
+
+    @Test
+    void removesBodySizeRunningHeadersThatCarryThePageNumber() {
+        List<PageLayout> out = run(8, p -> page(p).text("Chapter 3 Cell Biology " + (40 + p), 72, 50, 11)
+                .text("Unit 2 Revision", 72, 760, 11, true));
+        for (PageLayout page : out) {
+            String text = String.join(" ", SyntheticPage.blockTexts(page));
+            assertTrue(text.startsWith("Body of page " + page.pageNumber()), text);
+            assertFalse(text.contains("Chapter") || text.contains("Unit"), text);
+        }
     }
 
     @Test
