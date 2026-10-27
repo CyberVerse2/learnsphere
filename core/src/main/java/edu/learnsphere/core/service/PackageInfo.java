@@ -40,4 +40,12 @@ public record PackageInfo(String packageId, int formatVersion, String title, Str
     public boolean isNewer() {
         return installedVersion == null || versionNumber > installedVersion;
     }
+
+    /**
+     * True when the library holds a later version than the package; importing it then needs
+     * {@code SharingService.importCourse(file, code, true)}.
+     */
+    public boolean isOlderThanInstalled() {
+        return installedVersion != null && versionNumber < installedVersion;
+    }
 }

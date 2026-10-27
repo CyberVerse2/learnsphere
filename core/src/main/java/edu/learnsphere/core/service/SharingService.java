@@ -54,6 +54,20 @@ public interface SharingService {
     JobUpdate importCourse(Path packageFile, char[] code);
 
     /**
+     * {@link #importCourse(Path, char[])}, optionally allowing a package whose version is older than the
+     * copy in the library ({@link PackageInfo#isOlderThanInstalled()}): without that, such a package is
+     * refused with a {@link ConflictException} so a learner never goes back a version by accident.
+     *
+     * @param allowOlderVersion true when the learner confirmed going back to the package's version
+     */
+    default JobUpdate importCourse(Path packageFile, char[] code, boolean allowOlderVersion) {
+        if (allowOlderVersion) {
+            throw new UnsupportedOperationException("Importing an older version is not supported here");
+        }
+        return importCourse(packageFile, code);
+    }
+
+    /**
      * What a finished {@link #importCourse} job did; empty while it runs, or when it failed or was
      * cancelled.
      */
