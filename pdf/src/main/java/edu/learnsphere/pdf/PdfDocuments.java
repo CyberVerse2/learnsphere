@@ -8,6 +8,8 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.Objects;
 import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.io.RandomAccessRead;
+import org.apache.pdfbox.io.RandomAccessReadBufferedFile;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException;
@@ -29,7 +31,7 @@ final class PdfDocuments {
         Objects.requireNonNull(pdf, "pdf");
         checkReadable(pdf);
         try {
-            return Loader.loadPDF(pdf.toFile());
+            return load(new RandomAccessReadBufferedFile(pdf));
         } catch (InvalidPasswordException e) {
             throw new PdfReadException(PdfReadException.Reason.ENCRYPTED, "PDF needs a password: " + pdf, e);
         } catch (NoSuchFileException | FileNotFoundException | AccessDeniedException e) {
@@ -37,6 +39,24 @@ final class PdfDocuments {
         } catch (IOException | RuntimeException e) {
             // PDFBox reports malformed files with IOExceptions and, for some structures, runtime exceptions.
             throw new PdfReadException(PdfReadException.Reason.DAMAGED, "PDF cannot be parsed: " + pdf, e);
+        }
+    }
+
+    /**
+     * Parses the file behind {@code reader}. The document owns the reader once loaded; when loading fails in
+     * any way the reader is closed here, so a damaged file is never left open (an open file cannot be deleted
+     * or replaced on Windows).
+     */
+    static PDDocument load(RandomAccessRead reader) throws IOException {
+        try {
+            return Loader.loadPDF(reader);
+        } catch (Throwable e) {
+            try {
+                reader.close();
+            } catch (IOException | RuntimeException closing) {
+                e.addSuppressed(closing);
+            }
+            throw e;
         }
     }
 
