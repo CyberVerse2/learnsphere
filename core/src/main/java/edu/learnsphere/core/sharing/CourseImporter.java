@@ -419,7 +419,7 @@ public final class CourseImporter {
             token.throwIfCancelled();
             List<Chunk> batch = chunks.subList(from, Math.min(chunks.size(), from + EMBED_BATCH));
             progress.report(COPIED + (PREPARED - COPIED) * from / chunks.size(),
-                    "Preparing passages… " + from + " of " + chunks.size());
+                    "Making the course searchable… " + from + " of " + chunks.size());
             List<float[]> vectors = embedder.embed(batch.stream().map(Chunk::text).toList(), EmbedKind.DOCUMENT, token);
             if (vectors.size() != batch.size()) {
                 throw LearnSphereException.unexpected("Embedder returned " + vectors.size() + " vectors for "
@@ -773,7 +773,7 @@ public final class CourseImporter {
         return ids.stream().sorted().toList();
     }
 
-    /** Progress reporting that skips updates smaller than one percent of the same line. */
+    /** Progress reporting that never goes backwards and skips updates smaller than one percent of the same line. */
     private static final class Progress {
 
         private final JobContext job;
@@ -785,7 +785,7 @@ public final class CourseImporter {
         }
 
         void report(double fraction, String message) {
-            double clamped = Math.max(0, Math.min(1, fraction));
+            double clamped = Math.max(Math.max(0, last), Math.min(1, fraction));
             if (message.equals(lastMessage) && clamped - last < 0.01 && clamped < 1) {
                 return;
             }
