@@ -14,6 +14,7 @@ import edu.learnsphere.app.ui.components.StatusPill;
 import edu.learnsphere.app.ui.components.Tone;
 import edu.learnsphere.core.events.DocumentChanged;
 import edu.learnsphere.core.model.DocumentPage;
+import edu.learnsphere.core.model.DocumentStatus;
 import edu.learnsphere.core.service.DocumentSummary;
 import edu.learnsphere.core.service.RenderedPage;
 import java.io.ByteArrayInputStream;
@@ -56,6 +57,12 @@ final class ScannedPagesSection extends StudioSection {
     static final String NOTE = "These pages were read from a scanned image. Check the text before learners rely on it.";
 
     private static final double IMAGE_WIDTH = 440;
+    /** The narrowest the page image gets when the window is small. */
+    private static final double MIN_IMAGE_WIDTH = 220;
+    /** The image frame's padding on both sides together. */
+    private static final double FRAME_PADDING = 40;
+    /** The share of the tab's width the page image takes when it can't have its full width. */
+    private static final double IMAGE_SHARE = 0.45;
     private static final double SCALE = 2;
     private static final int MAX_TEXT = 100_000;
 
@@ -82,6 +89,8 @@ final class ScannedPagesSection extends StudioSection {
     private boolean busy;
     private StatusPill finishedPill;
     private String finishedDocumentId;
+    private String finishedTitle;
+    private Label finishedMessage;
 
     ScannedPagesSection(StudioHost host, String documentId) {
         super(host);
@@ -94,20 +103,20 @@ final class ScannedPagesSection extends StudioSection {
         documents.setOnAction(event -> {
             DocumentSummary chosen = documents.getValue();
             if (chosen != null && (document == null || !chosen.id().equals(document.id()))) {
-                openDocument(chosen);
+                DocumentSummary showing = document;
+                leavePage(() -> openDocument(chosen), () -> documents.setValue(showing));
             }
         });
         ribbon.getStyleClass().add("page-ribbon");
         ribbon.setHgap(6);
         ribbon.setVgap(6);
         image.setPreserveRatio(true);
-        image.setFitWidth(IMAGE_WIDTH);
         image.setSmooth(true);
         imageFrame.getStyleClass().add("scanned-image");
-        imageFrame.setMinWidth(IMAGE_WIDTH + 40);
-        imageFrame.setMaxWidth(IMAGE_WIDTH + 40);
         imageFrame.setAlignment(Pos.TOP_CENTER);
+        sizeImage(IMAGE_WIDTH + FRAME_PADDING);
         pageTitle.getStyleClass().addAll("text-title", "scanned-page-title");
+        pageTitle.setMinWidth(Region.USE_PREF_SIZE);
         text.getStyleClass().addAll("page-text", "scanned-text");
         text.setWrapText(true);
         text.setPrefRowCount(16);
@@ -120,8 +129,8 @@ final class ScannedPagesSection extends StudioSection {
         approveAll.setOnAction(event -> confirmApproveAll());
         previous.small();
         next.small();
-        previous.setOnAction(event -> show(current - 1));
-        next.setOnAction(event -> show(current + 1));
+        previous.setOnAction(event -> goTo(current - 1));
+        next.setOnAction(event -> goTo(current + 1));
         root.getChildren().setAll(loading());
     }
 
@@ -147,6 +156,7 @@ final class ScannedPagesSection extends StudioSection {
         }
         if (finishedPill != null && event.documentId().equals(finishedDocumentId)) {
             finishedPill.show(event);
+            describeFinished(event.status());
         }
         if (document == null && finishedPill == null) {
             // Waiting with nothing to check: a PDF may have just reached its scanned pages.
@@ -162,6 +172,41 @@ final class ScannedPagesSection extends StudioSection {
     @Override
     String unsavedChangesText() {
         return "Your changes to this page's text aren't saved.";
+    }
+
+    /**
+     * Runs {@code leave} when the page on screen has no unsaved text; otherwise asks first, and runs
+     * {@code stay} when the creator keeps editing.
+     */
+    private void leavePage(Runnable leave, Runnable stay) {
+        if (!hasUnsavedChanges()) {
+            leave.run();
+            return;
+        }
+        int number = pageOnScreen();
+        ConfirmDialog.of("Leave page " + number + " without saving?",
+                        "Your changes to its text aren't saved. Approve the page to keep them.", "Discard changes")
+                .cancelLabel("Keep editing")
+                .danger()
+                .show(root)
+                .thenAccept(discard -> {
+                    if (discard) {
+                        leave.run();
+                    } else {
+                        stay.run();
+                        text.requestFocus();
+                    }
+                });
+    }
+
+    /** Shows the page at {@code index}, asking first when the page on screen has unsaved text. */
+    private void goTo(int index) {
+        if (index < 0 || index >= pages.size() || index == current) {
+            selectChip(pages.isEmpty() ? -1 : pages.get(current));
+            return;
+        }
+        int showing = current;
+        leavePage(() -> show(index), () -> selectChip(pages.get(showing)));
     }
 
     // -------------------------------------------------------------------------------------------------
@@ -182,11 +227,13 @@ final class ScannedPagesSection extends StudioSection {
                     DocumentSummary chosen = list.stream().filter(d -> d.id().equals(preferredId)).findFirst()
                             .orElse(list.getFirst());
                     finishedPill = null;
+                    finishedMessage = null;
                     finishedDocumentId = null;
                     buildWorkspace();
+                    // Open first, so choosing it in the list below isn't taken as the creator switching PDFs.
+                    openDocument(chosen);
                     documents.getItems().setAll(list);
                     documents.setValue(chosen);
-                    openDocument(chosen);
                 }, message -> root.getChildren().setAll(new EmptyState(EmptyIllustration.Kind.SEARCH,
                         "The scanned pages couldn't load", message.text()).primary("Try again", () -> loadWaiting(preferredId))));
     }
@@ -195,6 +242,8 @@ final class ScannedPagesSection extends StudioSection {
         document = chosen;
         approved.clear();
         pages = List.of();
+        loadedText = "";
+        text.setText("");
         body.setDisable(true);
         run(() -> workspace().documents().pagesNeedingReview(chosen.id()).stream().map(DocumentPage::pageNumber).toList(),
                 numbers -> {
@@ -292,8 +341,18 @@ final class ScannedPagesSection extends StudioSection {
 
         HBox layout = new HBox(28, imageFrame, editor);
         layout.getStyleClass().add("scanned-layout");
+        // The page image takes its full width when there is room, and shares the row with the text otherwise.
+        layout.widthProperty().addListener((obs, old, width) -> sizeImage(
+                Math.clamp(width.doubleValue() * IMAGE_SHARE, MIN_IMAGE_WIDTH + FRAME_PADDING, IMAGE_WIDTH + FRAME_PADDING)));
         body.getChildren().setAll(picker, ribbon, layout);
         root.getChildren().setAll(note, body);
+    }
+
+    private void sizeImage(double frameWidth) {
+        imageFrame.setMinWidth(frameWidth);
+        imageFrame.setPrefWidth(frameWidth);
+        imageFrame.setMaxWidth(frameWidth);
+        image.setFitWidth(frameWidth - FRAME_PADDING);
     }
 
     private void buildRibbon() {
@@ -307,10 +366,7 @@ final class ScannedPagesSection extends StudioSection {
             chip.setUserData(number);
             chip.setToggleGroup(ribbonGroup);
             chip.setAccessibleText("Page " + number);
-            chip.setOnAction(event -> {
-                chip.setSelected(true);
-                show(index);
-            });
+            chip.setOnAction(event -> goTo(index));
             ribbon.getChildren().add(chip);
         }
         updateApproveAll();
@@ -318,9 +374,7 @@ final class ScannedPagesSection extends StudioSection {
 
     private void selectChip(int number) {
         for (var toggle : ribbonGroup.getToggles()) {
-            if (Objects.equals(toggle.getUserData(), number)) {
-                toggle.setSelected(true);
-            }
+            toggle.setSelected(Objects.equals(toggle.getUserData(), number));
         }
     }
 
@@ -364,8 +418,10 @@ final class ScannedPagesSection extends StudioSection {
         finishedPill.getStyleClass().add("finished-pill");
         HBox status = new HBox(12, finishedPill);
         status.setAlignment(Pos.CENTER);
+        finishedTitle = finished.title();
         EmptyState done = new EmptyState(EmptyIllustration.Kind.CAUGHT_UP, "Every page is checked",
-                "“" + finished.title() + "” continues importing with the text you approved.");
+                finishedSentence(DocumentStatus.NEEDS_REVIEW));
+        finishedMessage = (Label) done.lookup(".empty-state-message");
         List<DocumentSummary> others = waiting.stream().filter(d -> !d.id().equals(finished.id())).toList();
         if (!others.isEmpty()) {
             DocumentSummary nextDocument = others.getFirst();
@@ -378,8 +434,25 @@ final class ScannedPagesSection extends StudioSection {
         run(() -> workspace().documents().get(finished.id()), latest -> {
             if (finishedPill != null && finished.id().equals(finishedDocumentId)) {
                 finishedPill.show(latest);
+                describeFinished(latest.status());
             }
         }, ignored -> { });
+    }
+
+    private void describeFinished(DocumentStatus status) {
+        if (finishedMessage != null) {
+            finishedMessage.setText(finishedSentence(status));
+        }
+    }
+
+    /** What happens to the PDF whose pages were all checked, in one sentence. */
+    private String finishedSentence(DocumentStatus status) {
+        String title = "“" + Formats.shorten(finishedTitle, 60) + "”";
+        return switch (status) {
+            case READY -> title + " is ready, with the text you approved.";
+            case FAILED -> title + " couldn't finish importing. Go to PDFs to see why.";
+            default -> title + " continues importing with the text you approved.";
+        };
     }
 
     // -------------------------------------------------------------------------------------------------

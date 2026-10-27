@@ -263,7 +263,12 @@ final class DetailsSection extends StudioSection {
         return box;
     }
 
-    private void renderLifecycle(Course course) {
+    /** Draws the archive and delete rows; returns the archive (or restore) button. */
+    private Button renderLifecycle(Course course) {
+        // A reload redraws the rows; the keyboard focus stays on the same button.
+        Node owner = root.getScene() == null ? null : root.getScene().getFocusOwner();
+        boolean archiveFocused = owner != null && owner.getStyleClass().contains("details-archive");
+        boolean deleteFocused = owner != null && owner.getStyleClass().contains("details-delete");
         boolean archived = course.status() == CourseStatus.ARCHIVED;
         Button archive = new Button(archived ? "Restore course" : "Archive",
                 Icons.of(archived ? Feather.ROTATE_CCW : Feather.ARCHIVE, 14));
@@ -280,7 +285,8 @@ final class DetailsSection extends StudioSection {
                 return workspace().courses().get(courseId());
             }, detail -> {
                 loaded = detail;
-                renderLifecycle(detail.course());
+                // The button turns into its opposite; focus follows it so the keyboard stays in place.
+                renderLifecycle(detail.course()).requestFocus();
                 success(archived ? "Course restored" : "Course archived");
             }, message -> {
                 archive.setDisable(false);
@@ -301,6 +307,12 @@ final class DetailsSection extends StudioSection {
                 delete);
         lifecycle.getChildren().setAll(StudioUi.panel(null, null, archiveRow, StudioUi.divider(), deleteRow));
         lifecycle.getChildren().getFirst().getStyleClass().add("tight");
+        if (archiveFocused) {
+            archive.requestFocus();
+        } else if (deleteFocused) {
+            delete.requestFocus();
+        }
+        return archive;
     }
 
     private static HBox lifecycleRow(String title, String detail, Button action) {

@@ -131,6 +131,16 @@ public final class ScreenshotTour {
                     fire(window, ".approve-all");
                     fire(window, ".modal-confirm");
                 }),
+                new Shot("studio-details-sharing", window -> studio(window, new Destination.Studio(chemistry, StudioTab.DETAILS)),
+                        window -> focus(window, ".details-delete")),
+                new Shot("studio-pages-unsaved", window -> studio(window, new Destination.Studio(chemistry, StudioTab.PAGES)),
+                        window -> {
+                            window.applyCss();
+                            ((TextInputControl) window.lookup(".scanned-text")).appendText("\n\nA line the creator added.");
+                            window.lookupAll(".icon-button").stream()
+                                    .filter(n -> "Next page".equals(n.getAccessibleText()) && n instanceof ButtonBase)
+                                    .findFirst().map(ButtonBase.class::cast).orElseThrow().fire();
+                        }),
                 new Shot("studio-publish-exported", window -> {
                     window.context().workspace().courses().publish(chemistry, "First edition for the spring term.");
                     studio(window, new Destination.Studio(chemistry, StudioTab.PUBLISH));
@@ -166,6 +176,17 @@ public final class ScreenshotTour {
             last = courses.create(new CourseDraft(draft[0], draft[1], null, author, null)).id();
         }
         courses.archive(last);
+    }
+
+    /** Moves keyboard focus to the first node matching {@code selector}, scrolling it into view. */
+    private static void focus(MainWindow window, String selector) {
+        window.applyCss();
+        window.layout();
+        Node node = window.lookup(selector);
+        if (node == null) {
+            throw new IllegalStateException("Nothing matches " + selector);
+        }
+        node.requestFocus();
     }
 
     /** Fires the first button matching {@code selector} in the window. */

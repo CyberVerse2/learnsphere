@@ -27,6 +27,7 @@ import javafx.scene.control.Label;
 import javafx.scene.control.TextField;
 import javafx.scene.input.ClipboardContent;
 import javafx.scene.input.DataFormat;
+import javafx.scene.input.DragEvent;
 import javafx.scene.input.Dragboard;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
@@ -65,6 +66,9 @@ final class ModulesSection extends StudioSection {
     private String draggingId;
     private boolean stale;
     private boolean loaded;
+    /** The order the creator last chose, waiting to be saved; null when it is saved. */
+    private List<String> wantedOrder;
+    private boolean savingOrder;
 
     ModulesSection(StudioHost host) {
         super(host);
@@ -133,8 +137,8 @@ final class ModulesSection extends StudioSection {
     // -------------------------------------------------------------------------------------------------
 
     private void render(List<ModuleSummary> latest) {
-        if (editingId != null || draggingId != null) {
-            // Keep what the creator is working on; reload once they finish.
+        if (editingId != null || draggingId != null || savingOrder) {
+            // Keep what the creator is working on (or the order being saved); reload once that is done.
             stale = true;
             return;
         }
@@ -262,7 +266,7 @@ final class ModulesSection extends StudioSection {
     }
 
     private void onRowKey(KeyEvent event, ModuleSummary module) {
-        if (event.getTarget() != event.getSource()) {
+        if (event.getTarget() != event.getSource() || editingId != null) {
             return;
         }
         int index = indexOf(module.id());
@@ -306,13 +310,13 @@ final class ModulesSection extends StudioSection {
             content.put(MODULE, moduleId);
             board.setContent(content);
             board.setDragView(row.snapshot(null, null), event.getX(), event.getY());
-            draggingId = moduleId;
+            startDrag(moduleId);
             row.getStyleClass().add("dragging");
             event.consume();
         });
         row.setOnDragOver(event -> {
-            Object dragged = event.getDragboard().getContent(MODULE);
-            if (dragged instanceof String id && !id.equals(moduleId)) {
+            String dragged = draggedModule(event);
+            if (dragged != null && !dragged.equals(moduleId)) {
                 event.acceptTransferModes(TransferMode.MOVE);
                 boolean above = event.getY() < row.getHeight() / 2;
                 row.getStyleClass().removeAll("drop-above", "drop-below");
@@ -322,16 +326,12 @@ final class ModulesSection extends StudioSection {
         });
         row.setOnDragExited(event -> row.getStyleClass().removeAll("drop-above", "drop-below"));
         row.setOnDragDropped(event -> {
-            Object dragged = event.getDragboard().getContent(MODULE);
+            String dragged = draggedModule(event);
             boolean done = false;
-            if (dragged instanceof String id && !id.equals(moduleId)) {
-                int from = indexOf(id);
-                int target = indexOf(moduleId);
-                boolean above = event.getY() < row.getHeight() / 2;
-                int to = above ? target : target + 1;
-                if (from < to) {
-                    to--;
-                }
+            row.getStyleClass().removeAll("drop-above", "drop-below");
+            if (dragged != null && !dragged.equals(moduleId)) {
+                int from = indexOf(dragged);
+                int to = dropIndex(from, indexOf(moduleId), event.getY() < row.getHeight() / 2);
                 draggingId = null;
                 move(from, to);
                 done = true;
@@ -350,15 +350,37 @@ final class ModulesSection extends StudioSection {
         });
     }
 
+    /** Marks {@code moduleId} as the module being dragged; the list holds still until it is dropped. */
+    void startDrag(String moduleId) {
+        draggingId = moduleId;
+    }
+
+    /** The module a drag over this list carries: one of this course's modules, or null for anything else. */
+    private String draggedModule(DragEvent event) {
+        if (draggingId != null) {
+            return draggingId;
+        }
+        Object carried = event.getDragboard() == null ? null : event.getDragboard().getContent(MODULE);
+        return carried instanceof String id && indexOf(id) >= 0 ? id : null;
+    }
+
+    /**
+     * Where a module dropped on the row at {@code target} ends up: in that row's place when dropped on its
+     * upper half, after it when dropped on its lower half. {@code from} is where the module was.
+     */
+    static int dropIndex(int from, int target, boolean above) {
+        int to = above ? target : target + 1;
+        return from < to ? to - 1 : to;
+    }
+
     /** Moves the module at {@code from} to {@code to} and saves the new order. Out-of-range moves do nothing. */
     void move(int from, int to) {
-        if (from < 0 || from >= modules.size() || to < 0 || to >= modules.size() || from == to) {
+        if (editingId != null || from < 0 || from >= modules.size() || to < 0 || to >= modules.size() || from == to) {
             return;
         }
         List<ModuleSummary> reordered = new ArrayList<>(modules);
         ModuleSummary moved = reordered.remove(from);
         reordered.add(to, moved);
-        List<String> ids = reordered.stream().map(ModuleSummary::id).toList();
         // Show the new order at once; the saved order follows.
         modules = reordered;
         list.getChildren().clear();
@@ -366,13 +388,46 @@ final class ModulesSection extends StudioSection {
             list.getChildren().add(row(modules.get(i), i));
         }
         focusRow(moved.id());
+        wantedOrder = reordered.stream().map(ModuleSummary::id).toList();
+        if (!savingOrder) {
+            saveOrder();
+        }
+    }
+
+    /**
+     * Saves the order the creator chose, one save at a time: moves made while a save runs are saved together
+     * once it finishes, so the last order chosen is the one kept.
+     */
+    private void saveOrder() {
+        List<String> ids = wantedOrder;
+        savingOrder = true;
         run(() -> {
             workspace().courses().reorderModules(courseId(), ids);
             return null;
-        }, ignored -> { }, message -> {
+        }, ignored -> {
+            if (wantedOrder != null && !wantedOrder.equals(ids)) {
+                saveOrder();
+                return;
+            }
+            orderSaved();
+        }, message -> {
+            orderSaved();
             error(message);
             reload();
         });
+    }
+
+    private void orderSaved() {
+        wantedOrder = null;
+        savingOrder = false;
+        if (stale) {
+            reload();
+        }
+    }
+
+    /** True while a new order is being saved (tests). */
+    boolean savingOrder() {
+        return savingOrder;
     }
 
     // -------------------------------------------------------------------------------------------------

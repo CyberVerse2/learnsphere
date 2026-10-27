@@ -11,30 +11,46 @@ import edu.learnsphere.app.ui.UiExecutors;
 import edu.learnsphere.core.model.Course;
 import edu.learnsphere.core.model.CourseModule;
 import edu.learnsphere.core.model.CourseVersion;
-import edu.learnsphere.core.model.DocumentError;
 import edu.learnsphere.core.model.DocumentStatus;
+import edu.learnsphere.core.model.FlagReason;
 import edu.learnsphere.core.model.LearningItem;
+import edu.learnsphere.core.model.Rating;
 import edu.learnsphere.core.model.Visibility;
 import edu.learnsphere.core.service.CourseDraft;
 import edu.learnsphere.core.service.DocumentSummary;
+import edu.learnsphere.core.service.ExportOptions;
 import edu.learnsphere.core.service.ItemContent;
+import edu.learnsphere.core.service.JobUpdate;
 import edu.learnsphere.core.service.PackageInfo;
+import edu.learnsphere.core.service.Response;
+import edu.learnsphere.core.service.SessionRequest;
+import edu.learnsphere.core.service.StudySession;
 import edu.learnsphere.core.service.ThemePreference;
 import edu.learnsphere.core.service.Workspace;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.BooleanSupplier;
+import javafx.event.Event;
+import javafx.event.EventType;
+import javafx.geometry.Point2D;
 import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.Labeled;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
+import javafx.scene.control.ToggleButton;
+import javafx.scene.input.DragEvent;
 import javafx.scene.input.KeyCode;
+import javafx.scene.input.TransferMode;
+import javafx.scene.layout.HBox;
 import javafx.stage.Stage;
 import javafx.stage.Window;
 import org.junit.jupiter.api.AfterEach;
@@ -86,8 +102,10 @@ class StudioPageTest {
     void createsACourseFromTheEmptyStudio(FxRobot robot) throws TimeoutException {
         open(robot, Destination.Studio.courses());
         assertThat(texts(robot, ".empty-state-title")).contains("Make your first course");
+        assertThat(robot.lookup(".new-course-button").queryButton().isVisible())
+                .as("the empty state's New course is the only one").isFalse();
 
-        robot.clickOn(robot.lookup(".new-course-button").queryButton());
+        robot.clickOn(robot.lookup(".empty-state-actions .button").queryButton());
         settle();
         robot.clickOn(robot.lookup(".modal-confirm").queryButton());
         settle();
@@ -163,6 +181,51 @@ class StudioPageTest {
                 .noneMatch(c -> c.id().equals(course.id()));
     }
 
+    @Test
+    void archivesACourseAndRestoresIt(FxRobot robot) throws TimeoutException {
+        Course course = ws().courses().create(CourseDraft.titled("Old syllabus"));
+        open(robot, new Destination.Studio(course.id(), StudioTab.DETAILS));
+
+        Button archive = robot.lookup(".details-archive").queryButton();
+        robot.interact(archive::requestFocus);
+        settle();
+        robot.clickOn(archive);
+        waitFor(() -> ws().courses().summary(course.id()).isArchived());
+        waitFor(() -> texts(robot, ".details-archive").contains("Restore course"));
+        waitFor(() -> texts(robot, ".studio-header-meta").equals(List.of("ARCHIVED")));
+
+        // The button became Restore course and kept the keyboard focus.
+        Button restore = robot.lookup(".details-archive").queryButton();
+        waitFor(restore::isFocused);
+        robot.push(KeyCode.SPACE);
+        waitFor(() -> !ws().courses().summary(course.id()).isArchived());
+        waitFor(() -> texts(robot, ".details-archive").contains("Archive"));
+    }
+
+    @Test
+    void picksWhoCanOpenTheCourseWithTheMouseAndTheArrowKeys(FxRobot robot) throws TimeoutException {
+        Course course = ws().courses().create(CourseDraft.titled("Genetics"));
+        open(robot, new Destination.Studio(course.id(), StudioTab.DETAILS));
+        DetailsSection details = (DetailsSection) page().section();
+        VisibilityPicker picker = details.visibilityPicker();
+
+        for (Visibility visibility : Visibility.values()) {
+            assertThat(picker.option(visibility, true).getHeight()).as("the %s row is one compact row", visibility)
+                    .isBetween(56.0, 88.0);
+        }
+        Node shareable = picker.option(Visibility.SHAREABLE, true);
+        robot.interact(shareable::requestFocus);
+        settle();
+        robot.clickOn(shareable);
+        assertThat(picker.getValue()).isEqualTo(Visibility.SHAREABLE);
+        robot.push(KeyCode.DOWN);
+        assertThat(picker.getValue()).isEqualTo(Visibility.PROTECTED);
+        assertThat(picker.option(Visibility.PROTECTED, true).isFocused()).isTrue();
+        assertThat(picker.option(Visibility.PROTECTED, true).getPseudoClassStates())
+                .anyMatch(state -> state.getPseudoClassName().equals("selected"));
+        assertThat(details.hasUnsavedChanges()).isTrue();
+    }
+
     // -------------------------------------------------------------------------------------------------
     // Modules
     // -------------------------------------------------------------------------------------------------
@@ -193,11 +256,71 @@ class StudioPageTest {
         settle();
         assertThat(modules.titles()).containsExactly("Alkanes", "Alkynes", "Alkenes");
 
-        // Dropping the first module below the last one.
-        robot.interact(() -> modules.move(0, 2));
+        // Dragging the first module by its handle and dropping it on the lower half of the last one.
+        String alkanes = ws().courses().modules(course.id()).getFirst().id();
+        robot.interact(() -> modules.startDrag(alkanes));
+        HBox last = (HBox) robot.lookup(".module-row").nth(2).query();
+        robot.interact(() -> {
+            Event.fireEvent(last, drag(DragEvent.DRAG_OVER, last, last.getHeight() - 4));
+            assertThat(last.getStyleClass()).contains("drop-below");
+            Event.fireEvent(last, drag(DragEvent.DRAG_DROPPED, last, last.getHeight() - 4));
+        });
         waitFor(() -> moduleTitles().equals(List.of("Alkynes", "Alkenes", "Alkanes")));
-        List<Integer> positions = ws().courses().modules(course.id()).stream().map(CourseModule::position).toList();
-        assertThat(positions).isSorted().doesNotHaveDuplicates();
+        settle();
+        assertThat(modules.titles()).containsExactly("Alkynes", "Alkenes", "Alkanes");
+        assertThat(ws().courses().modules(course.id()).stream().map(CourseModule::position).toList())
+                .as("positions stay dense").containsExactly(0, 1, 2);
+
+        // Dropping the last module on the upper half of the first puts it first.
+        String alkanesNow = ws().courses().modules(course.id()).get(2).id();
+        robot.interact(() -> modules.startDrag(alkanesNow));
+        HBox first = (HBox) robot.lookup(".module-row").nth(0).query();
+        robot.interact(() -> Event.fireEvent(first, drag(DragEvent.DRAG_DROPPED, first, 4)));
+        waitFor(() -> moduleTitles().equals(List.of("Alkanes", "Alkynes", "Alkenes")));
+    }
+
+    @Test
+    void keepsTheLastOrderWhenModulesAreMovedQuickly(FxRobot robot) throws TimeoutException {
+        Course course = ws().courses().create(CourseDraft.titled("Organic Chemistry"));
+        for (String title : List.of("One", "Two", "Three", "Four")) {
+            ws().courses().addModule(course.id(), title);
+        }
+        open(robot, new Destination.Studio(course.id(), StudioTab.MODULES));
+        ModulesSection modules = (ModulesSection) page().section();
+
+        robot.interact(() -> robot.lookup(".module-row").nth(0).query().requestFocus());
+        for (int i = 0; i < 3; i++) {
+            robot.push(KeyCode.ALT, KeyCode.DOWN);
+        }
+        waitFor(() -> !modules.savingOrder());
+        settle();
+        assertThat(modules.titles()).containsExactly("Two", "Three", "Four", "One");
+        assertThat(moduleTitles()).containsExactly("Two", "Three", "Four", "One");
+        assertThat(ws().courses().modules(course.id()).stream().map(CourseModule::position).toList())
+                .containsExactly(0, 1, 2, 3);
+    }
+
+    @Test
+    void doesNotMoveAModuleWhileOneIsBeingRenamed(FxRobot robot) throws TimeoutException {
+        Course course = ws().courses().create(CourseDraft.titled("Organic Chemistry"));
+        ws().courses().addModule(course.id(), "Alkanes");
+        ws().courses().addModule(course.id(), "Alkenes");
+        open(robot, new Destination.Studio(course.id(), StudioTab.MODULES));
+        ModulesSection modules = (ModulesSection) page().section();
+
+        robot.clickOn(robot.lookup(".module-edit").queryButton());
+        settle();
+        robot.interact(() -> robot.lookup(".module-title-field").queryAs(TextField.class).setText("Alkanes and cycloalkanes"));
+        robot.interact(() -> modules.move(0, 1));
+        robot.interact(() -> robot.lookup(".module-row").nth(1).query().requestFocus());
+        robot.push(KeyCode.ALT, KeyCode.UP);
+        settle();
+        assertThat(moduleTitles()).containsExactly("Alkanes", "Alkenes");
+
+        robot.clickOn(robot.lookup(".module-save").queryButton());
+        waitFor(() -> moduleTitles().equals(List.of("Alkanes and cycloalkanes", "Alkenes")));
+        settle();
+        assertThat(modules.titles()).containsExactly("Alkanes and cycloalkanes", "Alkenes");
     }
 
     @Test
@@ -248,7 +371,8 @@ class StudioPageTest {
         settle();
 
         assertThat(texts(robot, ".document-title")).containsExactly("bonding", "past-paper");
-        assertThat(texts(robot, ".document-reason")).containsExactly(DocumentError.ENCRYPTED.userMessage().text());
+        assertThat(texts(robot, ".document-reason"))
+                .containsExactly("This PDF is password-protected. Remove the password and import it again.");
         assertThat(texts(robot, ".document-pill .status-pill-label")).containsExactly("Ready", "Couldn't import");
         assertThat(robot.lookup(".document-retry").queryAll()).as("a locked PDF needs a new file, not another try").isEmpty();
         assertThat(robot.lookup(".document-remove").queryAll()).hasSize(1);
@@ -259,6 +383,89 @@ class StudioPageTest {
         robot.interact(() -> documents.importPdfs(List.of(text)));
         waitFor(() -> !documents.problemLines().isEmpty());
         assertThat(documents.problemLines()).containsExactly("bonding.pdf: This PDF is already in the course.");
+    }
+
+    @Test
+    void showsLiveProgressOnAPdfWhileItIsRead(FxRobot robot) throws TimeoutException {
+        Course course = ws().courses().create(CourseDraft.titled("Organic Chemistry"));
+        Path big = real.textPdf("reactions.pdf", "Reactions", 120);
+        open(robot, new Destination.Studio(course.id(), StudioTab.DOCUMENTS));
+        DocumentsSection documents = (DocumentsSection) page().section();
+        Set<String> seen = ConcurrentHashMap.newKeySet();
+        Runnable watch = () -> robot.lookup(".document-pill .status-pill-label").queryAll()
+                .forEach(node -> seen.add(((Labeled) node).getText()));
+        robot.interact(() -> window.getScene().addPostLayoutPulseListener(watch));
+        try {
+            robot.interact(() -> documents.importPdfs(List.of(big)));
+            waitFor(() -> texts(robot, ".document-pill .status-pill-label").contains("Ready"));
+        } finally {
+            robot.interact(() -> window.getScene().removePostLayoutPulseListener(watch));
+        }
+        assertThat(seen).anyMatch(text -> text.matches("Reading your PDF… page \\d+ of 120"));
+        assertThat(texts(robot, ".document-meta")).singleElement().asString().contains("120 pages");
+    }
+
+    @Test
+    void asksBeforeLeavingAScannedPageWithUnsavedText(FxRobot robot) throws TimeoutException {
+        Course course = ws().courses().create(CourseDraft.titled("Organic Chemistry"));
+        DocumentSummary scanned = ws().documents().importPdf(course.id(), null, real.scannedPdf("handout.pdf", 3));
+        assertThat(real.awaitSettled(scanned.id()).status()).isEqualTo(DocumentStatus.NEEDS_REVIEW);
+        String readText = ws().documents().page(scanned.id(), 1).text();
+        open(robot, new Destination.Studio(course.id(), StudioTab.PAGES));
+        ScannedPagesSection pages = (ScannedPagesSection) page().section();
+        waitFor(() -> pages.pageOnScreen() == 1 && !pages.textArea().isDisabled());
+
+        robot.interact(() -> pages.textArea().setText("Corrected text of page one."));
+        robot.clickOn(pageChip(robot, 2));
+        settle();
+        assertThat(texts(robot, ".modal-title")).containsExactly("Leave page 1 without saving?");
+        robot.clickOn(robot.lookup(".modal-cancel").queryButton());
+        settle();
+        assertThat(pages.pageOnScreen()).isEqualTo(1);
+        assertThat(pages.textArea().getText()).isEqualTo("Corrected text of page one.");
+        assertThat(pageChip(robot, 1).isSelected()).isTrue();
+
+        robot.clickOn(robot.lookup(".icon-button").queryAll().stream()
+                .filter(n -> "Next page".equals(n.getAccessibleText())).findFirst().orElseThrow());
+        settle();
+        assertThat(texts(robot, ".modal-title")).containsExactly("Leave page 1 without saving?");
+        robot.clickOn(robot.lookup(".modal-confirm").queryButton());
+        waitFor(() -> pages.pageOnScreen() == 2 && !pages.textArea().isDisabled());
+        assertThat(ws().documents().page(scanned.id(), 1).text()).isEqualTo(readText);
+        assertThat(ws().documents().page(scanned.id(), 1).reviewed()).isFalse();
+
+        // Without changes, moving between pages asks nothing.
+        robot.clickOn(pageChip(robot, 3));
+        waitFor(() -> pages.pageOnScreen() == 3 && !pages.textArea().isDisabled());
+        assertThat(robot.lookup(".modal-title").queryAll()).isEmpty();
+    }
+
+    @Test
+    void editsAScannedPageThenApprovesAllAndThePdfBecomesReady(FxRobot robot) throws TimeoutException {
+        Course course = ws().courses().create(CourseDraft.titled("Cell Biology"));
+        CourseModule cells = ws().courses().addModule(course.id(), "Cells");
+        DocumentSummary scanned = ws().documents().importPdf(course.id(), cells.id(), real.scannedPdf("scanned.pdf", 3));
+        assertThat(real.awaitSettled(scanned.id()).status()).isEqualTo(DocumentStatus.NEEDS_REVIEW);
+        open(robot, new Destination.Studio(course.id(), StudioTab.PAGES));
+        ScannedPagesSection pages = (ScannedPagesSection) page().section();
+        waitFor(() -> pages.pageOnScreen() == 1 && !pages.textArea().isDisabled());
+
+        robot.clickOn(pageChip(robot, 2));
+        waitFor(() -> pages.pageOnScreen() == 2 && !pages.textArea().isDisabled());
+        robot.interact(() -> pages.textArea().setText("# Mitochondria\n\nThe mitochondrion makes most of the cell's ATP."));
+        robot.clickOn(robot.lookup(".approve-all").queryButton());
+        settle();
+        assertThat(texts(robot, ".modal-title")).containsExactly("Approve all 3 pages?");
+        robot.clickOn(robot.lookup(".modal-confirm").queryButton());
+        waitFor(() -> texts(robot, ".empty-state-title").contains("Every page is checked"));
+
+        RealWorkspaces.await(() -> ws().documents().get(scanned.id()).status() == DocumentStatus.READY,
+                Duration.ofSeconds(30), "the import to continue");
+        assertThat(ws().documents().page(scanned.id(), 2).text())
+                .isEqualTo("# Mitochondria\n\nThe mitochondrion makes most of the cell's ATP.");
+        assertThat(ws().documents().pagesNeedingReview(scanned.id())).isEmpty();
+        waitFor(() -> texts(robot, ".finished-pill .status-pill-label").contains("Ready"));
+        waitFor(() -> texts(robot, ".empty-state-message").contains("“scanned” is ready, with the text you approved."));
     }
 
     @Test
@@ -313,8 +520,64 @@ class StudioPageTest {
         assertThat(version.number()).isEqualTo(1);
         assertThat(version.notes()).isEqualTo("First edition for the spring term.");
         waitFor(() -> texts(robot, ".version-notes").contains("First edition for the spring term."));
-        assertThat(robot.lookup(".publish-version").queryButton().getText()).isEqualTo("Publish version 2");
+        Button again = robot.lookup(".publish-version").queryButton();
+        assertThat(again.getText()).isEqualTo("Publish version 2");
+        assertThat(again.getStyleClass()).as("nothing new to publish").doesNotContain("primary");
+        assertThat(texts(robot, ".publish-unchanged")).containsExactly("No questions have changed since version 1.");
         assertThat(section.notesField().getText()).isEmpty();
+
+        // Approving another question makes a new version worth publishing.
+        LearningItem second = ws().items().create(course.id(), null,
+                ItemContent.flashcard("What does the nucleus hold?", "The cell's DNA."));
+        ws().items().approve(second.id());
+        waitFor(() -> robot.lookup(".publish-version").queryButton().getStyleClass().contains("primary"));
+        assertThat(robot.lookup(".publish-unchanged").queryAll()).isEmpty();
+    }
+
+    @Test
+    void countsOnlyReadyPdfsInWhatLearnersGet(FxRobot robot) throws TimeoutException {
+        Course course = courseWithApprovedQuestion("Cell Biology");
+        DocumentSummary ready = ws().documents().importPdf(course.id(), null, real.textPdf("cells.pdf", "Cells", 2));
+        DocumentSummary locked = ws().documents().importPdf(course.id(), null,
+                real.lockedPdf(real.textPdf("paper.pdf", "Past paper", 1), "locked.pdf", "secret"));
+        real.awaitSettled(ready.id());
+        real.awaitSettled(locked.id());
+        open(robot, new Destination.Studio(course.id(), StudioTab.PUBLISH));
+
+        assertThat(texts(robot, ".learners-get .label")).contains(
+                "Your PDF, so they can ask about it and see where each answer comes from",
+                "1 PDF that isn't ready yet");
+    }
+
+    @Test
+    void addsLearnersProgressAndFeedbackFiles(FxRobot robot) throws TimeoutException {
+        Course course = courseWithApprovedQuestion("Cell Biology");
+        ws().courses().setVisibility(course.id(), Visibility.SHAREABLE);
+        ws().courses().publish(course.id(), "First edition.");
+        Path pkg = dir.resolve("Cell Biology.learnsphere");
+        ws().sharing().exportCourse(course.id(), pkg, ExportOptions.standard());
+        Path progress = dir.resolve("ana.lsprogress");
+        Path feedback = dir.resolve("ana.lsfeedback");
+        learnerStudiesAndFlags(pkg, progress, feedback);
+        open(robot, new Destination.Studio(course.id(), StudioTab.PUBLISH));
+        assertThat(texts(robot, ".field-hint")).contains(
+                "Add progress files from your learners to see how the class is doing.",
+                "No open flags. Add a feedback file from a learner to see the questions they flagged.");
+
+        files.progress = List.of(progress);
+        robot.clickOn(robot.lookup(".add-progress").queryButton());
+        waitFor(() -> texts(robot, ".insight-name").contains("Ana"));
+        assertThat(texts(robot, ".insight-accuracy")).contains("100%");
+
+        files.feedback = feedback;
+        robot.clickOn(robot.lookup(".add-feedback").queryButton());
+        waitFor(() -> texts(robot, ".flag-prompt").contains("What is a cell membrane?"));
+        assertThat(texts(robot, ".flag-note")).containsExactly("“The answer should mention proteins too.”");
+        assertThat(page().tabCount(StudioTab.PUBLISH)).isEqualTo(1);
+
+        robot.clickOn(robot.lookup(".flag-resolve").queryButton());
+        waitFor(() -> robot.lookup(".flag-row").queryAll().isEmpty());
+        assertThat(ws().items().flags(course.id(), false)).isEmpty();
     }
 
     @Test
@@ -384,6 +647,38 @@ class StudioPageTest {
         return course;
     }
 
+    /** A learner, in a profile of their own, imports the course, studies it, flags its question and writes both files. */
+    private void learnerStudiesAndFlags(Path pkg, Path progress, Path feedback) {
+        try (RealWorkspaces learner = RealWorkspaces.open(dir.resolve("learner"))) {
+            Workspace lw = learner.workspace();
+            JobUpdate job = lw.sharing().importCourse(pkg, null);
+            RealWorkspaces.await(() -> lw.sharing().importResult(job.jobId()).isPresent(), Duration.ofSeconds(30),
+                    "the course to import");
+            String courseId = lw.sharing().importResult(job.jobId()).orElseThrow().courseId();
+            StudySession session = lw.practice().start(SessionRequest.studyNext(courseId));
+            String itemId = session.items().getFirst().itemId();
+            lw.practice().submit(session.id(), Response.flashcard(itemId, Rating.GOOD, 4_000));
+            lw.practice().finish(session.id());
+            lw.items().addFlag(itemId, FlagReason.WRONG_ANSWER, "The answer should mention proteins too.");
+            lw.sharing().exportProgress(courseId, "Ana", progress);
+            lw.sharing().exportFeedback(courseId, feedback);
+        }
+    }
+
+    /** A drag event at {@code y} within {@code row}, as the mouse would deliver it during a drag. */
+    private static DragEvent drag(EventType<DragEvent> type, Node row, double y) {
+        Point2D scene = row.localToScene(20, y);
+        Point2D screen = row.localToScreen(20, y);
+        return new DragEvent(row, row, type, null, scene.getX(), scene.getY(),
+                screen == null ? scene.getX() : screen.getX(), screen == null ? scene.getY() : screen.getY(),
+                TransferMode.MOVE, row, row, null);
+    }
+
+    private static ToggleButton pageChip(FxRobot robot, int number) {
+        return robot.lookup(".page-chip").queryAll().stream().filter(n -> Objects.equals(n.getUserData(), number))
+                .map(ToggleButton.class::cast).findFirst().orElseThrow();
+    }
+
     private Workspace ws() {
         return real.workspace();
     }
@@ -441,6 +736,8 @@ class StudioPageTest {
     private static final class FakeFiles implements StudioFiles {
 
         volatile List<Path> pdfs = List.of();
+        volatile List<Path> progress = List.of();
+        volatile Path feedback;
         volatile Path courseFile;
         volatile String suggestedName;
         volatile Path revealed;
@@ -458,12 +755,12 @@ class StudioPageTest {
 
         @Override
         public List<Path> chooseProgressFiles(Window owner) {
-            return List.of();
+            return progress;
         }
 
         @Override
         public Path chooseFeedbackFile(Window owner) {
-            return null;
+            return feedback;
         }
 
         @Override

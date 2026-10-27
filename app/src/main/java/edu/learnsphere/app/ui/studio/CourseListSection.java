@@ -51,12 +51,12 @@ final class CourseListSection extends StudioSection {
     private final VBox root = new VBox(32);
     private final VBox body = new VBox(32);
     private final Refresher<List<CourseSummary>> refresher;
+    private final Button create = new Button("New course", Icons.of(Feather.PLUS));
     private boolean showArchived;
 
     CourseListSection(StudioHost host) {
         super(host);
         root.getStyleClass().add("studio-courses");
-        Button create = new Button("New course", Icons.of(Feather.PLUS));
         create.getStyleClass().addAll("primary", "new-course-button");
         create.setOnAction(event -> newCourse());
         PageHeader header = new PageHeader("Studio")
@@ -105,6 +105,9 @@ final class CourseListSection extends StudioSection {
         List<CourseSummary> active = courses.stream().filter(c -> !c.isArchived()).toList();
         List<CourseSummary> archived = courses.stream().filter(CourseSummary::isArchived).toList();
         List<Node> sections = new ArrayList<>();
+        // One New course button at a time: the empty state's, or the header's once there are courses.
+        create.setVisible(!active.isEmpty());
+        create.setManaged(!active.isEmpty());
         if (active.isEmpty()) {
             EmptyState empty = new EmptyState(EmptyIllustration.Kind.DOCUMENTS, "Make your first course",
                     "Add the PDFs you teach from. The study assistant drafts questions and flashcards for you to check.")
@@ -159,7 +162,7 @@ final class CourseListSection extends StudioSection {
         Label overline = new Label(CourseCard.metaLine(course, CourseCard.Mode.CREATING).toUpperCase(java.util.Locale.ROOT));
         overline.getStyleClass().addAll("text-overline", "studio-row-overline");
         Label title = new Label(course.title());
-        title.getStyleClass().add("studio-row-title");
+        title.getStyleClass().addAll("text-title", "studio-row-title");
         title.setMnemonicParsing(false);
         title.setWrapText(true);
         Label contents = new Label(contentsLine(course));
@@ -177,6 +180,8 @@ final class CourseListSection extends StudioSection {
             FlowPane attention = new FlowPane(6, 6);
             attention.getStyleClass().add("studio-row-markers");
             attention.getChildren().addAll(markers);
+            // Wrap at the column's real width, so the row reserves only the lines the markers fill.
+            attention.prefWrapLengthProperty().bind(text.widthProperty());
             VBox.setMargin(attention, new Insets(6, 0, 0, 0));
             text.getChildren().add(attention);
         }

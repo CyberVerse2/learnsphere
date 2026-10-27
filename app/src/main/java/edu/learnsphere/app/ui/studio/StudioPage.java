@@ -23,6 +23,7 @@ import edu.learnsphere.core.events.ChangeType;
 import edu.learnsphere.core.events.CourseChanged;
 import edu.learnsphere.core.events.DocumentChanged;
 import edu.learnsphere.core.events.ItemsChanged;
+import edu.learnsphere.core.model.DocumentStatus;
 import edu.learnsphere.core.model.ItemOrigin;
 import edu.learnsphere.core.model.ItemType;
 import edu.learnsphere.core.model.LearningItem;
@@ -32,6 +33,7 @@ import edu.learnsphere.core.service.DocumentSummary;
 import edu.learnsphere.core.service.ItemCounts;
 import edu.learnsphere.core.service.ItemDetail;
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -123,15 +125,25 @@ public final class StudioPage extends PageView {
                 scanned = ws.documents().list(id).stream().mapToInt(DocumentSummary::pagesNeedingReview).sum();
             }
             return new Header(course, scanned);
-        }, this::renderHeader, this::showError);
+        }, this::renderHeader, this::headerFailed);
         header.request();
         on(CourseChanged.class, event -> {
             if (id.equals(event.courseId()) && event.type() != ChangeType.DELETED) {
                 header.request();
             }
         });
+        Map<String, DocumentStatus> statuses = new HashMap<>();
         on(DocumentChanged.class, event -> {
-            if (id.equals(event.courseId())) {
+            if (!id.equals(event.courseId())) {
+                return;
+            }
+            // Page-by-page progress while a PDF is read changes no count in the header; anything else may.
+            DocumentStatus status = event.status();
+            DocumentStatus before = statuses.put(event.documentId(), status);
+            boolean progressOnly = event.type() == ChangeType.UPDATED && before == status && event.hasSteps()
+                    && status != DocumentStatus.READY && status != DocumentStatus.FAILED
+                    && status != DocumentStatus.NEEDS_REVIEW;
+            if (!progressOnly) {
                 header.request();
             }
         });
@@ -209,9 +221,22 @@ public final class StudioPage extends PageView {
         };
     }
 
+    /**
+     * A header that couldn't load: before the first one the page shows the problem; afterwards the last
+     * header and the open tab (with any unsaved edits) stay, and the problem shows as a toast.
+     */
+    private void headerFailed(UserMessage message) {
+        if (built) {
+            Toasts.error(page(), message);
+        } else {
+            showError(message);
+        }
+    }
+
     @Override
     protected void showError(UserMessage message) {
         disposeSection();
+        built = false;
         show(new EmptyState(EmptyIllustration.Kind.SEARCH, "This course couldn't open", message.text())
                 .primary("Go to Studio", () -> navigator.navigate(Destination.Studio.courses())));
     }

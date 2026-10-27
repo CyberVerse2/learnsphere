@@ -15,13 +15,16 @@ import edu.learnsphere.core.events.CourseChanged;
 import edu.learnsphere.core.events.DocumentChanged;
 import edu.learnsphere.core.events.ItemsChanged;
 import edu.learnsphere.core.model.CourseVersion;
+import edu.learnsphere.core.model.ItemStatus;
 import edu.learnsphere.core.model.Visibility;
 import edu.learnsphere.core.service.ClassInsightSummary;
 import edu.learnsphere.core.service.CourseDetail;
 import edu.learnsphere.core.service.CourseSummary;
+import edu.learnsphere.core.service.DocumentSummary;
 import edu.learnsphere.core.service.ExportOptions;
 import edu.learnsphere.core.service.FlagSummary;
 import edu.learnsphere.core.service.ImportResult;
+import edu.learnsphere.core.service.ItemFilter;
 import edu.learnsphere.core.service.ItemCounts;
 import edu.learnsphere.core.service.ItemInsight;
 import edu.learnsphere.core.service.LearnerInsight;
@@ -39,6 +42,7 @@ import javafx.scene.control.Label;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.input.MouseButton;
+import javafx.scene.layout.ColumnConstraints;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -60,6 +64,9 @@ final class PublishSection extends StudioSection {
     static final int MIN_CODE = 4;
 
     private static final double SHARE_WIDTH = 380;
+    /** Below this width the sharing column moves under publishing, so neither gets cramped. */
+    private static final double SIDE_BY_SIDE = 900;
+    private static final double COLUMN_GAP = 28;
     private static final int MAX_NOTES = 2_000;
 
     private final VBox root = new VBox(24);
@@ -78,10 +85,19 @@ final class PublishSection extends StudioSection {
     private boolean publishing;
     private boolean exporting;
     private PackageInfo lastExport;
+    private VBox left;
+    private VBox right;
+    private Boolean sideBySide;
 
-    /** Everything the tab shows. */
+    /**
+     * Everything the tab shows.
+     *
+     * @param readyPdfs PDFs learners can ask about (imported and ready)
+     * @param changedSinceLatest questions approved, edited, rejected or retired since the latest version was
+     *        published; -1 before the first version
+     */
     private record Data(CourseDetail detail, ItemCounts counts, List<CourseVersion> versions,
-                        ClassInsightSummary insights, List<FlagSummary> flags) {
+                        ClassInsightSummary insights, List<FlagSummary> flags, int readyPdfs, int changedSinceLatest) {
         CourseSummary course() {
             return detail.summary();
         }
@@ -104,8 +120,15 @@ final class PublishSection extends StudioSection {
         refresher = new Refresher<>(disposer, () -> {
             var ws = workspace();
             String id = courseId();
-            return new Data(ws.courses().get(id), ws.items().counts(id), ws.courses().versions(id),
-                    ws.sharing().classInsights(id), ws.items().flags(id, false));
+            List<CourseVersion> versions = ws.courses().versions(id);
+            int readyPdfs = (int) ws.documents().list(id).stream().filter(DocumentSummary::isReady).count();
+            int changed = versions.stream().max(Comparator.comparingInt(CourseVersion::number))
+                    .map(latest -> (int) ws.items().list(ItemFilter.forCourse(id)
+                                    .withStatuses(ItemStatus.APPROVED, ItemStatus.REJECTED, ItemStatus.RETIRED)).stream()
+                            .filter(i -> i.item().updatedAt() > latest.publishedAt()).count())
+                    .orElse(-1);
+            return new Data(ws.courses().get(id), ws.items().counts(id), versions, ws.sharing().classInsights(id),
+                    ws.items().flags(id, false), readyPdfs, changed);
         }, this::render, message -> root.getChildren().setAll(new EmptyState(EmptyIllustration.Kind.SEARCH,
                 "Publishing couldn't load", message.text()).primary("Try again", this::reload)));
     }
@@ -147,20 +170,47 @@ final class PublishSection extends StudioSection {
         data = latest;
         if (!built) {
             built = true;
-            VBox left = new VBox(24, publishPanel, versionsPanel);
+            left = new VBox(24, publishPanel, versionsPanel);
             left.setMinWidth(0);
-            HBox.setHgrow(left, Priority.ALWAYS);
-            VBox right = new VBox(24, sharePanel, feedbackPanel, insightsPanel);
-            right.setMinWidth(SHARE_WIDTH);
-            right.setPrefWidth(SHARE_WIDTH);
-            right.setMaxWidth(SHARE_WIDTH);
-            root.getChildren().setAll(new HBox(28, left, right));
+            right = new VBox(24, sharePanel, feedbackPanel, insightsPanel);
+            right.setMinWidth(0);
+            arrange(root.getWidth());
+            root.widthProperty().addListener((obs, old, width) -> arrange(width.doubleValue()));
         }
         renderPublish();
         renderVersions();
         renderShare();
         renderFeedback();
         renderInsights();
+    }
+
+    /**
+     * Publishing and sharing side by side when the tab is wide enough; otherwise sharing goes below
+     * publishing, both at full width.
+     */
+    private void arrange(double width) {
+        boolean wide = width <= 0 || width >= SIDE_BY_SIDE;
+        if (sideBySide != null && sideBySide == wide) {
+            return;
+        }
+        sideBySide = wide;
+        if (wide) {
+            HBox.setHgrow(left, Priority.ALWAYS);
+            right.setPrefWidth(SHARE_WIDTH);
+            right.setMaxWidth(SHARE_WIDTH);
+            right.setMinWidth(SHARE_WIDTH);
+            root.getChildren().setAll(new HBox(COLUMN_GAP, left, right));
+        } else {
+            right.setMinWidth(0);
+            right.setPrefWidth(Region.USE_COMPUTED_SIZE);
+            right.setMaxWidth(Double.MAX_VALUE);
+            root.getChildren().setAll(new VBox(24, left, right));
+        }
+    }
+
+    /** True while sharing sits beside publishing (tests). */
+    boolean sideBySide() {
+        return sideBySide == null || sideBySide;
     }
 
     private void renderPublish() {
@@ -170,6 +220,12 @@ final class PublishSection extends StudioSection {
 
         GridPane ledger = new GridPane();
         ledger.getStyleClass().add("ledger");
+        for (int column = 0; column < 4; column++) {
+            ColumnConstraints share = new ColumnConstraints();
+            share.setPercentWidth(25);
+            share.setHgrow(Priority.ALWAYS);
+            ledger.getColumnConstraints().add(share);
+        }
         ledger.add(ledgerCell(counts.approved(), "approved", null, false), 0, 0);
         ledger.add(ledgerCell(counts.draft(), "drafts to review", counts.draft() > 0 ? "waiting" : null, true), 1, 0);
         ledger.add(ledgerCell(course.openFlagCount(), "flagged", course.openFlagCount() > 0 ? "flagged" : null, true), 2, 0);
@@ -186,9 +242,17 @@ final class PublishSection extends StudioSection {
             gets.getChildren().add(gets(Feather.CHECK,
                     Formats.count(counts.approved(), "approved question", "approved questions") + where, false));
         }
-        if (course.documentCount() > 0) {
-            gets.getChildren().add(gets(Feather.CHECK, "Your " + Formats.count(course.documentCount(), "PDF", "PDFs")
+        if (data.readyPdfs() == 1) {
+            gets.getChildren().add(gets(Feather.CHECK,
+                    "Your PDF, so they can ask about it and see where each answer comes from", false));
+        } else if (data.readyPdfs() > 1) {
+            gets.getChildren().add(gets(Feather.CHECK, "Your " + Formats.count(data.readyPdfs(), "PDF", "PDFs")
                     + ", so they can ask about them and see where each answer comes from", false));
+        }
+        int notReady = course.documentCount() - data.readyPdfs();
+        if (notReady > 0) {
+            gets.getChildren().add(gets(Feather.MINUS, Formats.count(notReady, "PDF that isn't", "PDFs that aren't")
+                    + " ready yet", true));
         }
         int leftOut = counts.draft() + counts.rejected();
         if (leftOut > 0) {
@@ -203,8 +267,13 @@ final class PublishSection extends StudioSection {
         noteHint.getStyleClass().add("field-hint");
         VBox noteField = new VBox(6, noteLabel, notes, noteHint);
 
+        boolean unchanged = data.changedSinceLatest() == 0;
         publish.setText("Publish version " + next);
         publish.setDisable(publishing || counts.approved() == 0);
+        publish.getStyleClass().remove("primary");
+        if (!unchanged) {
+            publish.getStyleClass().add("primary");
+        }
         HBox actions = new HBox(12);
         actions.setAlignment(Pos.CENTER_LEFT);
         if (counts.approved() == 0) {
@@ -217,6 +286,13 @@ final class PublishSection extends StudioSection {
             review.getStyleClass().addAll("quiet", "small");
             review.setOnAction(event -> host.tabs().open(StudioTab.REVIEW, null));
             actions.getChildren().addAll(why, review, publish);
+        } else if (unchanged) {
+            Label why = new Label("No questions have changed since version " + course.versionNumber() + ".");
+            why.getStyleClass().addAll("field-hint", "publish-unchanged");
+            why.setWrapText(true);
+            why.setMaxWidth(Double.MAX_VALUE);
+            HBox.setHgrow(why, Priority.ALWAYS);
+            actions.getChildren().addAll(why, publish);
         } else if (counts.draft() > 0) {
             Label why = new Label(Formats.count(counts.draft(), "draft isn't", "drafts aren't")
                     + " included until you approve " + (counts.draft() == 1 ? "it." : "them."));
@@ -230,9 +306,15 @@ final class PublishSection extends StudioSection {
         }
         publish.setMinWidth(Region.USE_PREF_SIZE);
 
-        String subtitle = course.versionNumber() > 0
-                ? "Learners have version " + course.versionNumber() + ". A new version adds what you've approved since."
-                : "Publishing makes a version learners can open. Only approved questions are included.";
+        String subtitle;
+        if (course.versionNumber() == 0) {
+            subtitle = "Publishing makes a version learners can open. Only approved questions are included.";
+        } else if (unchanged) {
+            subtitle = "Learners have version " + course.versionNumber() + ", with every question you've approved.";
+        } else {
+            subtitle = "Learners have version " + course.versionNumber()
+                    + ". A new version brings them the questions you've approved or changed since.";
+        }
         publishPanel.getChildren().setAll(StudioUi.panel("Publish a version", subtitle, ledger, gets, noteField, actions));
     }
 
@@ -241,7 +323,10 @@ final class PublishSection extends StudioSection {
         number.getStyleClass().addAll("text-numeral", "ledger-number");
         Label name = new Label(label);
         name.getStyleClass().add("ledger-label");
+        name.setWrapText(true);
+        name.setMinHeight(Region.USE_PREF_SIZE);
         VBox cell = new VBox(2, number, name);
+        cell.setMinWidth(0);
         cell.getStyleClass().add("ledger-cell");
         if (divided) {
             cell.getStyleClass().add("divided");
@@ -507,8 +592,7 @@ final class PublishSection extends StudioSection {
         List<Node> content = new ArrayList<>();
         List<FlagSummary> flags = data.flags();
         if (flags.isEmpty()) {
-            Label none = new Label("No open flags. When learners flag a question and send you their feedback file, "
-                    + "the flags appear here.");
+            Label none = new Label("No open flags. Add a feedback file from a learner to see the questions they flagged.");
             none.getStyleClass().add("field-hint");
             none.setWrapText(true);
             content.add(none);
@@ -601,8 +685,7 @@ final class PublishSection extends StudioSection {
         add.setOnAction(event -> importProgress());
         List<Node> content = new ArrayList<>();
         if (insights.isEmpty()) {
-            Label none = new Label("Learners can send you their progress from the course page. "
-                    + "Add their files to see how the class is doing.");
+            Label none = new Label("Add progress files from your learners to see how the class is doing.");
             none.getStyleClass().add("field-hint");
             none.setWrapText(true);
             content.add(none);
@@ -707,6 +790,6 @@ final class PublishSection extends StudioSection {
         VBox left = new VBox(24, Skeleton.block(-1, 320), Skeleton.block(-1, 180));
         HBox.setHgrow(left, Priority.ALWAYS);
         VBox right = new VBox(24, Skeleton.block(SHARE_WIDTH, 200), Skeleton.block(SHARE_WIDTH, 160));
-        return new HBox(28, left, right);
+        return new HBox(COLUMN_GAP, left, right);
     }
 }
