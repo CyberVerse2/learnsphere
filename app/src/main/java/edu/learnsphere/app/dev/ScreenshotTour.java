@@ -87,7 +87,11 @@ public final class ScreenshotTour {
                         library.shelf().setValue(LibraryPage.Shelf.CREATING);
                     }
                 }),
-                Shot.of("course", new Destination.Course(os)),
+                new Shot("course", window -> {
+                    // Opened from the Library, so the top bar shows its back arrow.
+                    window.navigator().reset(Destination.LIBRARY);
+                    window.navigator().navigate(new Destination.Course(os));
+                }),
                 new Shot("ask", window -> window.navigator().reset(askWithSource(window, os))),
                 Shot.of("study", new Destination.Study(SessionRequest.studyNext())),
                 new Shot("study-feedback", window -> window.navigator().reset(new Destination.Study(SessionRequest.studyNext())),
@@ -103,6 +107,9 @@ public final class ScreenshotTour {
                 Shot.of("settings", Destination.SETTINGS),
                 Shot.of("profiles", Destination.PROFILES),
                 Shot.of("onboarding", Destination.ONBOARDING),
+                new Shot("onboarding-profile", window -> window.navigator().reset(Destination.ONBOARDING),
+                        window -> ((javafx.scene.control.Button) window.navigator().currentView().root()
+                                .lookup(".button.primary")).fire()),
                 Shot.of("gallery", Destination.GALLERY));
     }
 

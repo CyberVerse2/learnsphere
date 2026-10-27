@@ -82,6 +82,7 @@ public final class ComponentGallery implements View {
     public static final double COLUMN_WIDTH = 640;
     /** Narrow enough that both columns fit beside the sidebar in the smallest window. */
     public static final double MIN_COLUMN_WIDTH = 420;
+    private static final double CARD_WIDTH = 300;
 
     private final ScrollPane root = new ScrollPane();
     private final HBox columns;
@@ -340,9 +341,12 @@ public final class ComponentGallery implements View {
                 CourseStatus.DRAFT, Visibility.PRIVATE, 0, true, false, 3, 6, 1, 1, 30, 14, 0, 0, 0, 0, null, 0);
         CourseCard a = new CourseCard(studying);
         CourseCard b = new CourseCard(creating, CourseCard.Mode.CREATING);
-        a.setPrefWidth(300);
-        b.setPrefWidth(300);
-        HBox row = new HBox(16, a, b);
+        for (CourseCard card : List.of(a, b)) {
+            card.setMinWidth(CARD_WIDTH);
+            card.setPrefWidth(CARD_WIDTH);
+            card.setMaxWidth(CARD_WIDTH);
+        }
+        FlowPane row = new FlowPane(16, 16, a, b);
         return row;
     }
 

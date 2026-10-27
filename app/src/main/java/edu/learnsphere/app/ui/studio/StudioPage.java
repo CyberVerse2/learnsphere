@@ -521,7 +521,7 @@ public final class StudioPage extends PageView {
         shareNote.setWrapText(true);
         VBox shareBox = new VBox(14, heading("Share"), visibility, shareNote, export);
 
-        VBox history = new VBox(0, heading("Versions"));
+        VBox history = new VBox(8, heading("Versions"));
         if (versions.isEmpty()) {
             Label none = new Label("Not published yet.");
             none.getStyleClass().add("text-muted");

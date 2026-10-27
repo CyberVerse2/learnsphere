@@ -21,7 +21,6 @@ import edu.learnsphere.app.ui.components.charts.LineChart;
 import edu.learnsphere.core.events.ProgressChanged;
 import edu.learnsphere.core.service.ConceptMastery;
 import edu.learnsphere.core.service.CourseProgress;
-import edu.learnsphere.core.service.CourseSummary;
 import edu.learnsphere.core.service.ForecastDay;
 import edu.learnsphere.core.service.ModuleProgress;
 import edu.learnsphere.core.service.RetentionPoint;
@@ -35,7 +34,6 @@ import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
-import javafx.scene.control.ListCell;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -113,29 +111,33 @@ public final class ProgressPage extends PageView {
     }
 
     private Node coursePicker(CourseProgress p) {
-        ComboBox<CourseSummary> picker = new ComboBox<>();
-        CourseSummary all = null;
-        picker.getItems().add(all);
-        picker.getItems().addAll(p.courses());
-        picker.setCellFactory(list -> new CourseCell());
-        picker.setButtonCell(new CourseCell());
+        ComboBox<Choice> picker = new ComboBox<>();
+        picker.getItems().add(Choice.ALL);
+        p.courses().forEach(c -> picker.getItems().add(new Choice(c.id(), c.title())));
+        Choice current = p.isOverview() ? Choice.ALL : new Choice(p.courseId(), p.title());
+        if (!picker.getItems().contains(current)) {
+            picker.getItems().add(current);
+        }
+        picker.setValue(current);
         picker.setPrefWidth(280);
-        picker.getSelectionModel().select(p.courses().stream().filter(c -> c.id().equals(p.courseId())).findFirst()
-                .orElse(null));
         picker.setOnAction(event -> {
-            CourseSummary chosen = picker.getValue();
-            navigator.navigate(chosen == null ? Destination.Progress.overview() : new Destination.Progress(chosen.id()));
+            Choice chosen = picker.getValue();
+            if (chosen != null && !chosen.equals(current)) {
+                navigator.navigate(chosen.id() == null ? Destination.Progress.overview()
+                        : new Destination.Progress(chosen.id()));
+            }
         });
         picker.setAccessibleText("Course");
         return picker;
     }
 
-    /** "All courses" or the course's title. */
-    private static final class CourseCell extends ListCell<CourseSummary> {
+    /** An entry in the course picker: one course, or every course. */
+    private record Choice(String id, String title) {
+        static final Choice ALL = new Choice(null, "All courses");
+
         @Override
-        protected void updateItem(CourseSummary item, boolean empty) {
-            super.updateItem(item, empty);
-            setText(empty ? null : item == null ? "All courses" : item.title());
+        public String toString() {
+            return title;
         }
     }
 

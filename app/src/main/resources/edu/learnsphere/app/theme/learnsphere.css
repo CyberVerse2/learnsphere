@@ -884,9 +884,10 @@
     -color-slider-tick: -ls-text-faint;
 }
 
+/* The slider skin widens its track by the track's corner radius, so the radius matches the 4 px height. */
 .slider > .track {
     -fx-background-color: -ls-toggle-off;
-    -fx-background-radius: 999px;
+    -fx-background-radius: 2px;
     -fx-padding: 2px;
 }
 

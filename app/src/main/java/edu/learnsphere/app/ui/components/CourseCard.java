@@ -129,6 +129,7 @@ public final class CourseCard extends Card {
         progressText.setAlignment(Pos.CENTER_LEFT);
         HBox left = new HBox(10, ring, progressText);
         left.setAlignment(Pos.CENTER_LEFT);
+        left.setMinWidth(Region.USE_PREF_SIZE);
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
         Node right;
@@ -147,25 +148,32 @@ public final class CourseCard extends Card {
     }
 
     private HBox creatingFooter() {
+        Node status = null;
+        if (course.documentsProcessing() > 0) {
+            status = new StatusPill(StatusPill.Status.WORKING,
+                    Formats.count(course.documentsProcessing(), "PDF importing", "PDFs importing"));
+        } else if (course.documentsNeedingAttention() > 0) {
+            status = new StatusPill(StatusPill.Status.NEEDS_REVIEW,
+                    Formats.count(course.documentsNeedingAttention(), "PDF to check", "PDFs to check"));
+        } else if (course.draftItemCount() > 0) {
+            status = new Chip(Formats.count(course.draftItemCount(), "draft to review", "drafts to review"), Tone.WARNING);
+        }
         List<String> parts = new ArrayList<>();
         parts.add(Formats.count(course.moduleCount(), "module", "modules"));
         parts.add(Formats.count(course.documentCount(), "PDF", "PDFs"));
-        parts.add(Formats.count(course.itemCount(), "question", "questions"));
+        if (status == null) {
+            // With a status beside it there is only room for the modules and PDFs.
+            parts.add(Formats.count(course.itemCount(), "question", "questions"));
+        }
         Label contents = new Label(String.join(" · ", parts));
         contents.getStyleClass().addAll("text-caption", "course-card-contents");
+        contents.setMinWidth(Region.USE_PREF_SIZE);
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
         HBox footer = new HBox(12, contents, spacer);
         footer.setAlignment(Pos.CENTER_LEFT);
-        if (course.documentsProcessing() > 0) {
-            footer.getChildren().add(new StatusPill(StatusPill.Status.WORKING,
-                    Formats.count(course.documentsProcessing(), "PDF importing", "PDFs importing")));
-        } else if (course.documentsNeedingAttention() > 0) {
-            footer.getChildren().add(new StatusPill(StatusPill.Status.NEEDS_REVIEW,
-                    Formats.count(course.documentsNeedingAttention(), "PDF to check", "PDFs to check")));
-        } else if (course.draftItemCount() > 0) {
-            footer.getChildren().add(new Chip(Formats.count(course.draftItemCount(), "draft to review",
-                    "drafts to review"), Tone.WARNING));
+        if (status != null) {
+            footer.getChildren().add(status);
         }
         return footer;
     }
