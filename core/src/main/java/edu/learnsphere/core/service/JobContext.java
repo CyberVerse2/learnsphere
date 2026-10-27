@@ -33,4 +33,16 @@ public interface JobContext {
     default boolean isCancelled() {
         return token().isCancelled();
     }
+
+    /**
+     * Marks the point after which the job can no longer be undone, typically right before it commits its
+     * changes: from then on a cancel request no longer stops it, and it ends as done (with its result) or
+     * failed. Returns false, and marks nothing, when the job was already cancelled; the handler then stops.
+     *
+     * <p>The default only reports whether the job was cancelled, so a queue that does not override it keeps
+     * treating a later cancel as stopping the job.
+     */
+    default boolean markUncancellable() {
+        return !isCancelled();
+    }
 }

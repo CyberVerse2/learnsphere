@@ -11,6 +11,7 @@ import edu.learnsphere.core.error.LearnSphereException;
 import edu.learnsphere.core.error.UserMessage;
 import edu.learnsphere.core.model.AuditLogEntry;
 import edu.learnsphere.core.model.Chunk;
+import edu.learnsphere.core.model.Concept;
 import edu.learnsphere.core.model.Course;
 import edu.learnsphere.core.model.CourseModule;
 import edu.learnsphere.core.model.CourseOrigin;
@@ -18,6 +19,7 @@ import edu.learnsphere.core.model.CourseStatus;
 import edu.learnsphere.core.model.Document;
 import edu.learnsphere.core.model.DocumentPage;
 import edu.learnsphere.core.model.DocumentStatus;
+import edu.learnsphere.core.model.EntityType;
 import edu.learnsphere.core.model.ItemStatus;
 import edu.learnsphere.core.model.ItemType;
 import edu.learnsphere.core.model.JobKind;
@@ -34,6 +36,7 @@ import edu.learnsphere.core.sharing.SharingProfile.Made;
 import edu.learnsphere.core.spi.IndexedChunk;
 import edu.learnsphere.core.util.Json;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -45,6 +48,8 @@ import java.util.Enumeration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -250,6 +255,110 @@ class CourseSharingTest {
     }
 
     @Test
+    void fixedPageTextReplacesTheDocumentWithoutCountingItsItemsAsUpdated() {
+        Made made = creator.createCourse(Visibility.SHAREABLE);
+        String courseId = learner.importCourse(creator.export(made.course(), dir.resolve("v1.learnsphere")), null).courseId();
+        learner.answer(courseId, made.mcq().id(), true);
+
+        creator.t.repos.documents().updatePageText(made.structure().id(), 1, "The membrane surrounds every cell.", false);
+        creator.publish(made.course(), "Typo fixed", made.mcq(), made.shortAnswer(), made.flashcard());
+        ImportResult result = learner.importCourse(creator.export(made.course(), dir.resolve("v2.learnsphere")), null);
+
+        assertThat(result.outcome()).isEqualTo(ImportOutcome.UPDATED);
+        assertThat(result.added()).isZero();
+        assertThat(result.updated()).as("no question changed").isZero();
+        assertThat(result.retired()).isZero();
+        assertThat(learner.t.repos.documents().listPages(made.structure().id()).getFirst().text())
+                .isEqualTo("The membrane surrounds every cell.");
+        assertThat(learner.t.repos.items().get(made.mcq().id()).sourceChunkId()).isEqualTo(made.membrane().id());
+        assertThat(learner.t.repos.items().get(made.shortAnswer().id()).sourceChunkId()).isEqualTo(made.organelles().id());
+        assertThat(learner.t.repos.items().conceptLinks(courseId)).containsEntry(made.mcq().id(),
+                List.of(made.membraneConcept().id()));
+        assertThat(learner.t.repos.sessions().listAttemptsForItem(made.mcq().id(), 10)).hasSize(1);
+        assertThat(learner.index.chunkIdsOfCourse(courseId)).hasSize(3);
+    }
+
+    @Test
+    void removedModuleMovesItsContentAndKeepsProgress() {
+        Made made = creator.createCourse(Visibility.SHAREABLE);
+        String courseId = learner.importCourse(creator.export(made.course(), dir.resolve("v1.learnsphere")), null).courseId();
+        learner.answer(courseId, made.flashcard().id(), true);
+        learner.t.reviewed(learner.t.repos.items().get(made.flashcard().id()), learner.t.now() + 86_400_000L);
+
+        // Version 2: "Energy" is gone; its PDF and the flashcard move to a new "Review" module, the ATP concept
+        // becomes course-wide.
+        CourseModule review = creator.t.module(made.course(), "Review");
+        creator.t.repos.modules().delete(made.energy().id());
+        creator.t.repos.documents().setModule(made.energyDoc().id(), review.id());
+        LearningItem flashcard = creator.t.repos.items().get(made.flashcard().id());
+        creator.t.repos.items().update(new LearningItem(flashcard.id(), flashcard.courseId(), review.id(), flashcard.type(),
+                flashcard.prompt(), flashcard.answer(), flashcard.explanation(), flashcard.distractors(),
+                flashcard.difficulty(), flashcard.sourceChunkId(), flashcard.sourcePage(), flashcard.origin(),
+                flashcard.status(), flashcard.support(), flashcard.supportNote(), flashcard.createdAt(), creator.t.now()));
+        creator.publish(made.course(), "New modules", made.mcq(), made.shortAnswer(), made.flashcard());
+        ImportResult result = learner.importCourse(creator.export(made.course(), dir.resolve("v2.learnsphere")), null);
+
+        assertThat(result.outcome()).isEqualTo(ImportOutcome.UPDATED);
+        assertThat(result.added()).isZero();
+        assertThat(result.updated()).as("only the flashcard moved").isEqualTo(1);
+        assertThat(result.retired()).isZero();
+        assertThat(learner.t.repos.modules().listByCourse(courseId)).extracting(CourseModule::id)
+                .containsExactly(made.cells().id(), review.id());
+        LearningItem moved = learner.t.repos.items().get(made.flashcard().id());
+        assertThat(moved.moduleId()).isEqualTo(review.id());
+        assertThat(moved.sourceChunkId()).isEqualTo(made.atp().id());
+        assertThat(learner.t.repos.documents().get(made.energyDoc().id()).moduleId()).isEqualTo(review.id());
+        assertThat(learner.t.repos.chunks().find(made.atp().id()).orElseThrow().moduleId()).isEqualTo(review.id());
+        assertThat(learner.t.repos.concepts().find(made.atpConcept().id()).orElseThrow().moduleId()).isNull();
+        assertThat(learner.t.repos.items().conceptLinks(courseId)).containsEntry(made.flashcard().id(),
+                List.of(made.atpConcept().id()));
+        assertThat(learner.index.get(made.atp().id()).moduleId()).isEqualTo(review.id());
+        assertThat(learner.t.repos.sessions().listAttemptsForItem(made.flashcard().id(), 10)).hasSize(1);
+        assertThat(learner.t.repos.reviews().find(made.flashcard().id())).isPresent();
+    }
+
+    @Test
+    void conceptMovedToAnotherModuleKeepsItsItems() {
+        Made made = creator.createCourse(Visibility.SHAREABLE);
+        String courseId = learner.importCourse(creator.export(made.course(), dir.resolve("v1.learnsphere")), null).courseId();
+        Map<String, List<String>> linksBefore = learner.t.repos.items().conceptLinks(courseId);
+
+        Concept membrane = made.membraneConcept();
+        creator.t.repos.concepts().delete(membrane.id());
+        creator.t.repos.concepts().insert(new Concept(membrane.id(), membrane.courseId(), made.energy().id(),
+                membrane.name(), membrane.description(), membrane.createdAt(), creator.t.now()));
+        creator.t.repos.items().setConcepts(made.mcq().id(), List.of(membrane.id()));
+        creator.t.repos.items().setConcepts(made.shortAnswer().id(), List.of(membrane.id()));
+        creator.publish(made.course(), "Concept moved", made.mcq(), made.shortAnswer(), made.flashcard());
+        ImportResult result = learner.importCourse(creator.export(made.course(), dir.resolve("v2.learnsphere")), null);
+
+        assertThat(result.outcome()).isEqualTo(ImportOutcome.UPDATED);
+        assertThat(result.added() + result.updated() + result.retired()).isZero();
+        assertThat(learner.t.repos.concepts().find(membrane.id()).orElseThrow().moduleId()).isEqualTo(made.energy().id());
+        assertThat(learner.t.repos.items().conceptLinks(courseId)).isEqualTo(linksBefore);
+    }
+
+    @Test
+    void importingAgainRepairsSearchAfterAFailedIndexWrite() {
+        Made made = creator.createCourse(Visibility.SHAREABLE);
+        Path file = creator.export(made.course(), dir.resolve("course.learnsphere"));
+        learner.index.failing.set(true);
+
+        JobUpdate failed = learner.importAndWait(file, null, false);
+
+        assertThat(failed.status()).isEqualTo(JobStatus.FAILED);
+        assertThat(learner.t.repos.courses().list()).hasSize(1);
+        assertThat(learner.index.size()).isZero();
+
+        learner.index.failing.set(false);
+        ImportResult again = learner.importCourse(file, null);
+
+        assertThat(again.outcome()).isEqualTo(ImportOutcome.ALREADY_CURRENT);
+        assertThat(learner.index.chunkIdsOfCourse(again.courseId()))
+                .containsExactlyInAnyOrder(made.membrane().id(), made.organelles().id(), made.atp().id());
+    }
+
+    @Test
     void olderVersionIsRefusedUnlessAllowed() {
         Made made = creator.createCourse(Visibility.SHAREABLE);
         Path v1 = creator.export(made.course(), dir.resolve("v1.learnsphere"));
@@ -259,6 +368,8 @@ class CourseSharingTest {
 
         PackageInfo info = learner.sharing.inspect(v1);
         assertThat(info.isOlderThanInstalled()).isTrue();
+        assertThat(info.canImport()).isFalse();
+        assertThat(learner.sharing.inspect(v2).canImport()).isTrue();
         assertThatThrownBy(() -> learner.sharing.importCourse(v1, null))
                 .isInstanceOf(ConflictException.class)
                 .satisfies(e -> assertThat(message(e)).isEqualTo(SharingMessages.NEWER_VERSION_INSTALLED));
@@ -394,6 +505,78 @@ class CourseSharingTest {
     }
 
     @Test
+    void changedPassagesFailTheJobAndLeaveNothingBehind() throws IOException {
+        Made made = creator.createCourse(Visibility.SHAREABLE);
+        Path file = creator.export(made.course(), dir.resolve("course.learnsphere"));
+        Path tampered = rewrite(file, dir.resolve("tampered.learnsphere"), entries -> {
+            String json = new String(entries.get(PackageFormat.CHUNKS), StandardCharsets.UTF_8);
+            String changed = json.replace("ATP stores energy.", "ATP stores energy!");
+            assertThat(changed).isNotEqualTo(json);
+            entries.put(PackageFormat.CHUNKS, changed.getBytes(StandardCharsets.UTF_8));
+        });
+
+        assertJobDamaged(tampered);
+    }
+
+    @Test
+    void invalidPassageFailsTheJobEvenWithAMatchingHash() throws IOException {
+        Made made = creator.createCourse(Visibility.SHAREABLE);
+        Path file = creator.export(made.course(), dir.resolve("course.learnsphere"));
+        Path tampered = rewrite(file, dir.resolve("tampered.learnsphere"), entries -> {
+            String json = new String(entries.get(PackageFormat.CHUNKS), StandardCharsets.UTF_8);
+            String changed = json.replaceFirst("\"pageStart\":1", "\"pageStart\":0");
+            assertThat(changed).isNotEqualTo(json);
+            byte[] bytes = changed.getBytes(StandardCharsets.UTF_8);
+            entries.put(PackageFormat.CHUNKS, bytes);
+            patchManifest(entries, PackageFormat.CHUNKS, bytes);
+        });
+
+        assertJobDamaged(tampered);
+    }
+
+    @Test
+    void truncatedPagesFailTheJob() throws IOException {
+        Made made = creator.createCourse(Visibility.SHAREABLE);
+        Path file = creator.export(made.course(), dir.resolve("course.learnsphere"));
+        Path tampered = rewrite(file, dir.resolve("tampered.learnsphere"), entries -> {
+            byte[] pages = entries.get(PackageFormat.PAGES);
+            byte[] cut = Arrays.copyOf(pages, pages.length - 5);
+            entries.put(PackageFormat.PAGES, cut);
+            patchManifest(entries, PackageFormat.PAGES, cut);
+        });
+
+        assertJobDamaged(tampered);
+    }
+
+    @Test
+    void pdfThatCannotBeStoredFailsWithoutBlamingTheCourseFile() throws IOException {
+        Made made = creator.createCourse(Visibility.SHAREABLE);
+        Path file = creator.export(made.course(), dir.resolve("course.learnsphere"));
+        File files = learner.paths.filesDir().toFile();
+        assertThat(files.setWritable(false)).isTrue();
+        JobUpdate done;
+        try {
+            done = learner.importAndWait(file, null, false);
+        } finally {
+            assertThat(files.setWritable(true)).isTrue();
+        }
+
+        assertThat(done.status()).isEqualTo(JobStatus.FAILED);
+        assertThat(done.message()).isEqualTo(UserMessage.SOMETHING_WENT_WRONG.text());
+        assertThat(learner.t.repos.courses().list()).isEmpty();
+    }
+
+    @Test
+    void fullDiskIsReportedAsSuch() {
+        Path target = learner.paths.pdfFile("0".repeat(64));
+
+        assertThat(PackageReader.storageFailure(target, new IOException("No space left on device")).userMessage())
+                .isEqualTo(UserMessage.DISK_FULL);
+        assertThat(PackageReader.storageFailure(target, new java.nio.file.AccessDeniedException(target.toString()))
+                .userMessage()).isEqualTo(UserMessage.SOMETHING_WENT_WRONG);
+    }
+
+    @Test
     void unexpectedEntriesAreRejectedAndNeverWritten() throws IOException {
         Made made = creator.createCourse(Visibility.SHAREABLE);
         Path file = creator.export(made.course(), dir.resolve("out/course.learnsphere"));
@@ -458,6 +641,46 @@ class CourseSharingTest {
     }
 
     @Test
+    void courseLargerThanAPackageMayHoldIsNotExported() throws IOException {
+        Made made = creator.createCourse(Visibility.SHAREABLE);
+        CourseExporter small = new CourseExporter(creator.t.repos, creator.paths, creator.t.clock,
+                name -> name.equals(PackageFormat.CHUNKS) ? 100 : PackageFormat.plaintextLimit(name));
+        Path target = dir.resolve("out/course.learnsphere");
+
+        assertThatThrownBy(() -> small.export(made.course().id(), target, ExportOptions.standard()))
+                .isInstanceOf(ConflictException.class)
+                .satisfies(e -> assertThat(message(e)).isEqualTo(SharingMessages.COURSE_TOO_LARGE));
+        assertThat(target).doesNotExist();
+        try (var left = Files.list(target.getParent())) {
+            assertThat(left).as("no partial file").isEmpty();
+        }
+    }
+
+    @Test
+    void exportReadsPagesAndPassagesWithoutBlockingOtherWritesAndNoticesChangedDocuments() {
+        Made made = creator.createCourse(Visibility.SHAREABLE);
+        List<Boolean> writesWhileExporting = new java.util.ArrayList<>();
+        CourseExporter exporter = new CourseExporter(creator.t.repos, creator.paths, creator.t.clock, name -> {
+            if (name.equals(PackageFormat.CHUNKS)) {
+                // Another thread writes while the export runs; then the PDF is processed again.
+                writesWhileExporting.add(CompletableFuture.supplyAsync(() -> creator.t.repos.audit()
+                        .append("probe", EntityType.COURSE, made.course().id(), null) != null).orTimeout(3, TimeUnit.SECONDS)
+                        .join());
+                creator.t.clock.advance(java.time.Duration.ofSeconds(1));
+                creator.t.repos.documents().updateStatus(made.structure().id(), DocumentStatus.READY, 1, null);
+            }
+            return PackageFormat.plaintextLimit(name);
+        });
+        Path target = dir.resolve("course.learnsphere");
+
+        assertThatThrownBy(() -> exporter.export(made.course().id(), target, ExportOptions.standard()))
+                .isInstanceOf(ConflictException.class)
+                .satisfies(e -> assertThat(message(e)).isEqualTo(SharingMessages.COURSE_CHANGED_WHILE_SAVING));
+        assertThat(writesWhileExporting).containsExactly(true);
+        assertThat(target).doesNotExist();
+    }
+
+    @Test
     void ownPackageCannotBeImportedIntoTheProfileThatMadeIt() {
         Made made = creator.createCourse(Visibility.SHAREABLE);
         Path file = creator.export(made.course(), dir.resolve("course.learnsphere"));
@@ -484,6 +707,17 @@ class CourseSharingTest {
     }
 
     // ---- helpers ------------------------------------------------------------------------------------
+
+    /** The package passes the quick checks, then the import job fails as damaged and stores nothing. */
+    private void assertJobDamaged(Path file) {
+        JobUpdate done = learner.importAndWait(file, null, false);
+
+        assertThat(done.status()).isEqualTo(JobStatus.FAILED);
+        assertThat(done.message()).isEqualTo(SharingMessages.COURSE_FILE_DAMAGED.text());
+        assertThat(learner.t.repos.courses().list()).isEmpty();
+        assertThat(learner.storedPdfs()).as("no stray copies").isEmpty();
+        assertThat(learner.index.size()).isZero();
+    }
 
     private void assertDamaged(Path file) {
         assertThatThrownBy(() -> {

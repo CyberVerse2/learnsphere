@@ -1,7 +1,6 @@
 package edu.learnsphere.core.sharing;
 
 import edu.learnsphere.core.AppPaths;
-import edu.learnsphere.core.db.EmbeddingCodec;
 import edu.learnsphere.core.db.Repositories;
 import edu.learnsphere.core.error.ConflictException;
 import edu.learnsphere.core.error.InvalidInputException;
@@ -13,6 +12,7 @@ import edu.learnsphere.core.events.DocumentChanged;
 import edu.learnsphere.core.events.EventBus;
 import edu.learnsphere.core.events.ItemsChanged;
 import edu.learnsphere.core.events.ProgressChanged;
+import edu.learnsphere.core.model.AuditLogEntry;
 import edu.learnsphere.core.model.Chunk;
 import edu.learnsphere.core.model.Concept;
 import edu.learnsphere.core.model.Course;
@@ -35,7 +35,7 @@ import edu.learnsphere.core.service.ImportOutcome;
 import edu.learnsphere.core.service.ImportResult;
 import edu.learnsphere.core.service.JobContext;
 import edu.learnsphere.core.service.PackageInfo;
-import edu.learnsphere.core.sharing.PackageData.ChunkData;
+import edu.learnsphere.core.sharing.PackageContent.Passage;
 import edu.learnsphere.core.sharing.PackageData.ConceptData;
 import edu.learnsphere.core.sharing.PackageData.CourseFile;
 import edu.learnsphere.core.sharing.PackageData.CourseInfo;
@@ -57,7 +57,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.HashMap;
@@ -68,7 +67,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
 import java.util.function.Function;
+import java.util.function.LongConsumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.slf4j.Logger;
@@ -78,16 +79,21 @@ import org.slf4j.LoggerFactory;
  * Imports course packages: {@link #inspect} and {@link #check} before the job is queued, {@link #run} as
  * the {@code IMPORT_PACKAGE} job.
  *
- * <p>A run reads and verifies every entry, copies the PDFs (streamed and hash-checked, into the profile's
- * content-addressed {@code files/}), embeds only passages whose stored vectors do not fit this profile's
- * search, then writes the course in one transaction and finally updates the search index. A new package
- * becomes an imported, enrolled course; a package whose {@code package_id} matches an imported course
- * updates it in place: items keep their ids, new ones are added, missing ones are retired, review states
- * and attempts are untouched, and only documents whose content changed are replaced and re-indexed.
+ * <p>A run streams and verifies the pages and passages, copies the PDFs (streamed and hash-checked, into the
+ * profile's content-addressed {@code files/}), embeds only passages whose stored vectors do not fit this
+ * profile's search, then writes the course in one transaction and finally updates the search index. A new
+ * package becomes an imported, enrolled course; a package whose {@code package_id} matches an imported
+ * course updates it in place: items keep their ids, new ones are added, missing ones are retired, review
+ * states and attempts are untouched, and only documents whose content changed are replaced and re-indexed.
+ * Right before the transaction the run tells the job it can no longer be cancelled.
  *
- * <p>The run is idempotent: an interrupted run starts again from the top, reuses copied PDFs, finds the
- * database already up to date when the transaction had committed, and then re-indexes the whole course
- * (a second attempt cannot know how far indexing got). Thread-safe; the job queue runs one import at a time.
+ * <p>The transaction also appends an {@code import_package} audit entry with the job's id and the
+ * {@link ImportResult}. A later attempt of the same job (after LearnSphere closed mid-run) that finds that
+ * entry knows the course is stored: it re-indexes the course and returns the recorded result, which also
+ * works for a protected package whose key was lost with the restart. Otherwise the run starts again from
+ * the top and reuses copied PDFs. An import that finds nothing to change re-indexes the whole course, so
+ * importing a package again repairs search after a failed index write. Thread-safe; the job queue runs one
+ * import at a time.
  */
 public final class CourseImporter {
 
@@ -98,7 +104,13 @@ public final class CourseImporter {
     /** Free space kept beyond the PDFs being copied. */
     private static final long SPACE_MARGIN = 64L * 1024 * 1024;
 
-    private static final double CHECKED = 0.05;
+    /** Audit action of an import; its detail is an {@link ImportRecord}. */
+    static final String AUDIT_ACTION = "import_package";
+
+    private static final String CHECKING = "Checking the course…";
+    private static final String FINISHING = "Finishing up…";
+
+    private static final double READ = 0.15;
     private static final double COPIED = 0.6;
     private static final double PREPARED = 0.8;
     private static final double STORED = 0.85;
@@ -134,8 +146,9 @@ public final class CourseImporter {
     }
 
     /**
-     * Everything that can be checked before the import job: the manifest, whether the package may be
-     * imported here, the code, and the integrity of the JSON entries. Does not wipe {@code code}.
+     * What can be checked quickly before the import job: the manifest, whether the package may be imported
+     * here, the code, and {@code course.json}. The job verifies the pages, passages and PDFs as it reads them.
+     * Does not wipe {@code code}.
      *
      * @throws InvalidInputException for a file that is not a valid package, or a missing or wrong code
      * @throws ConflictException     for a course created here, an older version than the installed one
@@ -149,8 +162,6 @@ public final class CourseImporter {
             try {
                 CourseFile course = reader.readCourse(key);
                 PackageContent.checkCourse(reader.manifest(), course);
-                reader.verify(PackageFormat.PAGES, key);
-                reader.verify(PackageFormat.CHUNKS, key);
                 queries.requireNoClash(info.existingCourseId(), courseIds(course));
                 return new Checked(info, key);
             } catch (RuntimeException e) {
@@ -163,30 +174,29 @@ public final class CourseImporter {
     }
 
     /**
-     * Imports the package as the running job: reports progress, honours cancellation until the database
-     * commit, and returns what it did.
+     * Imports the package as the running job: reports progress, honours cancellation until it starts storing
+     * the course, and returns what it did.
      *
      * @param key the key of a protected package (from {@link #check}), or null
      */
     public ImportResult run(Path file, PackageKey key, boolean allowOlder, JobContext job) {
         Progress progress = new Progress(job);
         CancellationToken token = job.token();
-        progress.report(0, "Checking the course…");
+        String jobId = job.job().id();
+        boolean rerun = job.job().attempts() > 1;
+        progress.report(0, CHECKING);
         List<String> copied = new ArrayList<>();
         try (PackageReader reader = PackageReader.open(file)) {
             PackageManifest manifest = reader.manifest();
-            if (manifest.isProtected() && key == null) {
-                // A run interrupted by closing LearnSphere may have stored the course but not finished
-                // indexing it; the stored passages are enough to finish that without the code.
-                repos.courses().findByPackageId(manifest.packageId())
-                        .filter(c -> !c.isCreatedHere())
-                        .ifPresent(c -> reindexCourse(c.id(), progress));
-                throw new InvalidInputException(SharingMessages.IMPORT_INTERRUPTED,
-                        "No key in memory for protected package " + manifest.packageId());
+            boolean keyLost = manifest.isProtected() && key == null;
+            if (rerun || keyLost) {
+                Optional<ImportResult> finished = finishStoredRun(manifest, jobId, keyLost, progress);
+                if (finished.isPresent()) {
+                    return finished.get();
+                }
             }
             requireImportable(info(reader), allowOlder);
-            PackageContent content = PackageContent.of(manifest, reader.readCourse(key), reader.readPages(key),
-                    reader.readChunks(key));
+            PackageContent content = readContent(reader, key, token, progress);
             token.throwIfCancelled();
 
             Optional<Course> existing = repos.courses().findByPackageId(manifest.packageId());
@@ -195,26 +205,99 @@ public final class CourseImporter {
             String courseId = existingId != null ? existingId : Ids.newId();
             Map<String, String> previousSha = previousShas(existingId);
             Set<String> changed = changedDocuments(existingId, content);
-            progress.report(CHECKED, "Checking the course…");
+            progress.report(READ, CHECKING);
 
             copyDocuments(reader, key, content, token, progress, copied);
             Map<String, List<Chunk>> passages = preparePassages(content, courseId, changed, token, progress);
             token.throwIfCancelled();
 
             progress.report(PREPARED, existing.isPresent() ? "Updating the course…" : "Adding the course to your library…");
-            Applied applied = apply(content, courseId, existingId, passages, changed, allowOlder);
+            if (!job.markUncancellable()) {
+                throw new CancellationException("Import of package " + manifest.packageId() + " cancelled");
+            }
+            Applied applied = apply(content, courseId, existingId, passages, changed, allowOlder, jobId);
             LOG.info("Imported package {} version {} as course {}: {}", manifest.packageId(), manifest.versionNumber(),
                     courseId, applied.result());
 
-            progress.report(STORED, "Finishing up…");
-            updateIndex(applied, content, passages, job.job().attempts() > 1, progress);
+            progress.report(STORED, FINISHING);
+            boolean full = rerun || applied.result().outcome() == ImportOutcome.ALREADY_CURRENT;
+            updateIndex(applied, passages, full, progress);
             cleanUp(applied, previousSha);
-            publish(applied);
-            progress.report(1, "Finishing up…");
+            publish(courseId, applied.created(), applied.removedDocuments(), applied.changedDocuments());
+            progress.report(1, FINISHING);
             return applied.result();
         } finally {
             removeUnusedCopies(copied);
         }
+    }
+
+    /**
+     * Finishes a job whose earlier attempt stored the course before LearnSphere closed: re-indexes the course
+     * and returns the result that attempt recorded. When the key of a protected package was lost with the
+     * restart and no attempt stored anything, a course already at the package's version counts as current
+     * (after re-indexing it); anything else cannot go on without the code.
+     *
+     * @return empty when the run has to start from the top
+     * @throws InvalidInputException {@link SharingMessages#IMPORT_INTERRUPTED} when the key is lost and the
+     *                               course is not at the package's version
+     */
+    private Optional<ImportResult> finishStoredRun(PackageManifest manifest, String jobId, boolean keyLost,
+                                                   Progress progress) {
+        Optional<Course> course = repos.courses().findByPackageId(manifest.packageId()).filter(c -> !c.isCreatedHere());
+        Optional<ImportResult> recorded = course.flatMap(c -> recordedResult(c, jobId));
+        if (recorded.isPresent()) {
+            LOG.info("Import job {} had stored package {}; finishing it", jobId, manifest.packageId());
+            reindexCourse(course.get().id(), progress);
+            publish(course.get().id(), recorded.get().outcome() == ImportOutcome.CREATED, List.of(), Set.of());
+            progress.report(1, FINISHING);
+            return recorded;
+        }
+        if (!keyLost) {
+            return Optional.empty();
+        }
+        if (course.isPresent() && course.get().versionNumber() == manifest.versionNumber()) {
+            Course c = course.get();
+            reindexCourse(c.id(), progress);
+            progress.report(1, FINISHING);
+            return Optional.of(new ImportResult(ImportOutcome.ALREADY_CURRENT, c.id(), c.title(), c.versionNumber(), 0, 0,
+                    0));
+        }
+        throw new InvalidInputException(SharingMessages.IMPORT_INTERRUPTED,
+                "No key in memory for protected package " + manifest.packageId());
+    }
+
+    /** What an earlier attempt of job {@code jobId} recorded when it stored {@code course}. */
+    private Optional<ImportResult> recordedResult(Course course, String jobId) {
+        for (AuditLogEntry entry : repos.audit().listForEntity(EntityType.COURSE, course.id())) {
+            if (!AUDIT_ACTION.equals(entry.action()) || entry.detail() == null) {
+                continue;
+            }
+            try {
+                ImportRecord r = Json.read(entry.detail(), ImportRecord.class);
+                if (jobId.equals(r.jobId())) {
+                    return Optional.of(new ImportResult(ImportOutcome.valueOf(r.outcome()), course.id(), course.title(),
+                            r.version(), r.added(), r.updated(), r.retired()));
+                }
+            } catch (RuntimeException e) {
+                LOG.debug("Unreadable audit entry {}", entry.id(), e);
+            }
+        }
+        return Optional.empty();
+    }
+
+    /** Streams {@code pages.json} and {@code chunks.json} into checked content, reporting progress by bytes. */
+    private PackageContent readContent(PackageReader reader, PackageKey key, CancellationToken token, Progress progress) {
+        PackageContent.Builder builder = PackageContent.builder(reader.manifest(), reader.readCourse(key));
+        long total = Math.max(1, reader.entrySize(PackageFormat.PAGES) + reader.entrySize(PackageFormat.CHUNKS));
+        long[] done = {0};
+        LongConsumer read = bytes -> {
+            done[0] += bytes;
+            progress.report(READ * Math.min(1.0, (double) done[0] / total), CHECKING);
+            token.throwIfCancelled();
+        };
+        reader.readPages(key, builder::page, read);
+        reader.readChunks(key, builder::chunk, read);
+        return builder.build();
     }
 
     // ---- checks -------------------------------------------------------------------------------------
@@ -294,7 +377,7 @@ public final class CourseImporter {
         for (PageData p : content.pages(d.id())) {
             f.page(p.pageNumber(), p.source(), p.text(), p.figureNotes(), p.hasImages());
         }
-        for (ChunkData c : content.chunks(d.id())) {
+        for (Passage c : content.passages(d.id())) {
             f.chunk(new ChunkKey(c.id(), c.ordinal(), c.pageStart(), c.pageEnd(), c.sectionTitle(), c.text(),
                     c.tokenEstimate(), true));
         }
@@ -333,10 +416,10 @@ public final class CourseImporter {
         for (Map.Entry<String, Long> file : files.entrySet()) {
             number++;
             String message = "Copying PDFs… " + number + " of " + files.size();
-            progress.report(CHECKED + (COPIED - CHECKED) * done[0] / total, message);
+            progress.report(READ + (COPIED - READ) * done[0] / total, message);
             boolean created = reader.copyDocument(file.getKey(), key, paths.pdfFile(file.getKey()), token, bytes -> {
                 done[0] += bytes;
-                progress.report(CHECKED + (COPIED - CHECKED) * Math.min(1.0, (double) done[0] / total), message);
+                progress.report(READ + (COPIED - READ) * Math.min(1.0, (double) done[0] / total), message);
             });
             if (created) {
                 copied.add(file.getKey());
@@ -389,8 +472,8 @@ public final class CourseImporter {
         for (String documentId : changed) {
             DocumentData d = content.documents.get(documentId);
             List<Chunk> chunks = new ArrayList<>();
-            for (ChunkData c : content.chunks(documentId)) {
-                float[] vector = decode(c);
+            for (Passage c : content.passages(documentId)) {
+                float[] vector = c.embedding();
                 boolean usable = vector != null && index.embeddingModel().equals(c.embeddingModel())
                         && vector.length == index.dimensions();
                 Chunk chunk = new Chunk(c.id(), documentId, courseId, d.moduleId(), c.ordinal(), c.pageStart(),
@@ -433,17 +516,6 @@ public final class CourseImporter {
         return embedded;
     }
 
-    private static float[] decode(ChunkData c) {
-        if (c.embedding() == null) {
-            return null;
-        }
-        try {
-            return EmbeddingCodec.decode(Base64.getDecoder().decode(c.embedding()));
-        } catch (IllegalArgumentException e) {
-            throw PackageContent.damaged("Invalid vector for passage " + c.id(), e);
-        }
-    }
-
     // ---- the transaction ----------------------------------------------------------------------------
 
     /** What the transaction did. */
@@ -455,11 +527,23 @@ public final class CourseImporter {
         }
     }
 
-    private record ItemChanges(int added, int updated, int retired) {
+    /**
+     * What the items of the course went through: {@code updated} counts items whose content changed for the
+     * learner, {@code linkChanges} items whose concepts changed.
+     */
+    private record ItemChanges(int added, int updated, int retired, int linkChanges) {
+    }
+
+    /**
+     * The detail of an {@code import_package} audit entry. {@code jobId} lets a later attempt of the same job
+     * find out that the course is already stored and what the import did.
+     */
+    record ImportRecord(String packageId, int version, String outcome, int added, int updated, int retired,
+                        int documentsChanged, int documentsRemoved, String jobId) {
     }
 
     private Applied apply(PackageContent content, String courseId, String plannedExistingId,
-                          Map<String, List<Chunk>> passages, Set<String> changed, boolean allowOlder) {
+                          Map<String, List<Chunk>> passages, Set<String> changed, boolean allowOlder, String jobId) {
         return repos.database().inTransaction(h -> {
             long now = clock.millis();
             PackageManifest m = content.manifest;
@@ -482,23 +566,26 @@ public final class CourseImporter {
             } else {
                 repos.courses().update(course);
             }
+            // The items as they were: removing modules, moving concepts and replacing documents clears some of
+            // their columns and concept links (ON DELETE SET NULL / CASCADE) before the items are synced.
+            Map<String, LearningItem> itemsBefore = byId(repos.items().listByCourse(courseId), LearningItem::id);
+            Map<String, List<String>> linksBefore = repos.items().conceptLinks(courseId);
             int structureChanges = syncModules(courseId, content, now) + syncConcepts(courseId, content, now);
             List<Document> removed = syncDocuments(courseId, content, passages, changed, now);
-            ItemChanges items = syncItems(courseId, content, now);
+            ItemChanges items = syncItems(courseId, content, itemsBefore, linksBefore, now);
             syncVersion(courseId, content, now);
             repos.courses().enrol(courseId, now);
 
             boolean current = existing.isPresent() && existing.get().versionNumber() == m.versionNumber()
-                    && items.added() == 0 && items.updated() == 0 && items.retired() == 0
+                    && items.added() == 0 && items.updated() == 0 && items.retired() == 0 && items.linkChanges() == 0
                     && removed.isEmpty() && changed.isEmpty() && structureChanges == 0;
             ImportOutcome outcome = existing.isEmpty() ? ImportOutcome.CREATED
                     : current ? ImportOutcome.ALREADY_CURRENT : ImportOutcome.UPDATED;
             ImportResult result = new ImportResult(outcome, courseId, course.title(), m.versionNumber(), items.added(),
                     items.updated(), items.retired());
-            repos.audit().append("import_package", EntityType.COURSE, courseId, Json.write(Map.of(
-                    "packageId", m.packageId(), "version", m.versionNumber(), "outcome", outcome.name(),
-                    "added", items.added(), "updated", items.updated(), "retired", items.retired(),
-                    "documentsChanged", changed.size(), "documentsRemoved", removed.size())));
+            repos.audit().append(AUDIT_ACTION, EntityType.COURSE, courseId, Json.write(new ImportRecord(m.packageId(),
+                    m.versionNumber(), outcome.name(), items.added(), items.updated(), items.retired(), changed.size(),
+                    removed.size(), jobId)));
             Map<String, String> titles = new HashMap<>();
             content.documents.values().forEach(d -> titles.put(d.id(), d.title()));
             return new Applied(result, existing.isEmpty(), removed, changed, titles);
@@ -593,8 +680,14 @@ public final class CourseImporter {
         return removed;
     }
 
-    private ItemChanges syncItems(String courseId, PackageContent content, long now) {
-        // Read after the documents changed: replacing passages cleared the items' links to them.
+    /**
+     * Brings the items and their concept links in line with the package. Writes compare against the rows as
+     * they are now; the counts compare against {@code before}, the items as they were when the import
+     * started, so links cleared by replacing a document or module are written back without counting as a
+     * change.
+     */
+    private ItemChanges syncItems(String courseId, PackageContent content, Map<String, LearningItem> before,
+                                  Map<String, List<String>> linksBefore, long now) {
         Map<String, LearningItem> stored = byId(repos.items().listByCourse(courseId), LearningItem::id);
         Map<String, List<String>> storedLinks = repos.items().conceptLinks(courseId);
         List<LearningItem> inserts = new ArrayList<>();
@@ -608,8 +701,12 @@ public final class CourseImporter {
             LearningItem current = stored.get(d.id());
             if (current == null) {
                 inserts.add(wanted);
-            } else if (!sameContent(current, wanted)) {
+                continue;
+            }
+            if (!sameRow(current, wanted)) {
                 repos.items().update(wanted);
+            }
+            if (!sameForLearner(before.getOrDefault(d.id(), current), wanted)) {
                 updated++;
             }
         }
@@ -620,13 +717,17 @@ public final class CourseImporter {
                 .map(LearningItem::id)
                 .toList();
         int retired = repos.items().setStatus(retire, ItemStatus.RETIRED);
+        int linkChanges = 0;
         for (ItemData d : content.course.items()) {
             List<String> wanted = sorted(content.conceptsByItem.getOrDefault(d.id(), List.of()));
             if (!wanted.equals(sorted(storedLinks.getOrDefault(d.id(), List.of())))) {
                 repos.items().setConcepts(d.id(), wanted);
             }
+            if (!wanted.equals(sorted(linksBefore.getOrDefault(d.id(), List.of())))) {
+                linkChanges++;
+            }
         }
-        return new ItemChanges(inserts.size(), updated, retired);
+        return new ItemChanges(inserts.size(), updated, retired, linkChanges);
     }
 
     private void syncVersion(String courseId, PackageContent content, long now) {
@@ -640,24 +741,32 @@ public final class CourseImporter {
         }
     }
 
-    private static boolean sameContent(LearningItem a, LearningItem b) {
+    /** True when every column an import writes is the same. */
+    private static boolean sameRow(LearningItem a, LearningItem b) {
+        return sameForLearner(a, b) && Objects.equals(a.sourceChunkId(), b.sourceChunkId());
+    }
+
+    /**
+     * True when the item is the same for the learner: everything but the link to its source passage, which
+     * changes whenever the creator's passages are rebuilt while the question and its cited page stay as
+     * they were.
+     */
+    private static boolean sameForLearner(LearningItem a, LearningItem b) {
         return Objects.equals(a.moduleId(), b.moduleId()) && a.type() == b.type() && a.prompt().equals(b.prompt())
                 && a.answer().equals(b.answer()) && a.explanation().equals(b.explanation())
                 && a.distractors().equals(b.distractors()) && a.difficulty() == b.difficulty()
-                && Objects.equals(a.sourceChunkId(), b.sourceChunkId()) && Objects.equals(a.sourcePage(), b.sourcePage())
-                && a.origin() == b.origin() && a.status() == b.status() && a.support() == b.support()
-                && Objects.equals(a.supportNote(), b.supportNote());
+                && Objects.equals(a.sourcePage(), b.sourcePage()) && a.origin() == b.origin() && a.status() == b.status()
+                && a.support() == b.support() && Objects.equals(a.supportNote(), b.supportNote());
     }
 
     // ---- after the commit ---------------------------------------------------------------------------
 
     /**
      * Brings the search index in line: removed and changed documents leave it, changed documents come back
-     * with their passages. A repeated attempt re-indexes the whole course. Not cancellable: the course is
-     * already stored, and an interrupted run re-indexes everything when it runs again.
+     * with their passages. With {@code full} (a repeated attempt, or an import that changed nothing) the
+     * whole course is indexed again. Not cancellable: the course is already stored.
      */
-    private void updateIndex(Applied applied, PackageContent content, Map<String, List<Chunk>> passages, boolean full,
-                             Progress progress) {
+    private void updateIndex(Applied applied, Map<String, List<Chunk>> passages, boolean full, Progress progress) {
         if (full) {
             reindexCourse(applied.courseId(), progress);
             return;
@@ -671,27 +780,34 @@ public final class CourseImporter {
                     .forEach(c -> upserts.add(indexed(c, applied.documentTitles().get(documentId))));
         }
         upsert(upserts, progress);
-        if (!content.chunkIds.isEmpty() && upserts.isEmpty() && !applied.changedDocuments().isEmpty()) {
-            LOG.warn("No passages of course {} could be indexed", applied.courseId());
-        }
     }
 
-    /** Replaces everything the index holds for a course with its stored, searchable passages. */
+    /**
+     * Replaces everything the index holds for a course with its stored, searchable passages, one document
+     * at a time.
+     */
     private void reindexCourse(String courseId, Progress progress) {
         index.deleteByCourse(courseId);
-        Map<String, String> titles = repos.documents().listByCourse(courseId).stream()
+        List<Document> documents = repos.documents().listByCourse(courseId).stream()
                 .filter(d -> d.status() == DocumentStatus.READY)
-                .collect(Collectors.toMap(Document::id, Document::title));
-        List<IndexedChunk> upserts = new ArrayList<>();
-        repos.chunks().listByCourse(courseId).stream()
-                .filter(c -> titles.containsKey(c.documentId()) && searchable(c))
-                .forEach(c -> upserts.add(indexed(c, titles.get(c.documentId()))));
-        upsert(upserts, progress);
+                .toList();
+        for (int i = 0; i < documents.size(); i++) {
+            Document d = documents.get(i);
+            progress.report(STORED + (1 - STORED) * i / documents.size(), FINISHING);
+            List<IndexedChunk> batch = repos.chunks().listByDocument(d.id()).stream()
+                    .filter(this::searchable)
+                    .map(c -> indexed(c, d.title()))
+                    .toList();
+            for (int from = 0; from < batch.size(); from += INDEX_BATCH) {
+                index.upsert(batch.subList(from, Math.min(batch.size(), from + INDEX_BATCH)));
+            }
+        }
+        index.commit();
     }
 
     private void upsert(List<IndexedChunk> upserts, Progress progress) {
         for (int from = 0; from < upserts.size(); from += INDEX_BATCH) {
-            progress.report(STORED + (1 - STORED) * from / upserts.size(), "Finishing up…");
+            progress.report(STORED + (1 - STORED) * from / upserts.size(), FINISHING);
             index.upsert(upserts.subList(from, Math.min(upserts.size(), from + INDEX_BATCH)));
         }
         index.commit();
@@ -749,13 +865,12 @@ public final class CourseImporter {
         }
     }
 
-    private void publish(Applied applied) {
-        String courseId = applied.courseId();
-        ChangeType type = applied.created() ? ChangeType.CREATED : ChangeType.UPDATED;
-        for (Document d : applied.removedDocuments()) {
+    private void publish(String courseId, boolean created, List<Document> removedDocuments, Set<String> changedDocuments) {
+        ChangeType type = created ? ChangeType.CREATED : ChangeType.UPDATED;
+        for (Document d : removedDocuments) {
             events.publish(DocumentChanged.of(d.id(), courseId, d.status(), d.progress(), ChangeType.DELETED));
         }
-        for (String documentId : applied.changedDocuments()) {
+        for (String documentId : changedDocuments) {
             events.publish(DocumentChanged.of(documentId, courseId, DocumentStatus.READY, 1, type));
         }
         events.publish(new CourseChanged(courseId, type));

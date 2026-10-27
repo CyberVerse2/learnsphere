@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -20,6 +21,8 @@ final class InMemorySearchIndex implements SearchIndex {
     private final String model;
     private final Map<String, IndexedChunk> chunks = new ConcurrentHashMap<>();
     final AtomicInteger commits = new AtomicInteger();
+    /** While true, every upsert fails as a broken index would. */
+    final AtomicBoolean failing = new AtomicBoolean();
 
     InMemorySearchIndex(int dimensions, String model) {
         this.dimensions = dimensions;
@@ -43,6 +46,9 @@ final class InMemorySearchIndex implements SearchIndex {
 
     @Override
     public void upsert(Collection<IndexedChunk> batch) {
+        if (failing.get()) {
+            throw new IllegalStateException("Index write failed");
+        }
         for (IndexedChunk c : batch) {
             if (c.embedding() == null || c.embedding().length != dimensions) {
                 throw new IllegalArgumentException("Bad vector for " + c.chunkId());

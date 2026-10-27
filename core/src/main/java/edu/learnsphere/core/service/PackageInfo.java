@@ -31,9 +31,13 @@ public record PackageInfo(String packageId, int formatVersion, String title, Str
         return existingCourseId != null && !createdHere;
     }
 
-    /** True when {@code SharingService.importCourse} accepts this package. */
+    /**
+     * True when {@code SharingService.importCourse(file, code)} accepts this package: it is not a course made
+     * in this profile and not older than the copy in the library. An older one can still be imported after
+     * the learner confirms, with {@code importCourse(file, code, true)} (see {@link #isOlderThanInstalled()}).
+     */
     public boolean canImport() {
-        return !createdHere;
+        return !createdHere && !isOlderThanInstalled();
     }
 
     /** True when the package is newer than the installed copy (or there is none). */

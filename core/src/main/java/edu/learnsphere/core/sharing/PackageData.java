@@ -86,16 +86,9 @@ public final class PackageData {
                                int pageCount, boolean fileIncluded, long createdAt) {
     }
 
-    /** {@code pages.json}. */
-    public record PagesFile(List<PageData> pages) {
-
-        public PagesFile {
-            pages = copy(pages);
-        }
-    }
-
     /**
-     * The usable text of one page.
+     * The usable text of one page; {@code pages.json} is {@code {"pages": [PageData…]}}, read and written one
+     * page at a time.
      *
      * @param source {@code PageSource} code
      */
@@ -103,16 +96,8 @@ public final class PackageData {
                            boolean hasImages) {
     }
 
-    /** {@code chunks.json}. */
-    public record ChunksFile(List<ChunkData> chunks) {
-
-        public ChunksFile {
-            chunks = copy(chunks);
-        }
-    }
-
     /**
-     * A passage.
+     * A passage; {@code chunks.json} is {@code {"chunks": [ChunkData…]}}, read and written one passage at a time.
      *
      * @param embeddingModel the embedder that made {@code embedding}, or null
      * @param embedding      base64 float32 little-endian vector, or null when the passage has none

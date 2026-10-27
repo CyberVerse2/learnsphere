@@ -3,10 +3,13 @@ package edu.learnsphere.core.sharing;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import edu.learnsphere.core.error.InvalidInputException;
+import edu.learnsphere.core.error.LearnSphereException;
 import edu.learnsphere.core.model.Job;
 import edu.learnsphere.core.model.JobKind;
 import edu.learnsphere.core.model.JobStatus;
 import edu.learnsphere.core.model.Visibility;
+import edu.learnsphere.core.service.ExportOptions;
 import edu.learnsphere.core.service.ImportOutcome;
 import edu.learnsphere.core.service.ImportResult;
 import edu.learnsphere.core.service.JobContext;
@@ -68,6 +71,92 @@ class CourseImporterRunTest {
     }
 
     @Test
+    void rerunOfAJobThatStoredTheCourseReturnsWhatItRecordedAndIndexesItAgain() {
+        TestJob first = new TestJob(1);
+        ImportResult created = importer.run(file, null, false, first);
+        learner.index.deleteByCourse(created.courseId());
+
+        TestJob rerun = new TestJob(2, first.job.id());
+        ImportResult again = importer.run(file, null, false, rerun);
+
+        assertThat(again).isEqualTo(created);
+        assertThat(again.outcome()).isEqualTo(ImportOutcome.CREATED);
+        assertThat(learner.t.repos.courses().list()).hasSize(1);
+        assertThat(learner.index.chunkIdsOfCourse(created.courseId())).hasSize(3);
+        assertThat(rerun.fractions).isSorted().last().isEqualTo(1.0);
+    }
+
+    @Test
+    void protectedRerunFinishesWithoutTheCodeOnceTheCourseIsStored() {
+        Path protectedFile = exportProtected(creator.createCourse(Visibility.PROTECTED), "protected-v1.learnsphere");
+        TestJob first = new TestJob(1);
+        ImportResult created;
+        try (PackageKey key = unlock(protectedFile)) {
+            created = importer.run(protectedFile, key, false, first);
+        }
+        learner.index.deleteByCourse(created.courseId());
+
+        ImportResult resumed = importer.run(protectedFile, null, false, new TestJob(2, first.job.id()));
+
+        assertThat(resumed).isEqualTo(created);
+        assertThat(learner.index.chunkIdsOfCourse(created.courseId())).hasSize(3);
+
+        // Another job whose key was lost before it stored anything: the course already has this version.
+        learner.index.deleteByCourse(created.courseId());
+        ImportResult current = importer.run(protectedFile, null, false, new TestJob(2));
+
+        assertThat(current.outcome()).isEqualTo(ImportOutcome.ALREADY_CURRENT);
+        assertThat(current.courseId()).isEqualTo(created.courseId());
+        assertThat(current.added() + current.updated() + current.retired()).isZero();
+        assertThat(learner.index.chunkIdsOfCourse(created.courseId())).hasSize(3);
+    }
+
+    @Test
+    void protectedRerunOfAnotherVersionWithoutTheCodeAsksToImportAgain() {
+        Made made = creator.createCourse(Visibility.PROTECTED);
+        Path v1 = exportProtected(made, "protected-v1.learnsphere");
+        ImportResult created;
+        try (PackageKey key = unlock(v1)) {
+            created = importer.run(v1, key, false, new TestJob(1));
+        }
+        creator.publish(made.course(), "Second release", made.mcq(), made.shortAnswer());
+        Path v2 = exportProtected(made, "protected-v2.learnsphere");
+
+        assertThatThrownBy(() -> importer.run(v2, null, false, new TestJob(2)))
+                .isInstanceOf(InvalidInputException.class)
+                .satisfies(e -> assertThat(((LearnSphereException) e).userMessage())
+                        .isEqualTo(SharingMessages.IMPORT_INTERRUPTED));
+        assertThat(learner.t.repos.courses().get(created.courseId()).versionNumber()).isEqualTo(1);
+    }
+
+    @Test
+    void runBecomesUncancellableRightBeforeStoringTheCourse() {
+        TestJob job = new TestJob(1);
+        job.cancelOn("Finishing up…");
+
+        ImportResult result = importer.run(file, null, false, job);
+
+        assertThat(job.uncancellableAt).isEqualTo("Adding the course to your library…");
+        assertThat(job.coursesWhenUncancellable).isZero();
+        assertThat(job.token.isCancelled()).as("the cancel came too late").isFalse();
+        assertThat(result.outcome()).isEqualTo(ImportOutcome.CREATED);
+        assertThat(learner.index.chunkIdsOfCourse(result.courseId())).hasSize(3);
+    }
+
+    @Test
+    void cancelJustBeforeStoringStopsTheRun() {
+        TestJob job = new TestJob(1);
+        job.cancelOn("Adding the course to your library…");
+
+        assertThatThrownBy(() -> importer.run(file, null, false, job)).isInstanceOf(CancellationException.class);
+
+        assertThat(job.uncancellableAt).isNull();
+        assertThat(learner.t.repos.courses().list()).isEmpty();
+        assertThat(learner.storedPdfs()).isEmpty();
+        assertThat(learner.index.size()).isZero();
+    }
+
+    @Test
     void cancelledRunStoresNothing() {
         TestJob job = new TestJob(1);
         job.token.cancel();
@@ -90,17 +179,53 @@ class CourseImporterRunTest {
         assertThat(job.fractions).isSorted().last().isEqualTo(1.0);
     }
 
-    /** A running import job with a given attempt number that records its progress. */
-    private static final class TestJob implements JobContext {
+    private Path exportProtected(Made made, String name) {
+        Path target = dir.resolve(name);
+        creator.sharing.exportCourse(made.course().id(), target, ExportOptions.protectedWith("orchid".toCharArray()));
+        return target;
+    }
+
+    private static PackageKey unlock(Path file) {
+        try (PackageReader reader = PackageReader.open(file)) {
+            return reader.unlock("orchid".toCharArray());
+        }
+    }
+
+    /**
+     * A running import job with a given attempt number that records its progress. Like the job queue, it
+     * ignores a cancel once the handler marked it uncancellable.
+     */
+    private final class TestJob implements JobContext {
 
         final CancellationToken token = CancellationToken.create();
         final List<String> messages = new ArrayList<>();
         final List<Double> fractions = new ArrayList<>();
-        private final Job job;
+        final Job job;
+        private String cancelOn;
+        String uncancellableAt;
+        int coursesWhenUncancellable = -1;
 
         TestJob(int attempts) {
-            job = new Job(Ids.newId(), JobKind.IMPORT_PACKAGE, "{}", JobStatus.RUNNING, 10, attempts, 0, null, null, null,
-                    0, 0);
+            this(attempts, Ids.newId());
+        }
+
+        TestJob(int attempts, String jobId) {
+            job = new Job(jobId, JobKind.IMPORT_PACKAGE, "{}", JobStatus.RUNNING, 10, attempts, 0, null, null, null, 0, 0);
+        }
+
+        /** Requests a cancel when the run first reports {@code message}. */
+        void cancelOn(String message) {
+            cancelOn = message;
+        }
+
+        @Override
+        public boolean markUncancellable() {
+            if (token.isCancelled()) {
+                return false;
+            }
+            uncancellableAt = messages.isEmpty() ? null : messages.getLast();
+            coursesWhenUncancellable = learner.t.repos.courses().list().size();
+            return true;
         }
 
         @Override
@@ -118,6 +243,9 @@ class CourseImporterRunTest {
             fractions.add(fraction);
             if (message != null && (messages.isEmpty() || !messages.getLast().equals(message))) {
                 messages.add(message);
+            }
+            if (message != null && message.equals(cancelOn) && uncancellableAt == null) {
+                token.cancel();
             }
         }
 

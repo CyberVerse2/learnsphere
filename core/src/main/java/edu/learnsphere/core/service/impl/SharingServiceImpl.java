@@ -63,8 +63,8 @@ public final class SharingServiceImpl implements SharingService, AutoCloseable {
     public JobHandler importHandler() {
         return job -> {
             ImportJob payload = job.payload(ImportJob.class);
-            // Null after a restart (keys live in memory only): the importer then finishes indexing what an
-            // interrupted run stored and fails, asking the learner to import again.
+            // Null after a restart (keys live in memory only): the importer then finishes a run that had
+            // already stored the course, and otherwise fails, asking the learner to import again.
             PackageKey key = keys.take(payload.keyRef());
             try {
                 job.setResult(importer.run(Path.of(payload.file()), key, payload.allowOlder(), job));

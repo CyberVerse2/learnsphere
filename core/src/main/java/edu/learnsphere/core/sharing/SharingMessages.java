@@ -48,6 +48,12 @@ public final class SharingMessages {
     /** A PDF of the course is missing from the profile. */
     public static final UserMessage PDF_MISSING =
             UserMessage.of("A PDF in this course can't be found. Import it again, then share the course.");
+    /** A course whose pages or passages pass the package limits. */
+    public static final UserMessage COURSE_TOO_LARGE =
+            UserMessage.of("This course is too large to share as one file. Split it into smaller courses, then share them.");
+    /** A PDF of the course was processed again or removed while the course was being saved. */
+    public static final UserMessage COURSE_CHANGED_WHILE_SAVING =
+            UserMessage.of("This course changed while it was being saved. Save it again.");
     /** Writing the chosen file failed. */
     public static final UserMessage SAVE_FAILED = UserMessage.of("The file couldn't be saved. Try again or pick another folder.");
     /** A progress export without a learner name. */

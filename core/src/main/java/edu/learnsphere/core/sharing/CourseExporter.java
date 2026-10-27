@@ -29,7 +29,6 @@ import edu.learnsphere.core.sharing.PackageData.ItemConceptData;
 import edu.learnsphere.core.sharing.PackageData.ItemData;
 import edu.learnsphere.core.sharing.PackageData.ModuleData;
 import edu.learnsphere.core.sharing.PackageData.PageData;
-import edu.learnsphere.core.sharing.PackageData.PagesFile;
 import edu.learnsphere.core.sharing.PackageData.VersionInfo;
 import edu.learnsphere.core.util.CancellationToken;
 import edu.learnsphere.core.util.Json;
@@ -41,12 +40,13 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.Base64;
-import java.util.LinkedHashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.ToLongFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -56,8 +56,11 @@ import org.slf4j.LoggerFactory;
  * and passages (with embeddings), and optionally the PDFs. Protected courses are encrypted with a key
  * derived from the code the creator chooses.
  *
- * <p>The database is read in one short transaction (a consistent snapshot); the package is written
- * afterwards. Thread-safe.
+ * <p>The course, its version, items, links and document list are read in one short transaction. Pages and
+ * passages are then read one document at a time while they are written, outside any transaction, so a
+ * large course neither holds the database's write lock nor sits in memory as a whole. A document that was
+ * processed again or removed meanwhile fails the export with
+ * {@link SharingMessages#COURSE_CHANGED_WHILE_SAVING}. Thread-safe.
  */
 public final class CourseExporter {
 
@@ -66,18 +69,26 @@ public final class CourseExporter {
     private final Repositories repos;
     private final AppPaths.ProfilePaths paths;
     private final Clock clock;
+    private final ToLongFunction<String> limits;
 
     public CourseExporter(Repositories repos, AppPaths.ProfilePaths paths, Clock clock) {
+        this(repos, paths, clock, PackageFormat::plaintextLimit);
+    }
+
+    /** An exporter with other content limits per entry name (tests use small ones). */
+    CourseExporter(Repositories repos, AppPaths.ProfilePaths paths, Clock clock, ToLongFunction<String> limits) {
         this.repos = Objects.requireNonNull(repos, "repos");
         this.paths = Objects.requireNonNull(paths, "paths");
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.limits = Objects.requireNonNull(limits, "limits");
     }
 
     /**
      * Writes the package to {@code target}, replacing a file there. Wipes the protection code.
      *
      * @throws edu.learnsphere.core.error.NotFoundException for an unknown course
-     * @throws ConflictException     for a private, unpublished or imported course, or a missing PDF
+     * @throws ConflictException     for a private, unpublished or imported course, a missing PDF, a course
+     *                               too large for a package, or a document that changed while saving
      * @throws InvalidInputException when a protected course has no usable code
      * @throws LearnSphereException  {@link SharingMessages#SAVE_FAILED} when writing fails
      */
@@ -86,7 +97,7 @@ public final class CourseExporter {
         ExportOptions opts = options == null ? ExportOptions.standard() : options;
         char[] code = opts.protectionCode();
         try {
-            Snapshot snapshot = snapshot(courseId, opts.includeDocuments());
+            Snapshot snapshot = snapshot(courseId);
             Course course = snapshot.course();
             PackageKey key = null;
             if (course.visibility() == Visibility.PROTECTED) {
@@ -97,7 +108,7 @@ public final class CourseExporter {
                 key = PackageKey.create(code);
             }
             try {
-                PackageManifest manifest = write(snapshot, target, key);
+                PackageManifest manifest = write(snapshot, target, key, opts.includeDocuments());
                 repos.audit().append("export_package", EntityType.COURSE, courseId, Json.write(Map.of(
                         "packageId", course.packageId(), "version", manifest.versionNumber(),
                         "protected", manifest.isProtected(), "items", manifest.itemCount(),
@@ -113,42 +124,81 @@ public final class CourseExporter {
                 }
             }
         } catch (IOException | UncheckedIOException e) {
+            if (PackageWriter.TooLargeException.isCause(e)) {
+                throw new ConflictException(SharingMessages.COURSE_TOO_LARGE, "Course " + courseId + " is too large", e);
+            }
             throw new LearnSphereException(SharingMessages.SAVE_FAILED, "Export of course " + courseId + " failed", e);
         } finally {
             PasswordHasher.wipe(code);
         }
     }
 
-    private PackageManifest write(Snapshot s, Path target, PackageKey key) throws IOException {
+    private PackageManifest write(Snapshot s, Path target, PackageKey key, boolean includeDocuments) throws IOException {
         Course course = s.course();
-        try (PackageWriter writer = PackageWriter.create(target, course.packageId(), s.version().number(), key)) {
-            writer.writeJson(PackageFormat.COURSE, s.courseFile());
-            writer.writeJson(PackageFormat.PAGES, new PagesFile(s.pages()));
-            writer.writeJson(PackageFormat.CHUNKS, (generator, values) -> {
+        try (PackageWriter writer = PackageWriter.create(target, course.packageId(), s.version().number(), key, limits)) {
+            writer.writeJson(PackageFormat.PAGES, (generator, values) -> {
                 generator.writeStartObject();
-                generator.writeArrayFieldStart("chunks");
-                for (Chunk chunk : s.chunks()) {
-                    values.writeValue(generator, toData(chunk));
+                generator.writeArrayFieldStart("pages");
+                for (Document d : s.documents()) {
+                    for (DocumentPage page : repos.documents().listUsablePages(d.id())) {
+                        values.writeValue(generator, new PageData(d.id(), page.pageNumber(), page.text(),
+                                page.source().code(), page.figureNotes(), page.hasImages()));
+                    }
                 }
                 generator.writeEndArray();
                 generator.writeEndObject();
             });
-            for (String sha : s.files()) {
-                try {
-                    writer.writeDocument(sha, paths.pdfFile(sha), CancellationToken.NONE);
-                } catch (NoSuchFileException | PackageWriter.ChangedFileException e) {
-                    throw new ConflictException(SharingMessages.PDF_MISSING, "PDF " + sha + " is missing or changed", e);
+            Set<String> chunkIds = new HashSet<>();
+            writer.writeJson(PackageFormat.CHUNKS, (generator, values) -> {
+                generator.writeStartObject();
+                generator.writeArrayFieldStart("chunks");
+                for (Document d : s.documents()) {
+                    for (Chunk chunk : repos.chunks().listByDocument(d.id())) {
+                        values.writeValue(generator, toData(chunk));
+                        chunkIds.add(chunk.id());
+                    }
+                    requireUnchanged(d);
+                }
+                generator.writeEndArray();
+                generator.writeEndObject();
+            });
+            CourseFile file = courseFile(s, chunkIds, includeDocuments);
+            writer.writeJson(PackageFormat.COURSE, file);
+            if (includeDocuments) {
+                Set<String> files = new LinkedHashSet<>();
+                s.documents().forEach(d -> files.add(d.fileSha256()));
+                for (String sha : files) {
+                    try {
+                        writer.writeDocument(sha, paths.pdfFile(sha), CancellationToken.NONE);
+                    } catch (NoSuchFileException | PackageWriter.ChangedFileException e) {
+                        throw new ConflictException(SharingMessages.PDF_MISSING, "PDF " + sha + " is missing or changed", e);
+                    }
                 }
             }
-            CourseFile file = s.courseFile();
             PackageManifest header = new PackageManifest(PackageFormat.FORMAT, PackageFormat.VERSION, course.packageId(),
                     s.version().number(), course.title(), course.subtitle(), course.authorName(), course.coverHue(),
                     clock.millis(), file.modules().size(), file.items().size(), file.documents().size(), null, List.of());
+            LOG.debug("Exported course {} version {}: {} items, {} documents, {} passages", course.id(),
+                    s.version().number(), file.items().size(), file.documents().size(), chunkIds.size());
             return writer.commit(header);
         }
     }
 
-    private Snapshot snapshot(String courseId, boolean includeDocuments) {
+    /**
+     * Fails when a document is no longer ready as it was when the export started (processed again or
+     * removed), since its pages and passages may then come from different runs.
+     */
+    private void requireUnchanged(Document snapshot) {
+        Document now = repos.documents().find(snapshot.id()).orElse(null);
+        if (now == null || now.status() != DocumentStatus.READY || now.updatedAt() != snapshot.updatedAt()
+                || !now.fileSha256().equals(snapshot.fileSha256())) {
+            throw new ConflictException(SharingMessages.COURSE_CHANGED_WHILE_SAVING,
+                    "Document " + snapshot.id() + " changed during the export");
+        }
+    }
+
+    /** The course, its latest version, items, links and ready documents, read in one short transaction. */
+    private Snapshot snapshot(String courseId) {
         return repos.database().inTransaction(h -> {
             Course course = repos.courses().get(courseId);
             if (!course.isCreatedHere()) {
@@ -160,62 +210,47 @@ public final class CourseExporter {
             CourseVersion version = repos.courses().latestVersion(courseId)
                     .orElseThrow(() -> new ConflictException(SharingMessages.NOT_PUBLISHED,
                             "Course " + courseId + " has no published version"));
-
-            List<CourseModule> modules = repos.modules().listByCourse(courseId);
-            List<Concept> concepts = repos.concepts().listByCourse(courseId);
             List<LearningItem> items = repos.items().listByIds(repos.courses().versionItemIds(version.id())).stream()
                     .filter(i -> i.courseId().equals(courseId) && i.isApproved())
                     .toList();
-            Map<String, List<String>> links = repos.items().conceptLinks(courseId);
-
             List<Document> documents = repos.documents().listByCourse(courseId).stream()
                     .filter(d -> d.status() == DocumentStatus.READY)
                     .toList();
-            List<PageData> pages = new ArrayList<>();
-            List<Chunk> chunks = new ArrayList<>();
-            Set<String> files = new LinkedHashSet<>();
-            List<DocumentData> documentData = new ArrayList<>();
-            for (Document d : documents) {
-                for (DocumentPage page : repos.documents().listUsablePages(d.id())) {
-                    pages.add(new PageData(d.id(), page.pageNumber(), page.text(), page.source().code(),
-                            page.figureNotes(), page.hasImages()));
-                }
-                chunks.addAll(repos.chunks().listByDocument(d.id()));
-                if (includeDocuments) {
-                    files.add(d.fileSha256());
-                }
-                documentData.add(new DocumentData(d.id(), d.moduleId(), d.title(), d.fileName(), d.fileSha256(),
-                        d.byteSize(), d.pageCount(), includeDocuments, d.createdAt()));
-            }
-            Set<String> chunkIds = new LinkedHashSet<>();
-            chunks.forEach(c -> chunkIds.add(c.id()));
-
-            Set<String> itemIds = new LinkedHashSet<>();
-            List<ItemData> itemData = new ArrayList<>();
-            for (LearningItem i : items) {
-                itemIds.add(i.id());
-                String source = i.sourceChunkId() != null && chunkIds.contains(i.sourceChunkId()) ? i.sourceChunkId() : null;
-                itemData.add(new ItemData(i.id(), i.moduleId(), i.type().code(), i.prompt(), i.answer(), i.explanation(),
-                        i.distractors(), i.difficulty().value(), source, source == null ? null : i.sourcePage(),
-                        i.origin().code(), i.support().code(), i.supportNote(), i.createdAt()));
-            }
-            List<ItemConceptData> itemConcepts = new ArrayList<>();
-            Map<String, List<String>> exportedLinks = new LinkedHashMap<>(links);
-            exportedLinks.keySet().retainAll(itemIds);
-            exportedLinks.forEach((itemId, conceptIds) ->
-                    conceptIds.forEach(conceptId -> itemConcepts.add(new ItemConceptData(itemId, conceptId))));
-
-            CourseFile courseFile = new CourseFile(course.packageId(), version.number(),
-                    new CourseInfo(course.title(), course.subtitle(), course.description(), course.authorName(),
-                            course.visibility().code(), course.coverHue()),
-                    new VersionInfo(version.number(), version.notes(), version.publishedAt()),
-                    modules.stream().map(m -> new ModuleData(m.id(), m.title(), m.summary(), m.position())).toList(),
-                    concepts.stream().map(c -> new ConceptData(c.id(), c.moduleId(), c.name(), c.description())).toList(),
-                    itemData, itemConcepts, documentData);
-            LOG.debug("Exporting course {} version {}: {} items, {} documents, {} passages", courseId, version.number(),
-                    itemData.size(), documentData.size(), chunks.size());
-            return new Snapshot(course, version, courseFile, pages, chunks, List.copyOf(files));
+            return new Snapshot(course, version, repos.modules().listByCourse(courseId),
+                    repos.concepts().listByCourse(courseId), items, repos.items().conceptLinks(courseId), documents);
         });
+    }
+
+    /** {@code course.json}; item sources point only at passages the package carries. */
+    private static CourseFile courseFile(Snapshot s, Set<String> chunkIds, boolean includeDocuments) {
+        Course course = s.course();
+        Set<String> itemIds = new LinkedHashSet<>();
+        List<ItemData> itemData = new ArrayList<>();
+        for (LearningItem i : s.items()) {
+            itemIds.add(i.id());
+            String source = i.sourceChunkId() != null && chunkIds.contains(i.sourceChunkId()) ? i.sourceChunkId() : null;
+            itemData.add(new ItemData(i.id(), i.moduleId(), i.type().code(), i.prompt(), i.answer(), i.explanation(),
+                    i.distractors(), i.difficulty().value(), source, source == null ? null : i.sourcePage(),
+                    i.origin().code(), i.support().code(), i.supportNote(), i.createdAt()));
+        }
+        List<ItemConceptData> itemConcepts = new ArrayList<>();
+        s.links().forEach((itemId, conceptIds) -> {
+            if (itemIds.contains(itemId)) {
+                conceptIds.forEach(conceptId -> itemConcepts.add(new ItemConceptData(itemId, conceptId)));
+            }
+        });
+        List<DocumentData> documentData = s.documents().stream()
+                .map(d -> new DocumentData(d.id(), d.moduleId(), d.title(), d.fileName(), d.fileSha256(), d.byteSize(),
+                        d.pageCount(), includeDocuments, d.createdAt()))
+                .toList();
+        CourseVersion version = s.version();
+        return new CourseFile(course.packageId(), version.number(),
+                new CourseInfo(course.title(), course.subtitle(), course.description(), course.authorName(),
+                        course.visibility().code(), course.coverHue()),
+                new VersionInfo(version.number(), version.notes(), version.publishedAt()),
+                s.modules().stream().map(m -> new ModuleData(m.id(), m.title(), m.summary(), m.position())).toList(),
+                s.concepts().stream().map(c -> new ConceptData(c.id(), c.moduleId(), c.name(), c.description())).toList(),
+                itemData, itemConcepts, documentData);
     }
 
     private static ChunkData toData(Chunk c) {
@@ -225,7 +260,7 @@ public final class CourseExporter {
                 vector == null ? null : Base64.getEncoder().encodeToString(vector));
     }
 
-    private record Snapshot(Course course, CourseVersion version, CourseFile courseFile, List<PageData> pages,
-                            List<Chunk> chunks, List<String> files) {
+    private record Snapshot(Course course, CourseVersion version, List<CourseModule> modules, List<Concept> concepts,
+                            List<LearningItem> items, Map<String, List<String>> links, List<Document> documents) {
     }
 }

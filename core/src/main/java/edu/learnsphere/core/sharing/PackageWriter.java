@@ -8,6 +8,7 @@ import edu.learnsphere.core.sharing.PackageManifest.Protection;
 import edu.learnsphere.core.util.CancellationToken;
 import edu.learnsphere.core.util.Json;
 import java.io.BufferedOutputStream;
+import java.io.FilterOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -23,6 +24,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.ToLongFunction;
 import java.util.zip.Deflater;
 import java.util.zip.DeflaterOutputStream;
 import java.util.zip.ZipEntry;
@@ -31,7 +33,9 @@ import java.util.zip.ZipOutputStream;
 /**
  * Writes a course package into a temporary file next to the target and moves it into place on
  * {@link #commit}, so a failed export never leaves a partial file under the chosen name. Records the size
- * and SHA-256 of each entry as stored; the manifest is written last.
+ * and SHA-256 of each entry as stored; the manifest is written last. An entry whose content goes past
+ * {@link PackageFormat}'s limit for it fails with {@link TooLargeException}, so no package is written that
+ * an import would refuse.
  *
  * <p>Not thread-safe.
  */
@@ -58,18 +62,21 @@ final class PackageWriter implements AutoCloseable {
     private final PackageKey key;
     private final String packageId;
     private final int versionNumber;
+    private final ToLongFunction<String> limits;
     private final List<Entry> entries = new ArrayList<>();
     private final Set<String> names = new HashSet<>();
     private boolean committed;
     private boolean closed;
 
-    private PackageWriter(Path target, Path temp, ZipOutputStream zip, PackageKey key, String packageId, int versionNumber) {
+    private PackageWriter(Path target, Path temp, ZipOutputStream zip, PackageKey key, String packageId, int versionNumber,
+                          ToLongFunction<String> limits) {
         this.target = target;
         this.temp = temp;
         this.zip = zip;
         this.key = key;
         this.packageId = packageId;
         this.versionNumber = versionNumber;
+        this.limits = limits;
     }
 
     /**
@@ -78,13 +85,24 @@ final class PackageWriter implements AutoCloseable {
      * @param key the key of a protected package, or null
      */
     static PackageWriter create(Path target, String packageId, int versionNumber, PackageKey key) throws IOException {
+        return create(target, packageId, versionNumber, key, PackageFormat::plaintextLimit);
+    }
+
+    /**
+     * Starts a package for {@code target} with other content limits per entry name (tests use small ones).
+     *
+     * @param key the key of a protected package, or null
+     */
+    static PackageWriter create(Path target, String packageId, int versionNumber, PackageKey key,
+                                ToLongFunction<String> limits) throws IOException {
+        Objects.requireNonNull(limits, "limits");
         Path absolute = target.toAbsolutePath();
         Path folder = Files.createDirectories(absolute.getParent());
         Path temp = Files.createTempFile(folder, ".learnsphere-", ".partial");
         try {
             ZipOutputStream zip = new ZipOutputStream(new BufferedOutputStream(Files.newOutputStream(temp), BUFFER),
                     StandardCharsets.UTF_8);
-            return new PackageWriter(absolute, temp, zip, key, packageId, versionNumber);
+            return new PackageWriter(absolute, temp, zip, key, packageId, versionNumber, limits);
         } catch (IOException | RuntimeException e) {
             Files.deleteIfExists(temp);
             throw e;
@@ -152,7 +170,7 @@ final class PackageWriter implements AutoCloseable {
                 }
             }
             try (OutputStream out = content) {
-                body.write(Streams.nonClosing(out));
+                body.write(new LimitedOutputStream(Streams.nonClosing(out), path, limits.applyAsLong(path)));
             }
         } finally {
             if (deflater != null) {
@@ -206,6 +224,59 @@ final class PackageWriter implements AutoCloseable {
                 Files.deleteIfExists(temp);
             } catch (IOException e) {
                 // a stray temporary file is harmless
+            }
+        }
+    }
+
+    /** An entry whose content went past its limit. */
+    static final class TooLargeException extends IOException {
+
+        private static final long serialVersionUID = 1L;
+
+        TooLargeException(String detail) {
+            super(detail);
+        }
+
+        /** True when {@code error} or one of its causes is a {@code TooLargeException}. */
+        static boolean isCause(Throwable error) {
+            for (Throwable t = error; t != null; t = t.getCause()) {
+                if (t instanceof TooLargeException) {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+
+    /** Counts the content written to an entry and fails once it passes the entry's limit. */
+    private static final class LimitedOutputStream extends FilterOutputStream {
+
+        private final String name;
+        private final long limit;
+        private long count;
+
+        LimitedOutputStream(OutputStream out, String name, long limit) {
+            super(out);
+            this.name = name;
+            this.limit = limit;
+        }
+
+        @Override
+        public void write(int b) throws IOException {
+            counted(1);
+            out.write(b);
+        }
+
+        @Override
+        public void write(byte[] b, int off, int len) throws IOException {
+            counted(len);
+            out.write(b, off, len);
+        }
+
+        private void counted(int n) throws TooLargeException {
+            count += n;
+            if (count > limit) {
+                throw new TooLargeException(name + " is larger than " + limit + " bytes");
             }
         }
     }

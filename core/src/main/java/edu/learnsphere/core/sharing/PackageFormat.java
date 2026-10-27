@@ -12,9 +12,10 @@ import java.util.regex.Pattern;
  *                      counts, protection (salt, iterations, key check) and size + SHA-256 of every other entry
  * course.json          course, version, modules, concepts, approved items of the version, item→concept links,
  *                      documents
- * pages.json           usable page text per document
+ * pages.json           usable page text per document (text-layer pages and reviewed image-read pages)
  * chunks.json          passages with pages and embeddings (float32 LE, base64), so import needs no processing
- * documents/&lt;sha&gt;.pdf  source PDFs, named by the SHA-256 of their content
+ * documents/&lt;sha&gt;.pdf  source PDFs, named by the SHA-256 of their content; optional (a package may leave
+ *                      them out, and the course then has its text and passages without the PDFs)
  * </pre>
  *
  * <p>Sizes and hashes in the manifest describe each entry's bytes as stored (after zip decompression, so
@@ -23,7 +24,10 @@ import java.util.regex.Pattern;
  * encryption. The manifest stays readable so a package can be inspected without its code.
  *
  * <p>Readers never extract entries by their zip names: they look up the fixed names above (a document only
- * by a validated hash), so an entry can never be written outside the profile folder. Every size is capped.
+ * by a validated hash), so an entry can never be written outside the profile folder. Every size is capped:
+ * an import keeps the pages and passages of a package in memory until it stores them in one transaction, so
+ * the JSON limits keep an import within a few hundred megabytes of heap, and an export that would exceed
+ * them is refused.
  */
 public final class PackageFormat {
 
@@ -50,10 +54,10 @@ public final class PackageFormat {
     public static final long MAX_MANIFEST_BYTES = MIB;
     /** Largest {@code course.json}. */
     public static final long MAX_COURSE_BYTES = 64 * MIB;
-    /** Largest {@code pages.json}. */
-    public static final long MAX_PAGES_BYTES = 512 * MIB;
-    /** Largest {@code chunks.json}. */
-    public static final long MAX_CHUNKS_BYTES = 512 * MIB;
+    /** Largest {@code pages.json}: about 25,000 pages of text. */
+    public static final long MAX_PAGES_BYTES = 64 * MIB;
+    /** Largest {@code chunks.json}: about 25,000 passages with 1,024-value vectors. */
+    public static final long MAX_CHUNKS_BYTES = 192 * MIB;
     /** Largest PDF, the same limit as importing a PDF directly. */
     public static final long MAX_DOCUMENT_BYTES = 300 * MIB;
     /** Most documents in one package. */
@@ -93,7 +97,7 @@ public final class PackageFormat {
         return COURSE.equals(name) || PAGES.equals(name) || CHUNKS.equals(name);
     }
 
-    /** Largest readable size of an entry's content (before encryption). */
+    /** Largest size of an entry's content (before compression and encryption), when reading and writing. */
     static long plaintextLimit(String name) {
         return switch (name) {
             case COURSE -> MAX_COURSE_BYTES;

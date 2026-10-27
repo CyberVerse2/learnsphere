@@ -1,14 +1,17 @@
 package edu.learnsphere.core.sharing;
 
 import com.fasterxml.jackson.core.JacksonException;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonToken;
 import com.fasterxml.jackson.core.StreamReadFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectReader;
 import edu.learnsphere.core.error.InvalidInputException;
 import edu.learnsphere.core.error.LearnSphereException;
-import edu.learnsphere.core.sharing.PackageData.ChunksFile;
+import edu.learnsphere.core.error.UserMessage;
+import edu.learnsphere.core.sharing.PackageData.ChunkData;
 import edu.learnsphere.core.sharing.PackageData.CourseFile;
-import edu.learnsphere.core.sharing.PackageData.PagesFile;
+import edu.learnsphere.core.sharing.PackageData.PageData;
 import edu.learnsphere.core.sharing.PackageManifest.Entry;
 import edu.learnsphere.core.sharing.PackageManifest.Protection;
 import edu.learnsphere.core.util.CancellationToken;
@@ -16,6 +19,7 @@ import edu.learnsphere.core.util.Ids;
 import edu.learnsphere.core.util.Json;
 import java.io.BufferedOutputStream;
 import java.io.EOFException;
+import java.io.FilterOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -30,6 +34,7 @@ import java.util.Enumeration;
 import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.function.LongConsumer;
 import java.util.zip.Inflater;
 import java.util.zip.InflaterInputStream;
@@ -41,7 +46,8 @@ import java.util.zip.ZipFile;
  * Reads a course package. {@link #open} checks the zip and the manifest (format, version, entry names,
  * sizes, protection parameters) without reading the entries; the other methods read one entry each and
  * verify its size and SHA-256 (and, for a protected package, every segment's tag) before the result is
- * returned or the copied file is moved into place.
+ * returned or the copied file is moved into place. {@code pages.json} and {@code chunks.json} are streamed
+ * one element at a time, so their size never has to fit in memory at once.
  *
  * <p>Entries are only ever looked up by fixed names or a validated document hash, never extracted by the
  * names inside the zip. Not thread-safe; use one reader per thread.
@@ -52,6 +58,8 @@ public final class PackageReader implements AutoCloseable {
     private static final int BUFFER = 64 * 1024;
     private static final int MIN_SALT_BYTES = 16;
     private static final int MAX_SALT_BYTES = 64;
+    /** Free space below which a failed write is taken to mean the disk is full. */
+    private static final long MIN_FREE_BYTES = 1024L * 1024;
 
     private final Path file;
     private final ZipFile zip;
@@ -152,24 +160,29 @@ public final class PackageReader implements AutoCloseable {
         return readJson(PackageFormat.COURSE, key, CourseFile.class);
     }
 
-    /** Reads and verifies {@code pages.json}. */
-    public PagesFile readPages(PackageKey key) {
-        return readJson(PackageFormat.PAGES, key, PagesFile.class);
+    /**
+     * Reads {@code pages.json} one page at a time, handing each to {@code each}, then verifies the whole
+     * entry. Nothing read is kept here.
+     *
+     * @param progress receives the number of stored bytes as they are read
+     */
+    public void readPages(PackageKey key, Consumer<PageData> each, LongConsumer progress) {
+        readArray(PackageFormat.PAGES, "pages", key, PageData.class, each, progress);
     }
 
-    /** Reads and verifies {@code chunks.json}. */
-    public ChunksFile readChunks(PackageKey key) {
-        return readJson(PackageFormat.CHUNKS, key, ChunksFile.class);
+    /**
+     * Reads {@code chunks.json} one passage at a time, handing each to {@code each}, then verifies the whole
+     * entry. Nothing read is kept here.
+     *
+     * @param progress receives the number of stored bytes as they are read
+     */
+    public void readChunks(PackageKey key, Consumer<ChunkData> each, LongConsumer progress) {
+        readArray(PackageFormat.CHUNKS, "chunks", key, ChunkData.class, each, progress);
     }
 
-    /** Reads an entry to its end, verifying it, and discards it. */
-    public void verify(String path, PackageKey key) {
-        try (EntryInput in = openEntry(path, key)) {
-            Streams.drain(in);
-            in.finish();
-        } catch (IOException e) {
-            throw failure(path, e);
-        }
+    /** Stored size of an entry as the manifest records it, or 0 for an entry it does not list. */
+    public long entrySize(String path) {
+        return manifest.entry(path).map(Entry::size).orElse(0L);
     }
 
     /**
@@ -180,6 +193,9 @@ public final class PackageReader implements AutoCloseable {
      * @param progress receives the number of stored bytes as they are read
      * @return true when this call created {@code target}
      * @throws java.util.concurrent.CancellationException when {@code token} is cancelled
+     * @throws InvalidInputException for a package that is damaged or cannot be read
+     * @throws LearnSphereException  {@link UserMessage#DISK_FULL} or {@link UserMessage#SOMETHING_WENT_WRONG}
+     *                               when writing into the target's folder fails
      */
     public boolean copyDocument(String sha256, PackageKey key, Path target, CancellationToken token, LongConsumer progress) {
         String path = PackageFormat.documentEntry(sha256);
@@ -187,12 +203,11 @@ public final class PackageReader implements AutoCloseable {
         Path temp = null;
         try {
             if (!exists) {
-                temp = Files.createTempFile(target.getParent(), ".import-", ".partial");
+                temp = createTemp(target);
             }
             MessageDigest digest = Streams.sha256();
             try (EntryInput in = openEntry(path, key);
-                 OutputStream out = temp == null ? OutputStream.nullOutputStream()
-                         : new BufferedOutputStream(Files.newOutputStream(temp))) {
+                 OutputStream out = temp == null ? OutputStream.nullOutputStream() : openTemp(temp)) {
                 byte[] buffer = new byte[BUFFER];
                 long total = 0;
                 long reported = 0;
@@ -219,6 +234,8 @@ public final class PackageReader implements AutoCloseable {
                 return false;
             }
             return moveIntoPlace(temp, target);
+        } catch (StorageException e) {
+            throw storageFailure(target, e.getCause());
         } catch (IOException e) {
             throw failure(path, e);
         } finally {
@@ -226,19 +243,105 @@ public final class PackageReader implements AutoCloseable {
         }
     }
 
-    private static boolean moveIntoPlace(Path temp, Path target) throws IOException {
+    private static Path createTemp(Path target) throws StorageException {
         try {
-            Files.move(temp, target, StandardCopyOption.ATOMIC_MOVE);
-            return true;
-        } catch (FileAlreadyExistsException e) {
+            return Files.createTempFile(target.getParent(), ".import-", ".partial");
+        } catch (IOException e) {
+            throw new StorageException(e);
+        }
+    }
+
+    private static OutputStream openTemp(Path temp) throws StorageException {
+        try {
+            return new StorageOutputStream(new BufferedOutputStream(Files.newOutputStream(temp), BUFFER));
+        } catch (IOException e) {
+            throw new StorageException(e);
+        }
+    }
+
+    /**
+     * The error for a failed write into the profile: {@link UserMessage#DISK_FULL} when the disk is (nearly)
+     * full, {@link UserMessage#SOMETHING_WENT_WRONG} for anything else, such as a folder that cannot be
+     * written.
+     */
+    static LearnSphereException storageFailure(Path target, IOException cause) {
+        UserMessage message = isOutOfSpace(target, cause) ? UserMessage.DISK_FULL : UserMessage.SOMETHING_WENT_WRONG;
+        return new LearnSphereException(message, "Cannot write " + target, cause);
+    }
+
+    private static boolean isOutOfSpace(Path target, IOException cause) {
+        for (Throwable t = cause; t != null; t = t.getCause()) {
+            String detail = t.getMessage();
+            if (detail != null && (detail.contains("No space left") || detail.contains("Disk quota exceeded")
+                    || detail.contains("not enough space"))) {
+                return true;
+            }
+        }
+        try {
+            Path folder = target.toAbsolutePath().getParent();
+            return folder != null && Files.getFileStore(folder).getUsableSpace() < MIN_FREE_BYTES;
+        } catch (IOException | RuntimeException e) {
             return false;
-        } catch (AtomicMoveNotSupportedException e) {
+        }
+    }
+
+    private static boolean moveIntoPlace(Path temp, Path target) throws StorageException {
+        try {
             try {
+                Files.move(temp, target, StandardCopyOption.ATOMIC_MOVE);
+                return true;
+            } catch (AtomicMoveNotSupportedException e) {
                 Files.move(temp, target);
                 return true;
-            } catch (FileAlreadyExistsException e2) {
-                return false;
             }
+        } catch (FileAlreadyExistsException e) {
+            return false;
+        } catch (IOException e) {
+            throw new StorageException(e);
+        }
+    }
+
+    private void readArray(String path, String field, PackageKey key, Class<?> type, Consumer<?> each,
+                           LongConsumer progress) {
+        @SuppressWarnings("unchecked")
+        Consumer<Object> sink = (Consumer<Object>) each;
+        ObjectReader values = JSON.forType(type);
+        try (EntryInput in = openEntry(path, key)) {
+            long reported = 0;
+            boolean found = false;
+            try (JsonParser parser = JSON.createParser(in)) {
+                requireJson(parser.nextToken() == JsonToken.START_OBJECT, path + " is not an object");
+                while (parser.nextToken() == JsonToken.FIELD_NAME) {
+                    String name = parser.currentName();
+                    JsonToken value = parser.nextToken();
+                    if (!field.equals(name)) {
+                        parser.skipChildren();
+                        continue;
+                    }
+                    requireJson(!found && value == JsonToken.START_ARRAY, path + " has no single " + field + " array");
+                    found = true;
+                    while (parser.nextToken() != JsonToken.END_ARRAY) {
+                        requireJson(parser.currentToken() == JsonToken.START_OBJECT, path + " has a " + field
+                                + " element that is not an object");
+                        sink.accept(values.readValue(parser));
+                        long stored = in.storedBytes();
+                        progress.accept(stored - reported);
+                        reported = stored;
+                    }
+                }
+                requireJson(found && parser.currentToken() == JsonToken.END_OBJECT, path + " lacks " + field);
+                requireJson(parser.nextToken() == null, path + " has data after its end");
+            }
+            in.finish();
+            progress.accept(in.storedBytes() - reported);
+        } catch (IOException e) {
+            throw failure(path, e);
+        }
+    }
+
+    private static void requireJson(boolean condition, String detail) throws DamagedPackageException {
+        if (!condition) {
+            throw new DamagedPackageException(detail);
         }
     }
 
@@ -414,6 +517,65 @@ public final class PackageReader implements AutoCloseable {
                 Files.deleteIfExists(path);
             } catch (IOException e) {
                 // a stray temporary file is harmless
+            }
+        }
+    }
+
+    /** A failed write into the profile (not a problem with the package), carrying the original error. */
+    private static final class StorageException extends IOException {
+
+        private static final long serialVersionUID = 1L;
+
+        StorageException(IOException cause) {
+            super(cause);
+        }
+
+        @Override
+        public synchronized IOException getCause() {
+            return (IOException) super.getCause();
+        }
+    }
+
+    /** An output stream whose failures are {@link StorageException}s, to tell them from failures reading the package. */
+    private static final class StorageOutputStream extends FilterOutputStream {
+
+        StorageOutputStream(OutputStream out) {
+            super(out);
+        }
+
+        @Override
+        public void write(int b) throws IOException {
+            try {
+                out.write(b);
+            } catch (IOException e) {
+                throw new StorageException(e);
+            }
+        }
+
+        @Override
+        public void write(byte[] b, int off, int len) throws IOException {
+            try {
+                out.write(b, off, len);
+            } catch (IOException e) {
+                throw new StorageException(e);
+            }
+        }
+
+        @Override
+        public void flush() throws IOException {
+            try {
+                out.flush();
+            } catch (IOException e) {
+                throw new StorageException(e);
+            }
+        }
+
+        @Override
+        public void close() throws IOException {
+            try {
+                out.close();
+            } catch (IOException e) {
+                throw new StorageException(e);
             }
         }
     }
