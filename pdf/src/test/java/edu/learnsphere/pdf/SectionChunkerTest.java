@@ -183,7 +183,14 @@ class SectionChunkerTest {
         List<ChunkDraft> result = chunker.chunk(doc);
         assertEquals(1, result.size());
         assertTrue(result.get(0).text().startsWith("Overview\n\nThis part is short.\n\nDetails\n\n"));
-        assertEquals("Details", result.get(0).sectionTitle(), "named after the section filling most of it");
+        assertEquals("Overview", result.get(0).sectionTitle(), "named after the heading it starts under");
+
+        List<ChunkDraft> preface = chunker.chunk(List.of(new PageText(1, 11, List.of(
+                new TextBlock("Read this first.", 1, 11, false, null),
+                new TextBlock("Details", 1, 16, true, null),
+                new TextBlock(TestPdf.sentences(42, 12), 8, 11, false, null)))));
+        assertEquals(1, preface.size());
+        assertEquals("Details", preface.get(0).sectionTitle(), "text before the first heading takes the heading after it");
     }
 
     @Test
@@ -210,10 +217,26 @@ class SectionChunkerTest {
     }
 
     @Test
-    void chunksStoredPlainTextLikeTheExtractedPages() {
+    void chunksStoredTextExactlyLikeTheExtractedPages() {
+        List<String> stored = pages.stream().map(chunker::toStoredText).toList();
+        assertTrue(stored.get(0).startsWith("## " + Lecture.TITLE + "\n\n"), stored.get(0));
+        assertTrue(stored.get(0).contains("\n\n## 1 The Cell Membrane\n\n"), stored.get(0));
+        assertEquals(pages.get(0).text().replace(Lecture.TITLE, "## " + Lecture.TITLE)
+                .replace("1 The Cell Membrane", "## 1 The Cell Membrane").replace("1.1 Lipid Bilayer", "## 1.1 Lipid Bilayer"),
+                stored.get(0), "only headings are marked");
+
+        List<PageText> readBack = new ArrayList<>();
+        for (int i = 0; i < pages.size(); i++) {
+            readBack.add(PageText.ofPlainText(pages.get(i).pageNumber(), stored.get(i)));
+        }
+        assertEquals(chunks, chunker.chunk(readBack));
+    }
+
+    @Test
+    void findsNumberedHeadingsInPlainTextWithoutMarks() {
         List<PageText> plain = pages.stream().map(p -> PageText.ofPlainText(p.pageNumber(), p.text())).toList();
         List<ChunkDraft> fromPlain = chunker.chunk(plain);
-        // Without type sizes the numbered headings are still recognised; the unnumbered title is not.
+        // Without type sizes or heading marks the numbered headings are still recognised; the unnumbered title is not.
         assertNull(fromPlain.get(0).sectionTitle());
         assertEquals(Arrays.asList(null, "1 The Cell Membrane", "1.1 Lipid Bilayer", "2 Transport"),
                 fromPlain.stream().map(ChunkDraft::sectionTitle).distinct().toList());

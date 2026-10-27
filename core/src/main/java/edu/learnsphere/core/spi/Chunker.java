@@ -29,4 +29,14 @@ public interface Chunker {
     default List<ChunkDraft> chunk(List<PageText> pages) {
         return chunk(pages, Options.DEFAULT);
     }
+
+    /**
+     * The plain text to store for an extracted page, so that chunking the stored text later (read back with
+     * {@link PageText#ofPlainText}, after a resumed import or a creator's edits) finds the same sections as
+     * chunking the extracted page: blocks separated by blank lines, with the headings this chunker finds
+     * written in a form it recognises in plain text. The default is {@link PageText#text()}.
+     */
+    default String toStoredText(PageText page) {
+        return page.text();
+    }
 }

@@ -5,9 +5,7 @@ import edu.learnsphere.core.spi.Chunker;
 import edu.learnsphere.core.spi.PageText;
 import edu.learnsphere.core.spi.TextBlock;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -17,10 +15,11 @@ import java.util.Objects;
  *   <li><b>Sections.</b> Headings are found with {@link HeadingDetector} (larger or bold type than the
  *       document's body text, section numbers such as "3.2", Markdown headings on pages read from images). A
  *       passage starts at each heading, which is kept as the passage's first line, and every passage carries
- *       the heading it falls under as its section title. A section too short to stand alone (under a quarter
- *       of the target) runs on into the next one; its passage takes the title of the section that fills most
- *       of it. A short end of a long section is added to the section's last passage instead, so the next
- *       section starts cleanly.</li>
+ *       the heading it falls under as its section title: the nearest heading above the passage's first line
+ *       (or, for text before the first heading, the first heading in the passage). A section too short to
+ *       stand alone (under a quarter of the target) runs on into the next one in the same passage. A short end
+ *       of a long section is added to the section's last passage instead, so the next section starts
+ *       cleanly.</li>
  *   <li><b>Size.</b> Passages grow sentence by sentence to about {@code targetTokens} (measured with
  *       {@link TokenEstimator}) and never end inside a sentence. A sentence longer than the target is cut at
  *       word boundaries, preferring a comma or semicolon. The next passage repeats the previous one's last
@@ -30,6 +29,9 @@ import java.util.Objects;
  *       continues on the next page or column is joined back together (with its hyphenated word mended).</li>
  *   <li><b>Never empty.</b> Blank pages and blocks are skipped; a document without text gives no passages,
  *       and a very short one gives a single passage. A short last passage is folded into the one before.</li>
+ *   <li><b>Stored text.</b> {@link #toStoredText} writes an extracted page as plain text with its headings
+ *       as Markdown headings ("## 3.2 Membranes"), which this chunker recognises, so stored and edited page
+ *       text keeps its sections.</li>
  * </ul>
  *
  * <p>Stateless and thread-safe.
@@ -48,6 +50,35 @@ public final class SectionChunker implements Chunker {
         }
         List<Unit> units = units(pages, bodySize(pages), options.targetTokens());
         return new Assembler(options).assemble(units);
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>Headings are found as for {@link #chunk}, measured against the page's own body font size, and written
+     * as Markdown headings ("## 3.2 Membranes"); other blocks are written as they are.
+     */
+    @Override
+    public String toStoredText(PageText page) {
+        Objects.requireNonNull(page, "page");
+        float bodySize = page.bodyFontSize() > 0 ? page.bodyFontSize() : bodySize(List.of(page));
+        StringBuilder out = new StringBuilder();
+        for (TextBlock block : page.blocks()) {
+            String text = block.text().strip();
+            if (text.isEmpty()) {
+                continue;
+            }
+            if (!out.isEmpty()) {
+                out.append("\n\n");
+            }
+            String heading = HeadingDetector.headingText(block, bodySize);
+            if (heading == null) {
+                out.append(text);
+            } else {
+                out.append("## ").append(clean(heading));
+            }
+        }
+        return out.toString();
     }
 
     /** The most common font size of the document's text, weighted by length; 0 when no page has sizes. */
@@ -388,29 +419,17 @@ public final class SectionChunker implements Chunker {
             out.add(new ChunkDraft(ordinal, pageStart, pageEnd, sectionTitle(units), text, TokenEstimator.estimate(text)));
         }
 
-        /** The section that most of the passage's text belongs to (ties go to the later one). */
+        /**
+         * The heading in force where the passage starts; for text before the document's first heading, the
+         * first heading inside the passage, if any.
+         */
         private static String sectionTitle(List<Unit> units) {
-            Map<String, Integer> weights = new HashMap<>();
-            List<String> order = new ArrayList<>();
             for (Unit unit : units) {
-                if (unit.section == null) {
-                    continue;
-                }
-                if (!weights.containsKey(unit.section)) {
-                    order.add(unit.section);
-                }
-                weights.merge(unit.section, Math.max(1, unit.tokens()), Integer::sum);
-            }
-            String best = null;
-            int bestWeight = -1;
-            for (String section : order) {
-                int weight = weights.get(section);
-                if (weight >= bestWeight) {
-                    best = section;
-                    bestWeight = weight;
+                if (unit.section != null) {
+                    return unit.section;
                 }
             }
-            return best;
+            return null;
         }
 
         private static String render(List<Unit> units) {
