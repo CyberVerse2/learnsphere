@@ -142,6 +142,22 @@ class WorkspaceImplTest {
     }
 
     @Test
+    void connectsEveryServiceToItsImplementation() {
+        when(index.needsRebuild()).thenReturn(false);
+        try (WorkspaceImpl workspace = WorkspaceImpl.open(context, capabilities)) {
+            Course course = workspace.courses().create(CourseDraft.titled("Biology"));
+
+            assertThat(workspace.ask().threads(course.id())).isEmpty();
+            assertThat(workspace.generation().concepts(course.id(), null)).isEmpty();
+            assertThat(workspace.practice().studyNext(course.id())).isNotNull();
+            assertThat(workspace.progress().overview()).isNotNull();
+            assertThat(workspace.sharing().classInsights(course.id()).learners()).isEmpty();
+            assertThat(workspace.items()).isInstanceOf(ItemServiceImpl.class);
+            assertThat(workspace.documents()).isInstanceOf(DocumentServiceImpl.class);
+        }
+    }
+
+    @Test
     void leavesAnUpToDateIndexAlone() {
         when(index.needsRebuild()).thenReturn(false);
         try (WorkspaceImpl workspace = WorkspaceImpl.open(context, capabilities)) {

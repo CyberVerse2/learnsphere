@@ -67,8 +67,9 @@ final class PipelineFixture implements AutoCloseable {
         events.subscribeAll(published::add);
     }
 
+    /** A queue without retries: these tests check how the pipeline itself fails, and JobQueueImplTest covers retrying. */
     JobQueueImpl newQueue() {
-        return new JobQueueImpl(repos.jobs(), events, t.clock);
+        return new JobQueueImpl(repos.jobs(), events, t.clock, JobQueueImpl.RetryPolicy.NONE);
     }
 
     // ---- services ----------------------------------------------------------------------------------

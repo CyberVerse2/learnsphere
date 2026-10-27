@@ -24,6 +24,9 @@ import edu.learnsphere.core.service.WorkspaceFactory;
 import edu.learnsphere.core.spi.Capabilities;
 import edu.learnsphere.core.spi.IndexedChunk;
 import edu.learnsphere.core.spi.SearchIndex;
+import edu.learnsphere.core.service.impl.pipeline.AskServiceImpl;
+import edu.learnsphere.core.service.impl.pipeline.GenerationServiceImpl;
+import edu.learnsphere.core.service.impl.pipeline.IngestionService;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
@@ -38,14 +41,8 @@ import org.slf4j.LoggerFactory;
  * background. Closing stops the jobs, then the assistant, then the index; the profile service closes the
  * database and event bus afterwards.
  *
- * <p>Starting also queues documents whose processing was interrupted (see
- * {@link DocumentServiceImpl#resumeInterrupted()}). The document pipeline handles
- * {@link JobKind#INGEST_DOCUMENT} jobs once its handler is {@link JobQueue#register registered}; until then
- * they wait in the queue.
- *
- * <p>Settings, the study assistant, the job queue and the course, document and item services are
- * implemented; the ask, generation, practice, progress and sharing services throw
- * {@link UnsupportedOperationException}.
+ * <p>Starting registers the handler of every {@link JobKind}, resumes unfinished jobs and queues documents whose
+ * processing was interrupted (see {@link DocumentServiceImpl#resumeInterrupted()}).
  */
 public final class WorkspaceImpl implements Workspace {
 
@@ -60,6 +57,12 @@ public final class WorkspaceImpl implements Workspace {
     private final CourseServiceImpl courses;
     private final DocumentServiceImpl documents;
     private final ItemServiceImpl items;
+    private final IngestionService ingestion;
+    private final AskServiceImpl ask;
+    private final GenerationServiceImpl generation;
+    private final SharingServiceImpl sharing;
+    private final PracticeServiceImpl practice;
+    private final ProgressServiceImpl progress;
     private final AtomicBoolean closed = new AtomicBoolean();
 
     private WorkspaceImpl(ProfileContext context, Capabilities capabilities) {
@@ -75,6 +78,15 @@ public final class WorkspaceImpl implements Workspace {
         this.documents = new DocumentServiceImpl(repos, context.events(), context.clock(), jobs, index, pdfs,
                 capabilities.pageRenderer(), capabilities.passageLocator());
         this.items = new ItemServiceImpl(repos, context.events(), context.clock(), jobs);
+        this.ingestion = IngestionService.create(context, capabilities, index, settings, assistant);
+        this.ask = AskServiceImpl.create(context, capabilities, index, settings);
+        this.generation = GenerationServiceImpl.create(context, capabilities, index, jobs, assistant);
+        this.sharing = new SharingServiceImpl(repos, context.paths(), context.events(), context.clock(), jobs, index,
+                capabilities.embedder());
+        this.practice = new PracticeServiceImpl(repos, settings, capabilities.grader(), context.events(),
+                context.clock());
+        this.progress = new ProgressServiceImpl(repos, settings, courses, ask, sharing::classInsights,
+                () -> context.profile().displayName(), context.clock());
     }
 
     /** The factory {@code ProfileServices.create(…, Capabilities)} uses. */
@@ -96,7 +108,11 @@ public final class WorkspaceImpl implements Workspace {
     }
 
     private void start() {
-        jobs.resumeUnfinished();
+        jobs.register(JobKind.INGEST_DOCUMENT, ingestion);
+        jobs.register(JobKind.EXTRACT_CONCEPTS, generation::runConceptExtraction);
+        jobs.register(JobKind.GENERATE_ITEMS, generation::runItemGeneration);
+        jobs.register(JobKind.REGENERATE_ITEM, generation::runRegeneration);
+        jobs.register(JobKind.IMPORT_PACKAGE, sharing.importHandler());
         jobs.register(JobKind.REBUILD_INDEX, job -> {
             String model = index.embeddingModel();
             context.repositories().chunks().withIndexable(model, rows -> {
@@ -107,6 +123,7 @@ public final class WorkspaceImpl implements Workspace {
         if (index.needsRebuild()) {
             jobs.enqueue(JobSpec.of(JobKind.REBUILD_INDEX, null, null).withPriority(JobSpec.BACKGROUND_PRIORITY));
         }
+        jobs.resumeUnfinished();
         documents.resumeInterrupted();
         assistant.start();
     }
@@ -144,12 +161,12 @@ public final class WorkspaceImpl implements Workspace {
 
     @Override
     public AskService ask() {
-        return Services.ASK;
+        return ask;
     }
 
     @Override
     public GenerationService generation() {
-        return Services.GENERATION;
+        return generation;
     }
 
     @Override
@@ -159,17 +176,17 @@ public final class WorkspaceImpl implements Workspace {
 
     @Override
     public PracticeService practice() {
-        return Services.PRACTICE;
+        return practice;
     }
 
     @Override
     public ProgressService progress() {
-        return Services.PROGRESS;
+        return progress;
     }
 
     @Override
     public SharingService sharing() {
-        return Services.SHARING;
+        return sharing;
     }
 
     @Override
@@ -198,6 +215,8 @@ public final class WorkspaceImpl implements Workspace {
             return;
         }
         closeQuietly("jobs", jobs);
+        closeQuietly("sharing", sharing);
+        closeQuietly("answers", ask);
         closeQuietly("study assistant", assistant);
         closeQuietly("search index", index);
     }
@@ -208,14 +227,5 @@ public final class WorkspaceImpl implements Workspace {
         } catch (Exception e) {
             LOG.warn("Closing the {} of profile {} failed", what, context.profile().id(), e);
         }
-    }
-
-    /** Services without an implementation yet. */
-    private static final class Services {
-        static final AskService ASK = Unimplemented.service(AskService.class);
-        static final GenerationService GENERATION = Unimplemented.service(GenerationService.class);
-        static final PracticeService PRACTICE = Unimplemented.service(PracticeService.class);
-        static final ProgressService PROGRESS = Unimplemented.service(ProgressService.class);
-        static final SharingService SHARING = Unimplemented.service(SharingService.class);
     }
 }
