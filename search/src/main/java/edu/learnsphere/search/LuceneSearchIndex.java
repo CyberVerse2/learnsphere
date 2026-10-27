@@ -393,12 +393,17 @@ public final class LuceneSearchIndex implements SearchIndex {
                     restoreLastCommit(current);
                 }
             }
-            needsRebuild = false;
-            deleteMarker();
+            // Refresh before clearing the flag, so no search runs on the old searcher once the flag says ready.
+            IOException refreshFailure = null;
             try {
                 current.searchers().maybeRefreshBlocking();
             } catch (IOException e) {
-                throw failure("refresh after rebuild", e, SearchFailures.SEARCH_FAILED);
+                refreshFailure = e;
+            }
+            needsRebuild = false;
+            deleteMarker();
+            if (refreshFailure != null) {
+                throw failure("refresh after rebuild", refreshFailure, SearchFailures.SEARCH_FAILED);
             }
             LOG.info("Rebuilt the search index in {}: {} passages in {} ms{}", folder, added,
                     (System.nanoTime() - started) / 1_000_000, skipped == 0 ? "" : ", " + skipped + " skipped");
@@ -603,7 +608,9 @@ public final class LuceneSearchIndex implements SearchIndex {
         }
         engine = replacement;
         closeQuietly(failed.searchers());
-        LOG.info("An unfinished rebuild of the search index in {} was undone", folder);
+        if (replacement != null) {
+            LOG.info("An unfinished rebuild of the search index in {} was undone", folder);
+        }
     }
 
     private LearnSphereException failure(String what, IOException e, UserMessage fallback) {
