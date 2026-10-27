@@ -18,12 +18,3 @@ dependencies {
 
     testImplementation(testFixtures(project(":core")))
 }
-
-// PDFBox keeps a list of the system's fonts in "<pdfbox.fontcache>/.pdfbox.cache" (by default in the user's
-// home). Tests keep it in the build folder, so they never write outside the project.
-val pdfboxFontCache = layout.buildDirectory.dir("pdfbox-fontcache")
-tasks.withType<Test>().configureEach {
-    val dir = pdfboxFontCache.get().asFile
-    systemProperty("pdfbox.fontcache", dir.absolutePath)
-    doFirst { dir.mkdirs() }
-}

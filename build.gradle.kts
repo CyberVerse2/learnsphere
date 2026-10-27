@@ -20,6 +20,27 @@ val javafxPlatform: String = providers.gradleProperty("javafx.platform").orNull 
 }
 extra["javafxPlatform"] = javafxPlatform
 
+/**
+ * The folders a test JVM gets as system properties:
+ *
+ * - `learnsphere.home`: an app home, so tests never touch the real one (individual tests use their own temp
+ *   folders).
+ * - `pdfbox.fontcache`: where PDFBox keeps its list of the computer's fonts (by default in the user's home): the
+ *   module's build folder, so tests never write outside the project and build the list only once.
+ *
+ * The paths are @Internal: they differ between checkouts, and as inputs they would give every checkout its own
+ * build cache key, so no checkout could reuse another's test results.
+ */
+class TestFolders(
+    @get:Internal val appHome: File,
+    @get:Internal val pdfFontCache: Provider<Directory>,
+) : CommandLineArgumentProvider {
+    override fun asArguments(): Iterable<String> = listOf(
+        "-Dlearnsphere.home=${appHome.absolutePath}",
+        "-Dpdfbox.fontcache=${pdfFontCache.get().asFile.absolutePath}",
+    )
+}
+
 allprojects {
     group = "edu.learnsphere"
     version = "0.1.0"
@@ -60,8 +81,9 @@ subprojects {
         tasks.withType<Test>().configureEach {
             useJUnitPlatform()
             maxHeapSize = "1g"
-            // Tests never touch the real app home; individual tests use their own temp folders.
-            systemProperty("learnsphere.home", temporaryDir.resolve("home").absolutePath)
+            val fontCache = layout.buildDirectory.dir("pdfbox-fontcache")
+            jvmArgumentProviders.add(TestFolders(temporaryDir.resolve("home"), fontCache))
+            doFirst { fontCache.get().asFile.mkdirs() }
             jvmArgs("--enable-native-access=ALL-UNNAMED", "-Xshare:off")
             val agentJar = files(mockitoAgent)
             jvmArgumentProviders.add(CommandLineArgumentProvider { listOf("-javaagent:${agentJar.singleFile}") })
