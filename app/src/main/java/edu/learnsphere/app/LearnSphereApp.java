@@ -130,7 +130,17 @@ public final class LearnSphereApp extends Application {
 
     @Override
     public void stop() {
-        // Platform.exit() (the in-window Quit, or the system quitting the app) need not hide the window first.
+        shutDown();
+        UiExecutors.shutdown();
+    }
+
+    /**
+     * Saves the window's place, takes the screens and menus down and closes the context: the open profile's
+     * background work stops, then the study assistant and its processes. Runs on the FX thread; blocking.
+     * Platform.exit() (the in-window Quit, or the system quitting the app) need not hide the window first,
+     * so the place is saved here as well as when the window hides.
+     */
+    void shutDown() {
         long started = System.nanoTime();
         try {
             saveWindow(stage);
@@ -147,11 +157,20 @@ public final class LearnSphereApp extends Application {
         } catch (RuntimeException e) {
             LOG.warn("Taking the window down failed", e);
         } finally {
-            UiExecutors.shutdown();
             if (context != null) {
                 context.close();
             }
             LOG.info("Quit in {} ms", (System.nanoTime() - started) / 1_000_000);
         }
+    }
+
+    /** The context this run uses (tests). */
+    AppContext context() {
+        return context;
+    }
+
+    /** The main window, once started (tests). */
+    MainWindow window() {
+        return window;
     }
 }

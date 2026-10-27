@@ -173,6 +173,36 @@ public final class OnboardingPage implements View {
         return statusTitle.getText();
     }
 
+    /** What the status means for the person, under the sentence (tests). */
+    public String statusDetailText() {
+        return statusDetail.getText();
+    }
+
+    /** The name field of the profile step (tests and the screenshot tour). */
+    public TextField nameField() {
+        return name;
+    }
+
+    /** The optional password field of the profile step (tests). */
+    public PasswordField passwordField() {
+        return password;
+    }
+
+    /** The field that repeats the password (tests). */
+    public PasswordField confirmField() {
+        return again;
+    }
+
+    /** The avatar colours of the profile step (tests). */
+    public AvatarPicker colours() {
+        return colours;
+    }
+
+    /** The sentence under the profile fields when something needs fixing, else empty (tests). */
+    public String profileErrorText() {
+        return profileError.getText();
+    }
+
     private void show(Step target) {
         step = target;
         stepScope.dispose();
@@ -273,8 +303,9 @@ public final class OnboardingPage implements View {
             return;
         }
         if (!password.getText().equals(again.getText())) {
-            profileError.setText(ProfileActions.PASSWORDS_DIFFER.text());
+            // Clearing the field clears the sentence too, so the sentence comes after.
             again.clear();
+            profileError.setText(ProfileActions.PASSWORDS_DIFFER.text());
             again.requestFocus();
             return;
         }

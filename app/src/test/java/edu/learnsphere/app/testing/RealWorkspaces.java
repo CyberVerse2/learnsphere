@@ -9,6 +9,8 @@ import edu.learnsphere.core.service.ProfileDraft;
 import edu.learnsphere.core.service.ProfileSummary;
 import edu.learnsphere.core.service.Workspace;
 import edu.learnsphere.core.service.impl.WorkspaceImpl;
+import edu.learnsphere.core.spi.AiCapabilities;
+import edu.learnsphere.core.spi.AiRuntime;
 import edu.learnsphere.pdf.testing.TestPdf;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -48,12 +50,16 @@ public final class RealWorkspaces implements AutoCloseable {
     private final AppContext context;
 
     private RealWorkspaces(Path dir, FakeAi ai, Clock clock) {
+        this(dir, ai, ai.capabilities(), clock);
+    }
+
+    private RealWorkspaces(Path dir, FakeAi ai, AiCapabilities capabilities, Clock clock) {
         startFx();
         this.dir = dir;
         this.ai = ai;
         AppPaths paths = AppPaths.at(dir.resolve("home"));
         this.context = new AppContext(paths, clock, false,
-                WorkspaceImpl.factory(AppContext.capabilities(paths, ai.capabilities())));
+                WorkspaceImpl.factory(AppContext.capabilities(paths, capabilities)));
     }
 
     /** An app home under {@code dir} with one profile, "Ada Lovelace", open and without a password. */
@@ -74,6 +80,28 @@ public final class RealWorkspaces implements AutoCloseable {
     /** An app home under {@code dir} with no profiles, as on first run. */
     public static RealWorkspaces empty(Path dir) {
         return new RealWorkspaces(dir, FakeAi.create(), Clock.systemDefaultZone());
+    }
+
+    /**
+     * The app over the home under {@code dir} as it is, with nothing open: empty on first use, or what an
+     * earlier, closed instance left there (as after quitting and starting again). The study assistant is
+     * {@code runtime}; everything else is the fakes.
+     */
+    public static RealWorkspaces at(Path dir, AiRuntime runtime) {
+        FakeAi fakes = FakeAi.create();
+        return new RealWorkspaces(dir, fakes, withRuntime(fakes, runtime), Clock.systemDefaultZone());
+    }
+
+    /** The fakes' capabilities with {@code runtime} as the study assistant. */
+    public static AiCapabilities withRuntime(FakeAi fakes, AiRuntime runtime) {
+        AiCapabilities base = fakes.capabilities();
+        return new AiCapabilities(runtime, base.embedder(), base.reranker(), base.answerer(), base.conceptExtractor(),
+                base.itemGenerator(), base.supportChecker(), base.grader(), base.pageReader(), base.figureDescriber());
+    }
+
+    /** The folder the app home of this instance lives in. */
+    public Path dir() {
+        return dir;
     }
 
     /** The app context, for building windows and views. */
