@@ -29,7 +29,6 @@ import edu.learnsphere.core.util.Subscription;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
@@ -99,6 +98,11 @@ public final class Recorder {
         label = Objects.requireNonNull(value, "value");
     }
 
+    /** The label calls are tagged with now. */
+    public String currentLabel() {
+        return label;
+    }
+
     /**
      * {@code base} with every PDF chunker and AI slot recorded, the search index factory captured, and the
      * runtime pinned to {@code model} (the workspace starts the runtime with the profile's model setting; the
@@ -160,17 +164,6 @@ public final class Recorder {
 
     public List<SupportCall> supportCalls() {
         return List.copyOf(supportCalls);
-    }
-
-    /** The latest answer written for {@code question}, if the answerer was asked. */
-    public Optional<AnswerCall> lastAnswerFor(String question) {
-        String key = question.strip();
-        for (int i = answerCalls.size() - 1; i >= 0; i--) {
-            if (answerCalls.get(i).question().strip().equals(key)) {
-                return Optional.of(answerCalls.get(i));
-            }
-        }
-        return Optional.empty();
     }
 
     private static long since(long startNanos) {

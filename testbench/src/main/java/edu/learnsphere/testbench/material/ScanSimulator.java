@@ -29,11 +29,18 @@ import org.apache.pdfbox.rendering.PDFRenderer;
  */
 public final class ScanSimulator {
 
-    static final int DPI = 200;
-    static final float JPEG_QUALITY = 0.55f;
+    /** Resolution the pages are scanned at. */
+    public static final int DPI = 200;
+    /** JPEG quality of the scanned images (0–1). */
+    public static final float JPEG_QUALITY = 0.55f;
     private static final double[] ANGLES = {0.8, -1.1, 0.55, -0.7};
 
     private ScanSimulator() {
+    }
+
+    /** The largest angle, in degrees, a scanned page is turned by. */
+    public static double maxAngleDegrees() {
+        return java.util.Arrays.stream(ANGLES).map(Math::abs).max().orElse(0);
     }
 
     /**

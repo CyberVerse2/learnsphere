@@ -1,6 +1,7 @@
 package edu.learnsphere.testbench.material;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -43,6 +44,9 @@ public record Material(Map<String, Chapter> chapters, Map<String, Path> files, P
         Path osFile = directory.resolve("os-chapter.pdf");
         Path rmFile = directory.resolve("research-methods.pdf");
         Path scanFile = directory.resolve("research-methods-scanned.pdf");
+        for (Path file : List.of(osFile, rmFile, scanFile)) {
+            Files.deleteIfExists(file);
+        }
         ChapterPdf.write(os, osFile);
         ChapterPdf.write(rm, rmFile);
         for (int page : scanPages) {
