@@ -37,6 +37,7 @@ public final class PdfReadException extends IOException {
         }
     }
 
+    /** Why the PDF could not be read. */
     private final Reason reason;
 
     PdfReadException(Reason reason, String technicalDetail, Throwable cause) {

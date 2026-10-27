@@ -47,6 +47,8 @@ public final class PdfBoxPageRenderer implements PageRenderer {
     }
 
     /**
+     * A renderer with its own limits.
+     *
      * @param maxConcurrentRenders pages rendered at the same time (at least 1)
      * @param maxPixels            largest image in pixels (at least 10,000)
      */
