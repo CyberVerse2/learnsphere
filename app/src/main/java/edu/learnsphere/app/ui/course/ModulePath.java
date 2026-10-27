@@ -130,10 +130,9 @@ public final class ModulePath extends VBox {
             HBox.setHgrow(text, Priority.ALWAYS);
 
             getChildren().addAll(rail, text);
-            if (onQuiz != null) {
+            if (onQuiz != null && module.itemCount() > 0) {
                 quiz = new Button("Quiz");
                 quiz.getStyleClass().addAll("small", "module-trail-quiz");
-                quiz.setDisable(module.itemCount() == 0);
                 quiz.setAccessibleText("Quiz " + module.title());
                 quiz.setOnAction(event -> onQuiz.accept(module));
                 getChildren().add(quiz);
@@ -157,7 +156,7 @@ public final class ModulePath extends VBox {
             return studied;
         }
 
-        /** The quiz button, or null when the path has none. */
+        /** The quiz button, or null when the path has none or the module has no questions. */
         public Button quizButton() {
             return quiz;
         }

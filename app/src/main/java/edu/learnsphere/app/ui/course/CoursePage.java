@@ -75,7 +75,7 @@ public final class CoursePage extends PageView {
     /** Description characters shown before Show more. */
     static final int DESCRIPTION_PREVIEW = 260;
     /** Concept chips shown before the link to Progress. */
-    static final int CONCEPT_LIMIT = 14;
+    static final int CONCEPT_LIMIT = 10;
 
     private record Data(CourseDetail detail, StudyNext next, List<DocumentSummary> documents,
                         List<CourseVersion> versions) {
@@ -129,7 +129,7 @@ public final class CoursePage extends PageView {
         return path;
     }
 
-    /** The primary action: Start studying, or Ask when nothing is waiting. */
+    /** The primary action: Start studying, Practise weak concepts when caught up, or Ask. */
     public Button primaryButton() {
         return primary;
     }
@@ -322,6 +322,12 @@ public final class CoursePage extends PageView {
             primary.setOnAction(event -> navigator.navigate(new Destination.Study(SessionRequest.studyNext(course.id()))));
             row.add(primary);
             row.add(ask);
+        } else if (course.enrolled() && loaded.detail().concepts().stream().anyMatch(ConceptMastery::isWeak)) {
+            primary = new Button("Practise weak concepts", Icons.of(Feather.TARGET, 16));
+            primary.setOnAction(event -> navigator.navigate(
+                    new Destination.Study(SessionRequest.weakConcepts(course.id()))));
+            row.add(primary);
+            row.add(ask);
         } else if (course.createdHere() && course.itemCount() == 0) {
             primary = studio;
             row.add(studio);
@@ -508,7 +514,7 @@ public final class CoursePage extends PageView {
 
         Region rule = new Region();
         rule.getStyleClass().add("course-today-rule");
-        ProgressRing ring = new ProgressRing(52, 5);
+        ProgressRing ring = new ProgressRing(40, 4);
         ring.setProgress(course.progress());
         long studied = Math.round(course.progress() * course.itemCount());
         Label studiedText = new Label(course.itemCount() == 0 ? "Nothing studied yet"

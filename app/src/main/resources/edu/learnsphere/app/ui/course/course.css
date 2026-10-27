@@ -247,7 +247,7 @@
 }
 
 .course-today .progress-ring {
-    -fx-translate-y: 6px;
+    -fx-translate-y: 4px;
 }
 
 .course-today .button.quiet {
@@ -304,6 +304,10 @@
 
 .action-row:hover .action-row-arrow {
     -fx-icon-color: -ls-text-muted;
+}
+
+.course-concepts .button.quiet {
+    -fx-translate-x: -8px;
 }
 
 .course-concepts-hint {
