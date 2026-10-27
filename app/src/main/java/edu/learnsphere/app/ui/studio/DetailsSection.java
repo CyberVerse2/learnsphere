@@ -191,17 +191,21 @@ final class DetailsSection extends StudioSection {
         VBox who = StudioUi.panel("Who can open it",
                 "You can change this at any time. Learners who already have the course keep it.", visibility);
 
-        Region spacer = StudioUi.grow();
-        HBox saveBar = new HBox(12, saveState, spacer, discard, save);
-        saveBar.setAlignment(Pos.CENTER_LEFT);
-        saveBar.getStyleClass().add("save-bar");
-
-        VBox form = new VBox(24, about, who, saveBar);
+        VBox form = new VBox(24, about, who);
         form.getStyleClass().add("details-form");
         HBox.setHgrow(form, Priority.ALWAYS);
         form.setMinWidth(0);
 
-        VBox aside = new VBox(24, previewFrame(), coverPicker());
+        // Saving sits beside the preview, so it stays in view however long the form is.
+        save.setMaxWidth(Double.MAX_VALUE);
+        HBox.setHgrow(save, Priority.ALWAYS);
+        discard.setMinWidth(Region.USE_PREF_SIZE);
+        HBox buttons = new HBox(8, discard, save);
+        buttons.setAlignment(Pos.CENTER_LEFT);
+        VBox saveBar = new VBox(10, saveState, buttons);
+        saveBar.getStyleClass().add("save-bar");
+
+        VBox aside = new VBox(24, previewFrame(), saveBar, coverPicker());
         aside.getStyleClass().add("details-aside");
         aside.setMinWidth(ASIDE_WIDTH);
         aside.setPrefWidth(ASIDE_WIDTH);

@@ -9,8 +9,11 @@ import edu.learnsphere.app.ui.MainWindow;
 import edu.learnsphere.app.ui.StudioTab;
 import edu.learnsphere.app.ui.UiExecutors;
 import edu.learnsphere.app.ui.library.LibraryPage;
+import edu.learnsphere.app.ui.studio.StudioFiles;
+import edu.learnsphere.app.ui.studio.StudioPage;
 import edu.learnsphere.app.ui.study.StudyPage;
 import edu.learnsphere.core.model.Citation;
+import edu.learnsphere.core.service.CourseDraft;
 import edu.learnsphere.core.service.SessionRequest;
 import edu.learnsphere.core.service.ThemePreference;
 import java.io.IOException;
@@ -28,12 +31,14 @@ import javafx.embed.swing.SwingFXUtils;
 import javafx.event.Event;
 import javafx.scene.Node;
 import javafx.scene.Scene;
+import javafx.scene.control.ButtonBase;
 import javafx.scene.control.TextInputControl;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.SnapshotParameters;
 import javafx.scene.layout.Region;
 import javafx.scene.paint.Color;
+import javafx.stage.Window;
 import javafx.scene.image.WritableImage;
 import javax.imageio.ImageIO;
 
@@ -106,6 +111,33 @@ public final class ScreenshotTour {
                 Shot.of("studio-pages", new Destination.Studio(chemistry, StudioTab.PAGES)),
                 Shot.of("studio-details", new Destination.Studio(chemistry, StudioTab.DETAILS)),
                 Shot.of("studio-publish", new Destination.Studio(chemistry, StudioTab.PUBLISH)),
+                new Shot("studio-modules", window -> studio(window, new Destination.Studio(chemistry, StudioTab.MODULES))),
+                new Shot("studio-new-course", window -> studio(window, Destination.Studio.courses()),
+                        window -> fire(window, ".new-course-button")),
+                new Shot("studio-many", window -> {
+                    addCourses(window);
+                    studio(window, Destination.Studio.courses());
+                }),
+                new Shot("studio-details-invalid", window -> studio(window, new Destination.Studio(chemistry, StudioTab.DETAILS)),
+                        window -> {
+                            window.applyCss();
+                            ((TextInputControl) window.lookup(".details-title")).setText("");
+                            fire(window, ".details-save");
+                        }),
+                new Shot("studio-documents-preview", window -> studio(window, new Destination.Studio(chemistry, StudioTab.DOCUMENTS)),
+                        window -> fire(window, ".document-preview")),
+                new Shot("studio-pages-checked", window -> {
+                    var documents = window.context().workspace().documents();
+                    for (var document : documents.list(chemistry)) {
+                        documents.approvePages(document.id(), documents.pagesNeedingReview(document.id()).stream()
+                                .map(page -> page.pageNumber()).toList());
+                    }
+                    studio(window, new Destination.Studio(chemistry, StudioTab.PAGES));
+                }),
+                new Shot("studio-publish-exported", window -> {
+                    window.context().workspace().courses().publish(chemistry, "First edition for the spring term.");
+                    studio(window, new Destination.Studio(chemistry, StudioTab.PUBLISH));
+                }, window -> fire(window, ".export-course")),
                 Shot.of("settings", Destination.SETTINGS),
                 Shot.of("profiles", Destination.PROFILES),
                 Shot.of("onboarding", Destination.ONBOARDING),
@@ -113,6 +145,81 @@ public final class ScreenshotTour {
                         window -> ((javafx.scene.control.Button) window.navigator().currentView().root()
                                 .lookup(".button.primary")).fire()),
                 Shot.of("gallery", Destination.GALLERY));
+    }
+
+    /** Shows a Studio destination whose file dialogs answer at once (exports go to a temporary folder). */
+    private static void studio(MainWindow window, Destination.Studio destination) {
+        window.navigator().register(Destination.Studio.class,
+                d -> new StudioPage(window.context(), window.navigator(), d, TourFiles.INSTANCE));
+        window.navigator().reset(destination);
+    }
+
+    /** A few more courses in the Studio, one of them archived. */
+    private static void addCourses(MainWindow window) {
+        var courses = window.context().workspace().courses();
+        String author = window.context().workspace().profile().displayName();
+        List<String[]> drafts = List.of(
+                new String[] {"Cell Biology", "From membranes to mitosis"},
+                new String[] {"Introduction to Statistics", "Describing data, probability and inference"},
+                new String[] {"Academic Writing", ""},
+                new String[] {"Thermodynamics for Engineers", "Energy, entropy and the laws that govern them"},
+                new String[] {"History of Computing", "Babbage to the browser"});
+        String last = null;
+        for (String[] draft : drafts) {
+            last = courses.create(new CourseDraft(draft[0], draft[1], null, author, null)).id();
+        }
+        courses.archive(last);
+    }
+
+    /** Fires the first button matching {@code selector} in the window. */
+    private static void fire(MainWindow window, String selector) {
+        // Off screen, controls get their skins (and scroll panes their content) only when CSS is applied.
+        window.applyCss();
+        window.layout();
+        Node node = window.lookup(selector);
+        if (node instanceof ButtonBase button) {
+            button.fire();
+        } else {
+            throw new IllegalStateException("No button " + selector + " on screen");
+        }
+    }
+
+    /** File dialogs for the tour: nothing to choose, and course files saved in a temporary folder. */
+    private enum TourFiles implements StudioFiles {
+        INSTANCE;
+
+        @Override
+        public List<Path> choosePdfs(Window owner) {
+            return List.of();
+        }
+
+        @Override
+        public Path chooseCourseFile(Window owner, String suggestedName) {
+            try {
+                Path folder = Files.createTempDirectory("learnsphere-tour");
+                folder.toFile().deleteOnExit();
+                Path file = folder.resolve(suggestedName);
+                file.toFile().deleteOnExit();
+                return file;
+            } catch (IOException e) {
+                throw new java.io.UncheckedIOException(e);
+            }
+        }
+
+        @Override
+        public List<Path> chooseProgressFiles(Window owner) {
+            return List.of();
+        }
+
+        @Override
+        public Path chooseFeedbackFile(Window owner) {
+            return null;
+        }
+
+        @Override
+        public void reveal(Path file) {
+            // Nothing to show during the tour.
+        }
     }
 
     /** The demo conversation about {@code courseId} with its first citation open in the source viewer. */

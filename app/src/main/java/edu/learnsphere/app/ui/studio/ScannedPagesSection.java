@@ -110,7 +110,7 @@ final class ScannedPagesSection extends StudioSection {
         pageTitle.getStyleClass().addAll("text-title", "scanned-page-title");
         text.getStyleClass().addAll("page-text", "scanned-text");
         text.setWrapText(true);
-        text.setPrefRowCount(18);
+        text.setPrefRowCount(16);
         text.setAccessibleText("Text read from the page");
         StudioUi.limit(text, MAX_TEXT);
         text.textProperty().addListener((obs, old, value) -> updateApproveLabel());
@@ -275,16 +275,17 @@ final class ScannedPagesSection extends StudioSection {
 
         Chip ai = new Chip("Read by AI from a scanned page", Tone.ACCENT, Feather.FEATHER);
         ai.getStyleClass().add("ai-read-chip");
-        HBox titleRow = new HBox(12, pageTitle, ai, StudioUi.grow(), previous, next);
+        HBox pager = new HBox(4, previous, next);
+        pager.setAlignment(Pos.CENTER);
+        pager.setMinWidth(Region.USE_PREF_SIZE);
+        HBox titleRow = new HBox(12, pageTitle, pager, StudioUi.grow(), approve);
         titleRow.setAlignment(Pos.CENTER_LEFT);
+        approve.setMinWidth(Region.USE_PREF_SIZE);
         Label hint = new Label("Fix anything that was read wrongly. Lines that start with # are headings.");
         hint.getStyleClass().add("field-hint");
         hint.setWrapText(true);
         VBox.setVgrow(text, Priority.ALWAYS);
-        HBox actions = new HBox(12, hint, StudioUi.grow(), approve);
-        actions.setAlignment(Pos.CENTER_LEFT);
-        approve.setMinWidth(Region.USE_PREF_SIZE);
-        VBox editor = new VBox(12, titleRow, text, actions);
+        VBox editor = new VBox(12, titleRow, ai, text, hint);
         editor.getStyleClass().add("scanned-editor");
         editor.setMinWidth(0);
         HBox.setHgrow(editor, Priority.ALWAYS);

@@ -22,6 +22,7 @@ import edu.learnsphere.core.service.CourseFilter;
 import edu.learnsphere.core.service.CourseSummary;
 import java.util.ArrayList;
 import java.util.List;
+import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.AccessibleRole;
 import javafx.scene.Node;
@@ -32,6 +33,7 @@ import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyCodeCombination;
 import javafx.scene.input.KeyCombination;
 import javafx.scene.input.MouseButton;
+import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -160,9 +162,7 @@ final class CourseListSection extends StudioSection {
         title.getStyleClass().add("studio-row-title");
         title.setMnemonicParsing(false);
         title.setWrapText(true);
-        Label contents = new Label(String.join(" · ", Formats.count(course.moduleCount(), "module", "modules"),
-                Formats.count(course.documentCount(), "PDF", "PDFs"),
-                Formats.count(course.itemCount(), "approved question", "approved questions")));
+        Label contents = new Label(contentsLine(course));
         contents.getStyleClass().add("text-caption");
         VBox text = new VBox(4, overline, title);
         if (!course.subtitle().isBlank()) {
@@ -172,20 +172,24 @@ final class CourseListSection extends StudioSection {
             text.getChildren().add(subtitle);
         }
         text.getChildren().add(contents);
+        List<Node> markers = markers(course);
+        if (!markers.isEmpty()) {
+            FlowPane attention = new FlowPane(6, 6);
+            attention.getStyleClass().add("studio-row-markers");
+            attention.getChildren().addAll(markers);
+            VBox.setMargin(attention, new Insets(6, 0, 0, 0));
+            text.getChildren().add(attention);
+        }
         text.setMinWidth(0);
         HBox.setHgrow(text, Priority.ALWAYS);
 
-        VBox attention = new VBox(6);
-        attention.setAlignment(Pos.CENTER_RIGHT);
-        attention.getChildren().addAll(markers(course));
         Label edited = new Label("Edited " + Formats.ago(course.updatedAt(), host.context().clock()));
         edited.getStyleClass().add("text-caption");
-        attention.getChildren().add(edited);
-        attention.setMinWidth(Region.USE_PREF_SIZE);
+        edited.setMinWidth(Region.USE_PREF_SIZE);
 
         var chevron = Icons.of(Feather.CHEVRON_RIGHT, 18);
         chevron.getStyleClass().add("studio-row-chevron");
-        HBox row = new HBox(20, cover, text, attention, chevron);
+        HBox row = new HBox(20, cover, text, edited, chevron);
         row.setAlignment(Pos.CENTER_LEFT);
         row.getStyleClass().addAll("studio-course-row");
         row.setFocusTraversable(true);
@@ -225,6 +229,16 @@ final class CourseListSection extends StudioSection {
 
     private void open(CourseSummary course, StudioTab tab) {
         host.navigator().navigate(new Destination.Studio(course.id(), tab));
+    }
+
+    /** What the course holds, e.g. "4 modules · 8 PDFs · 6 approved questions". */
+    static String contentsLine(CourseSummary course) {
+        if (course.moduleCount() == 0 && course.documentCount() == 0 && course.itemCount() == 0) {
+            return "No modules or PDFs yet";
+        }
+        return String.join(" · ", Formats.count(course.moduleCount(), "module", "modules"),
+                Formats.count(course.documentCount(), "PDF", "PDFs"),
+                Formats.count(course.itemCount(), "approved question", "approved questions"));
     }
 
     /** What needs the creator's attention, most urgent first. */

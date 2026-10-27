@@ -172,8 +172,7 @@ final class PublishSection extends StudioSection {
         ledger.getStyleClass().add("ledger");
         ledger.add(ledgerCell(counts.approved(), "approved", null, false), 0, 0);
         ledger.add(ledgerCell(counts.draft(), "drafts to review", counts.draft() > 0 ? "waiting" : null, true), 1, 0);
-        ledger.add(ledgerCell(course.openFlagCount(), "flagged by learners", course.openFlagCount() > 0 ? "flagged" : null,
-                true), 2, 0);
+        ledger.add(ledgerCell(course.openFlagCount(), "flagged", course.openFlagCount() > 0 ? "flagged" : null, true), 2, 0);
         ledger.add(ledgerCell(counts.rejected() + counts.retired(), "rejected or retired", null, true), 3, 0);
 
         VBox gets = new VBox(8);
@@ -182,8 +181,10 @@ final class PublishSection extends StudioSection {
         getsTitle.getStyleClass().addAll("text-overline");
         gets.getChildren().add(getsTitle);
         if (counts.approved() > 0) {
-            gets.getChildren().add(gets(Feather.CHECK, Formats.count(counts.approved(), "approved question", "approved questions")
-                    + " in " + Formats.count(Math.max(1, course.moduleCount()), "module", "modules"), false));
+            String where = course.moduleCount() == 0 ? ""
+                    : " in " + Formats.count(course.moduleCount(), "module", "modules");
+            gets.getChildren().add(gets(Feather.CHECK,
+                    Formats.count(counts.approved(), "approved question", "approved questions") + where, false));
         }
         if (course.documentCount() > 0) {
             gets.getChildren().add(gets(Feather.CHECK, "Your " + Formats.count(course.documentCount(), "PDF", "PDFs")
@@ -210,6 +211,7 @@ final class PublishSection extends StudioSection {
             Label why = new Label(NOTHING_APPROVED);
             why.getStyleClass().addAll("field-hint", "publish-blocked");
             why.setWrapText(true);
+            why.setMaxWidth(Double.MAX_VALUE);
             HBox.setHgrow(why, Priority.ALWAYS);
             Button review = new Button("Open review queue");
             review.getStyleClass().addAll("quiet", "small");
@@ -220,6 +222,7 @@ final class PublishSection extends StudioSection {
                     + " included until you approve " + (counts.draft() == 1 ? "it." : "them."));
             why.getStyleClass().add("field-hint");
             why.setWrapText(true);
+            why.setMaxWidth(Double.MAX_VALUE);
             HBox.setHgrow(why, Priority.ALWAYS);
             actions.getChildren().addAll(why, publish);
         } else {

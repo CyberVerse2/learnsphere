@@ -100,6 +100,7 @@ public final class StudioPage extends PageView {
         this.files = Objects.requireNonNull(files, "files");
         this.tab = destination.tab();
         StudioStyles.apply(page());
+        FocusScroller.install(page());
         page().getStyleClass().add("studio-page");
         body.getStyleClass().add("studio-body");
         if (destination.courseId() != null) {
@@ -244,12 +245,12 @@ public final class StudioPage extends PageView {
             return;
         }
         headerBox.getChildren().setAll(header(course));
-        updateCounts(data);
         if (!built) {
             built = true;
             show(headerBox, tabs(), body);
             switchTo(tab, null);
         }
+        updateCounts(data);
     }
 
     private Node header(CourseSummary course) {
@@ -339,7 +340,7 @@ public final class StudioPage extends PageView {
                 course.documentsNeedingAttention() > 0 ? "warning" : null, "PDF", "PDFs");
         setCount(StudioTab.REVIEW, course.draftItemCount(), "warning", "draft to review", "drafts to review");
         setCount(StudioTab.PAGES, data.scannedPages(), "warning", "page to check", "pages to check");
-        setCount(StudioTab.PUBLISH, course.openFlagCount(), "danger", "flag from learners", "flags from learners");
+        setCount(StudioTab.PUBLISH, course.openFlagCount(), "danger", "open flag", "open flags");
     }
 
     private void setCount(StudioTab which, int count, String tone, String singular, String plural) {
