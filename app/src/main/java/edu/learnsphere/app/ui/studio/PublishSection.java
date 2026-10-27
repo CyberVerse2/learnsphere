@@ -251,8 +251,8 @@ final class PublishSection extends StudioSection {
         }
         int notReady = course.documentCount() - data.readyPdfs();
         if (notReady > 0) {
-            gets.getChildren().add(gets(Feather.MINUS, Formats.count(notReady, "PDF that isn't", "PDFs that aren't")
-                    + " ready yet", true));
+            gets.getChildren().add(gets(Feather.MINUS, notReady == 1 ? "1 PDF isn't included until it's ready"
+                    : Formats.count(notReady, "PDF", "PDFs") + " aren't included until they're ready", true));
         }
         int leftOut = counts.draft() + counts.rejected();
         if (leftOut > 0) {
@@ -287,7 +287,7 @@ final class PublishSection extends StudioSection {
             review.setOnAction(event -> host.tabs().open(StudioTab.REVIEW, null));
             actions.getChildren().addAll(why, review, publish);
         } else if (unchanged) {
-            Label why = new Label("No questions have changed since version " + course.versionNumber() + ".");
+            Label why = new Label("Publish again once you've approved or changed questions.");
             why.getStyleClass().addAll("field-hint", "publish-unchanged");
             why.setWrapText(true);
             why.setMaxWidth(Double.MAX_VALUE);

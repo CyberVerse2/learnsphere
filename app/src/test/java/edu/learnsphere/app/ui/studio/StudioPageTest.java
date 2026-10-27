@@ -523,7 +523,10 @@ class StudioPageTest {
         Button again = robot.lookup(".publish-version").queryButton();
         assertThat(again.getText()).isEqualTo("Publish version 2");
         assertThat(again.getStyleClass()).as("nothing new to publish").doesNotContain("primary");
-        assertThat(texts(robot, ".publish-unchanged")).containsExactly("No questions have changed since version 1.");
+        assertThat(texts(robot, ".publish-unchanged"))
+                .containsExactly("Publish again once you've approved or changed questions.");
+        assertThat(texts(robot, ".studio-panel-subtitle"))
+                .contains("Learners have version 1, with every question you've approved.");
         assertThat(section.notesField().getText()).isEmpty();
 
         // Approving another question makes a new version worth publishing.
@@ -546,7 +549,7 @@ class StudioPageTest {
 
         assertThat(texts(robot, ".learners-get .label")).contains(
                 "Your PDF, so they can ask about it and see where each answer comes from",
-                "1 PDF that isn't ready yet");
+                "1 PDF isn't included until it's ready");
     }
 
     @Test
