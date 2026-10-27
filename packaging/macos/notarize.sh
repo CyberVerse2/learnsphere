@@ -36,15 +36,23 @@ case "$target" in
 esac
 
 result="$work/result.json"
-echo "Uploading $(basename "$target") ($(du -sh "$upload" | cut -f 1)) for notarization"
-xcrun notarytool submit "$upload" --keychain-profile "$profile" --wait --output-format json > "$result" || true
-id=$(plutil -extract id raw -o - "$result" 2>/dev/null || true)
+size=$(du -sh "$upload" | cut -f 1 | tr -d ' ')
+# An upload that breaks off (the connection is reset, say) yields no submission; try again, up to three times.
+attempt=1
+while :; do
+    echo "Uploading $(basename "$target") ($size) for notarization, attempt $attempt"
+    xcrun notarytool submit "$upload" --keychain-profile "$profile" --wait --output-format json > "$result" || true
+    id=$(plutil -extract id raw -o - "$result" 2>/dev/null || true)
+    [ -z "$id" ] || break
+    if [ "$attempt" -ge 3 ]; then
+        echo "The upload to the notary service failed $attempt times." >&2
+        cat "$result" >&2
+        exit 1
+    fi
+    attempt=$((attempt + 1))
+    sleep 30
+done
 status=$(plutil -extract status raw -o - "$result" 2>/dev/null || true)
-if [ -z "$id" ]; then
-    echo "The notary service did not accept the upload:" >&2
-    cat "$result" >&2
-    exit 1
-fi
 echo "Notarization $id: $status"
 if [ "$status" != "Accepted" ]; then
     echo "Apple's log for $id:" >&2

@@ -137,14 +137,16 @@ xcrun notarytool store-credentials learnsphere-notary \
   --key <AuthKey_XXXXXXXXXX.p8> --key-id <key ID> --issuer <issuer ID>
 ```
 
-Then build with `-Plearnsphere.notarize=true`. The build makes two submissions, each time waiting for
-Apple's verdict and printing Apple's log when a submission is rejected:
+Then build with `-Plearnsphere.notarize=true`. The build makes two submissions:
 
 1. `notarizeMacApp` uploads the signed app as a zip archive and staples the ticket to `LearnSphere.app`,
    so the app opens offline even after it has been copied out of the disk image.
-2. `notarizeMac` builds the disk image around the stapled app, uploads it and staples its own ticket to it.
+2. `macDmg` builds the disk image around the stapled app, and `notarizeMac` uploads it and staples the
+   disk image's own ticket to it.
 
-With the models, each upload is about 4.3 GB, so the uploads and Apple's processing take a while.
+Each submission waits for Apple's verdict and prints Apple's log when it is rejected. An upload that breaks
+off, for example when the connection is reset, is tried again up to three times. With the models, each
+upload is about 4.3 GB, so the uploads and Apple's processing take a while.
 
 Without `-Plearnsphere.notarize=true` the build stops after signing and says so.
 
