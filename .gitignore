@@ -5,7 +5,7 @@ out/
 *.class
 
 # Development runtime (llama.cpp binaries and model files)
-runtime/
+/runtime/
 
 # IDE and OS
 .idea/
