@@ -43,13 +43,13 @@ final class ModulesSection {
         bar.setHgrow(Priority.ALWAYS);
         bar.setMinWidth(120);
         ColumnConstraints count = new ColumnConstraints();
-        count.setMinWidth(96);
+        count.setMinWidth(56);
         count.setHalignment(HPos.RIGHT);
         ColumnConstraints mastery = new ColumnConstraints();
-        mastery.setMinWidth(96);
+        mastery.setMinWidth(88);
         mastery.setHalignment(HPos.RIGHT);
         ColumnConstraints due = new ColumnConstraints();
-        due.setMinWidth(80);
+        due.setMinWidth(72);
         due.setHalignment(HPos.RIGHT);
         grid.getColumnConstraints().addAll(number, title, bar, count, mastery, due);
 

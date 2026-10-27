@@ -122,6 +122,7 @@ public final class ScreenshotTour {
                     forgetStudy(window);
                     window.navigator().reset(Destination.Progress.overview());
                 }),
+                Shot.of("progress-error", new Destination.Progress("a-course-that-does-not-exist")),
                 new Shot("progress-no-courses", window -> {
                     var courses = window.context().workspace().courses();
                     courses.list(edu.learnsphere.core.service.CourseFilter.studying()).forEach(c -> courses.leave(c.id()));

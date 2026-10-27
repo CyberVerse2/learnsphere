@@ -67,6 +67,8 @@ class ProgressPageTest {
     private final Map<String, ItemContent> answers = new HashMap<>();
     /** Answers given per course. */
     private final Map<String, Integer> answered = new HashMap<>();
+    /** Prompts of the questions answered wrongly, in the order answered. */
+    private final List<String> missed = new java.util.ArrayList<>();
 
     @Start
     void start(Stage stage) throws Exception {
@@ -177,7 +179,7 @@ class ProgressPageTest {
         assertThat(robot.lookup(".creator-section").tryQuery()).isPresent();
         List<Node> rows = List.copyOf(robot.lookup(".question-row").queryAll());
         assertThat(rows).as("the one question answered wrongly").hasSize(1);
-        assertThat(rows.getFirst().getAccessibleText()).startsWith("Biology question 1.");
+        assertThat(rows.getFirst().getAccessibleText()).startsWith(missed.getFirst() + ". 0% right.");
         assertThat(rows.getFirst().isFocusTraversable()).isTrue();
 
         // From the keyboard, as the row is below the fold.
@@ -215,6 +217,31 @@ class ProgressPageTest {
         Button library = (Button) empty.actions().getChildren().getFirst();
         assertThat(library.getText()).isEqualTo("Open Library");
         assertThat(library.getStyleClass()).contains("primary");
+    }
+
+    @Test
+    void aCourseThatCannotBeReadShowsAnErrorWithTryAgain(FxRobot robot) {
+        open(robot, new Destination.Progress("a-course-that-does-not-exist"));
+
+        EmptyState error = robot.lookup(".empty-state").queryAs(EmptyState.class);
+        assertThat(error.titleText()).isEqualTo("Your progress couldn't be shown");
+        assertThat(error.messageText()).isNotBlank().doesNotContain("Exception").doesNotContain("a-course-that-does-not-exist");
+        assertThat(error.actions().getChildren()).extracting(node -> ((Button) node).getText())
+                .containsExactly("Try again", "Go to Home");
+    }
+
+    @Test
+    void theScreenHoldsItsShapeWhileLoading(FxRobot robot) {
+        open(robot, Destination.Progress.overview());
+
+        ProgressPage[] loading = new ProgressPage[1];
+        robot.interact(() -> loading[0] = new ProgressPage(real.context(), window.navigator(), Destination.Progress.overview()));
+
+        // The page scrolls its content, which joins the scene only once shown: look in the content itself.
+        Node content = ((javafx.scene.control.ScrollPane) loading[0].root()).getContent();
+        assertThat(loading[0].data()).isNull();
+        assertThat(content.lookupAll(".progress-skeleton")).hasSize(4);
+        assertThat(content.lookupAll(".skeleton")).isNotEmpty();
     }
 
     @Test
@@ -264,7 +291,11 @@ class ProgressPageTest {
         int index = 0;
         for (SessionItem shown : session.items()) {
             ItemContent content = answers.get(shown.itemId());
-            String answer = index++ < wrong ? content.distractors().getFirst() : content.answer();
+            boolean right = index++ >= wrong;
+            String answer = right ? content.answer() : content.distractors().getFirst();
+            if (!right) {
+                missed.add(content.prompt());
+            }
             ws().practice().submit(session.id(), Response.answer(shown.itemId(), answer, null, false, 20_000));
             answered.merge(course.id(), 1, Integer::sum);
             clock.advance(Duration.ofSeconds(20));
