@@ -205,9 +205,12 @@ class WorkspaceImplTest {
         t.repos.documents().markReady(ready.id());
 
         try (WorkspaceImpl workspace = WorkspaceImpl.open(context, capabilities)) {
-            assertThat(workspace.jobs().active())
-                    .extracting(JobUpdate::kind, JobUpdate::subjectId)
-                    .containsExactly(org.assertj.core.groups.Tuple.tuple(JobKind.INGEST_DOCUMENT, waiting.id()));
+            // The job may already have run by now, so look at every job rather than only the active ones.
+            assertThat(t.repos.jobs().listByStatus(java.util.EnumSet.allOf(JobStatus.class))).singleElement()
+                    .satisfies(job -> {
+                        assertThat(job.kind()).isEqualTo(JobKind.INGEST_DOCUMENT);
+                        assertThat(job.payloadJson()).contains(waiting.id());
+                    });
 
             Course created = workspace.courses().create(CourseDraft.titled("Chemistry"));
             workspace.courses().addModule(created.id(), "Atoms");

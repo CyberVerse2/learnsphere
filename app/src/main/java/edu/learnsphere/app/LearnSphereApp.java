@@ -116,6 +116,7 @@ public final class LearnSphereApp extends Application {
     @Override
     public void stop() {
         // Platform.exit() (the in-window Quit, or the system quitting the app) need not hide the window first.
+        Fx.stopDelivering();
         saveWindow(stage);
         preferencesListener.close();
         if (menus != null) {

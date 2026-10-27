@@ -16,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -70,7 +71,7 @@ class MainWindowSmokeTest {
     }
 
     @Test
-    void navigatesFromTheSidebarAndBack(FxRobot robot) {
+    void navigatesFromTheSidebarAndBack(FxRobot robot) throws Exception {
         settle();
 
         robot.clickOn("Library");
@@ -81,7 +82,7 @@ class MainWindowSmokeTest {
         robot.clickOn(firstCard);
         settle();
         assertThat(window.navigator().current()).isEqualTo(new Destination.Course(DemoData.OPERATING_SYSTEMS));
-        assertThat(window.topBar().crumbTexts()).containsExactly("Library", "Operating Systems Principles");
+        assertThat(crumbs()).containsExactly("Library", "Operating Systems Principles");
 
         robot.clickOn(".profile-chip");
         assertThat(window.navigator().currentRoute()).isEqualTo(Route.PROFILES);
@@ -129,19 +130,19 @@ class MainWindowSmokeTest {
     }
 
     @Test
-    void breadcrumbsFollowARenamedCourse(FxRobot robot) throws TimeoutException {
+    void breadcrumbsFollowARenamedCourse(FxRobot robot) throws Exception {
         settle();
         robot.interact(() -> window.navigator().navigate(
                 new Destination.Studio(DemoData.ORGANIC_CHEMISTRY, StudioTab.DETAILS)));
         settle();
-        assertThat(window.topBar().crumbTexts()).containsExactly("Studio", "Organic Chemistry Basics", "Details");
+        assertThat(crumbs()).containsExactly("Studio", "Organic Chemistry Basics", "Details");
 
         context.workspace().courses().update(DemoData.ORGANIC_CHEMISTRY,
                 new CourseUpdate("Organic Chemistry Essentials", null, null, null));
 
         WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS,
-                () -> window.topBar().crumbTexts().contains("Organic Chemistry Essentials"));
-        assertThat(window.topBar().crumbTexts()).containsExactly("Studio", "Organic Chemistry Essentials", "Details");
+                () -> crumbs().contains("Organic Chemistry Essentials"));
+        assertThat(crumbs()).containsExactly("Studio", "Organic Chemistry Essentials", "Details");
     }
 
     @Test
@@ -151,6 +152,11 @@ class MainWindowSmokeTest {
         robot.interact(() -> window.navigator().navigate(Destination.GALLERY));
 
         assertThat(window.navigator().currentView()).isInstanceOf(edu.learnsphere.app.dev.ComponentGallery.class);
+    }
+
+    /** The breadcrumb texts, read on the FX thread while it may still be updating them. */
+    private List<String> crumbs() throws Exception {
+        return WaitForAsyncUtils.asyncFx(() -> List.copyOf(window.topBar().crumbTexts())).get(5, TimeUnit.SECONDS);
     }
 
     private static void settle() {

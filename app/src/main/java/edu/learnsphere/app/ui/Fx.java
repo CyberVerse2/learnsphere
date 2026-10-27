@@ -11,7 +11,18 @@ import javafx.application.Platform;
 /** FX-thread helpers. */
 public final class Fx {
 
+    private static volatile boolean quitting;
+
     private Fx() {
+    }
+
+    /**
+     * Stops handing work to the FX thread, at the start of quitting. Services still finishing in the background
+     * would otherwise queue work the toolkit never runs, and on macOS that queue fails once the app's main
+     * thread has gone.
+     */
+    public static void stopDelivering() {
+        quitting = true;
     }
 
     /** Runs {@code action} on the FX thread: now when already on it, otherwise as soon as possible. */
@@ -19,6 +30,12 @@ public final class Fx {
         if (Platform.isFxApplicationThread()) {
             action.run();
         } else {
+            later(action);
+        }
+    }
+
+    private static void later(Runnable action) {
+        if (!quitting) {
             Platform.runLater(action);
         }
     }
@@ -43,7 +60,7 @@ public final class Fx {
         Objects.requireNonNull(type, "type");
         Objects.requireNonNull(onFx, "onFx");
         AtomicBoolean active = new AtomicBoolean(true);
-        Subscription inner = bus.subscribe(type, event -> Platform.runLater(() -> {
+        Subscription inner = bus.subscribe(type, event -> later(() -> {
             if (active.get()) {
                 onFx.accept(event);
             }
