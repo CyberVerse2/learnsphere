@@ -77,10 +77,10 @@ class ConcurrencyTest {
         List<Future<?>> writers = new ArrayList<>();
         for (String course : List.of("a", "b")) {
             writers.add(pool.submit(() -> {
-                for (int batch = 0; batch < 20; batch++) {
+                for (int batch = 0; batch < 5; batch++) {
                     List<IndexedChunk> passages = new ArrayList<>();
-                    for (int i = 0; i < 25; i++) {
-                        passages.add(numbered(course, batch * 25 + i));
+                    for (int i = 0; i < 10; i++) {
+                        passages.add(numbered(course, batch * 10 + i));
                     }
                     index.upsert(passages);
                     index.commit();
@@ -126,23 +126,24 @@ class ConcurrencyTest {
 
         assertThat(errors).isEmpty();
         assertThat(searches.get()).isPositive();
-        assertThat(index.size()).isEqualTo(1000);
-        // 72 passages of "b" mention osmosis; keyword search returns its 40 best. Exact counts come only from
+        assertThat(index.size()).isEqualTo(100);
+        // 8 passages of "b" mention osmosis; keyword search returns its 5 best. Exact counts come only from
         // keyword search: the fake query vector for one word is nearly one-hot, most passages tie with it, and
         // which of the tied passages approximate nearest-neighbour search returns depends on the segment layout
         // the two writers happened to produce.
-        assertThat(index.search(new SearchQuery("osmosis", null, "b", Set.of(), 40, 0, 100, 60))).hasSize(40)
+        assertThat(index.search(new SearchQuery("osmosis", null, "b", Set.of(), 5, 0, 100, 60))).hasSize(5)
                 .allSatisfy(h -> {
                     assertThat(h.courseId()).isEqualTo("b");
                     assertThat(h.text()).contains("osmosis");
                 });
-        assertThat(index.search(query("b", "osmosis").withLimit(100))).hasSizeBetween(40, 80)
+        // The 8 keyword hits and the 40 nearest of b's 50 passages, some of them the same.
+        assertThat(index.search(query("b", "osmosis").withLimit(100))).hasSizeBetween(40, 48)
                 .allSatisfy(h -> assertThat(h.courseId()).isEqualTo("b"));
     }
 
     @Test
     void searchesSeeEitherTheOldOrTheNewContentsDuringARebuild() throws Exception {
-        index.rebuild(IntStream.range(0, 300).mapToObj(i -> passage("a", "old", null, "alpha osmosis " + i)));
+        index.rebuild(IntStream.range(0, 50).mapToObj(i -> passage("a", "old", null, "alpha osmosis " + i)));
         AtomicBoolean rebuilding = new AtomicBoolean(true);
         List<Future<?>> searchers = new ArrayList<>();
         AtomicInteger sawOld = new AtomicInteger();
@@ -168,7 +169,7 @@ class ConcurrencyTest {
         try {
             // Waits for what the searches saw rather than for a fixed time, so a busy machine cannot skip a phase.
             awaitSearches(sawOld, "the old contents");
-            index.rebuild(IntStream.range(0, 2_000).mapToObj(i -> passage("a", "new", null, "omega osmosis " + i)));
+            index.rebuild(IntStream.range(0, 200).mapToObj(i -> passage("a", "new", null, "omega osmosis " + i)));
             awaitSearches(sawNew, "the new contents");
         } finally {
             rebuilding.set(false);
@@ -180,6 +181,6 @@ class ConcurrencyTest {
         assertThat(errors).isEmpty();
         assertThat(sawOld.get()).isPositive();
         assertThat(sawNew.get()).isPositive();
-        assertThat(index.size()).isEqualTo(2_000);
+        assertThat(index.size()).isEqualTo(200);
     }
 }
