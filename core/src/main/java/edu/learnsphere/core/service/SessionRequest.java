@@ -8,11 +8,15 @@ import java.util.Objects;
  *
  * @param courseId the course, or null to study across every enrolled course ({@link SessionKind#STUDY_NEXT} only)
  * @param moduleId the module (required for {@link SessionKind#MODULE_QUIZ}), or null
- * @param size     how many items at most
+ * @param size     how many items at most; {@link #DEFAULT_SIZE} (what the factories use) means the learner's
+ *                 session size setting ({@link SettingKeys#SESSION_SIZE})
  */
 public record SessionRequest(SessionKind kind, String courseId, String moduleId, int size) {
 
-    /** Items in a session unless the learner changes it. */
+    /**
+     * Items in a session unless the learner changes it. A request of this size gets the learner's session size
+     * setting ({@link SettingKeys#SESSION_SIZE}); {@link #withSize(int)} asks for another size.
+     */
     public static final int DEFAULT_SIZE = 20;
 
     public SessionRequest {
