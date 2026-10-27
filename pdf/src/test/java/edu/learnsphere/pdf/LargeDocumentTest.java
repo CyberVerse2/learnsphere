@@ -22,7 +22,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * A 300-page text book through every step, with timings printed to the test output: wall-clock time and the
  * CPU time of the calling thread (all of the work runs on it), which stays meaningful on a busy machine. The
- * time limit is deliberately loose so a busy machine does not fail the build; the printed numbers are the
+ * limit, on CPU time, is deliberately loose and only catches runaway slowness; the printed numbers are the
  * measurement.
  */
 class LargeDocumentTest {
@@ -88,7 +88,10 @@ class LargeDocumentTest {
         assertEquals(pageCount, chunks.getLast().pageEnd());
         assertFalse(rects.isEmpty());
         assertTrue(png.length > 10_000);
-        assertTrue(ms(inspected, extracted) < 30_000, "extraction took " + ms(inspected, extracted) + " ms");
+        // CPU time, not wall-clock time: a machine busy with other work stretches the latter without limit.
+        if (threads.isCurrentThreadCpuTimeSupported()) {
+            assertTrue(ms(cpu1, cpu2) < 20_000, "extraction used " + ms(cpu1, cpu2) + " ms of CPU time");
+        }
     }
 
     private static long ms(long from, long to) {
