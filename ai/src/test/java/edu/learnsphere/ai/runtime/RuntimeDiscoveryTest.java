@@ -172,6 +172,24 @@ class RuntimeDiscoveryTest {
     }
 
     @Test
+    void aSplitModelIsUsedThroughItsFirstPart() throws IOException {
+        Path runtime = TestRuntime.create(temp, 8);
+        Path chat = runtime.resolve("models/chat-4b");
+        Files.delete(chat.resolve("Chat-4B-Q4_K_M.gguf"));
+        Files.writeString(chat.resolve("Chat-4B-Q4_K_M-00002-of-00002.gguf"), "part two");
+        Files.writeString(chat.resolve("Chat-4B-Q4_K_M-00001-of-00002.gguf"), "part one");
+        Path embed = runtime.resolve("models/embed");
+        Files.move(embed.resolve("Embed-0.6B-Q8_0.gguf"), embed.resolve("Embed-0.6B-Q8_0-00001-of-00001.gguf"));
+
+        ModelCatalog catalog = ModelCatalog.scan(Optional.of(runtime), TestRuntime.MACHINE_16GB);
+
+        assertThat(catalog.chatModel(ModelChoice.CHAT_4B).orElseThrow().model().getFileName())
+                .hasToString("Chat-4B-Q4_K_M-00001-of-00002.gguf");
+        assertThat(catalog.embeddingModelName()).isEqualTo("Embed-0.6B-Q8_0");
+        assertThat(catalog.embeddingDimensions()).isEqualTo(8);
+    }
+
+    @Test
     void anEmptyOrMissingRuntimeExplainsWhatIsMissing() throws IOException {
         ModelCatalog none = ModelCatalog.scan(Optional.empty(), TestRuntime.MACHINE_16GB);
         assertThat(none.availableModels()).isEmpty();

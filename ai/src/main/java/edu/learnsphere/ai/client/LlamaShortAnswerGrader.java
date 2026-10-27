@@ -21,7 +21,9 @@ import java.util.regex.Pattern;
  * <p>The model does not pick a score. It splits the reference answer into key points, marks each as
  * covered, partly covered or missing, and lists wrong statements ({@code grade-system.txt}); the score is
  * computed from that: covered points count 1, partly covered ½, and each wrong statement takes off
- * {@value #ERROR_PENALTY} (at most two). The verdict follows {@link GradeResult#verdictFor}. Missing
+ * {@value #ERROR_PENALTY} (at most two). An answer that gets at least part of one point right and says
+ * nothing wrong scores at least {@value #RIGHT_TRACK_SCORE}, so a short but correct start is partly right
+ * rather than wrong. The verdict follows {@link GradeResult#verdictFor}. Missing
  * points are the points not fully covered. Feedback sentences about spelling are dropped, since spelling
  * never counts. A blank answer scores 0 without asking the model. Thread-safe.
  */
@@ -29,6 +31,8 @@ public final class LlamaShortAnswerGrader implements ShortAnswerGrader {
 
     /** Score taken off per wrong statement. */
     public static final double ERROR_PENALTY = 0.25;
+    /** Lowest score for an answer with some of a key point and no wrong statements (a partial verdict). */
+    public static final double RIGHT_TRACK_SCORE = 0.5;
     /** Longest learner answer sent, in characters. */
     public static final int MAX_ANSWER_CHARS = 4_000;
 
@@ -93,6 +97,9 @@ public final class LlamaShortAnswerGrader implements ShortAnswerGrader {
         }
         double coverage = points == 0 ? 0 : earned / points;
         double score = Math.max(0, Math.min(1, coverage - ERROR_PENALTY * Math.min(errors, 2)));
+        if (earned > 0 && errors == 0) {
+            score = Math.max(score, RIGHT_TRACK_SCORE);
+        }
         score = Math.round(score * 100) / 100.0;
         GradeResult.Verdict verdict = GradeResult.verdictFor(score);
         String feedback = withoutSpellingNotes(TextCleanup.oneLine(reply.path("feedback").asText("")));

@@ -65,7 +65,10 @@ class GenerationQualityIT {
                 .line("%d structured replies, %d did not parse (%s valid).", replies, invalid,
                         EvalReport.pct(replies == 0 ? 0 : (double) (replies - invalid) / replies));
         REPORT.write();
-        assertThat(replies).as("structured replies").isGreaterThanOrEqualTo(20);
+        if (!ITEMS.isEmpty()) {
+            // Item generation ran (not just a single test picked from this class): enough replies to judge.
+            assertThat(replies).as("structured replies").isGreaterThanOrEqualTo(20);
+        }
         assertThat(invalid).as("replies that did not parse").isZero();
     }
 
@@ -290,7 +293,8 @@ class GenerationQualityIT {
         }
         REPORT.line("").line("Exact verdicts: %d/%d; within one step: %d/%d; median %s per grade.", exact,
                 cases.size(), withinOne, cases.size(), EvalReport.ms(EvalReport.median(millis))).line("");
-        assertThat(exact).as("exact verdicts").isGreaterThanOrEqualTo(cases.size() - 2);
+        // 9/9 when last measured; one miss is allowed for run-to-run variation of the model.
+        assertThat(exact).as("exact verdicts").isGreaterThanOrEqualTo(cases.size() - 1);
         assertThat(withinOne).as("verdicts within one step").isEqualTo(cases.size());
     }
 }

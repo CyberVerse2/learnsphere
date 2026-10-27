@@ -46,8 +46,29 @@ class ReplyParsingTest {
         assertThat(grade("""
                 {"points":[{"point":"a","status":"missing"}],"errors":["e1","e2"],"feedback":"x"}""").score()).isZero();
         assertThat(grade("""
+                {"points":[{"point":"a","status":"covered"},{"point":"b","status":"covered"},{"point":"c","status":"missing"}],
+                 "errors":[],"feedback":"x"}""").score()).isEqualTo(0.67);
+    }
+
+    @Test
+    void aRightStartWithNothingWrongIsPartlyRight() {
+        GradeResult vague = grade("""
+                {"points":[{"point":"a fast hardware cache","status":"partly"},{"point":"avoids the page table","status":"missing"}],
+                 "errors":[],"feedback":"x"}""");
+        assertThat(vague.score()).isEqualTo(0.5);
+        assertThat(vague.verdict()).isEqualTo(GradeResult.Verdict.PARTIAL);
+        GradeResult oneOfThree = grade("""
                 {"points":[{"point":"a","status":"covered"},{"point":"b","status":"missing"},{"point":"c","status":"missing"}],
-                 "errors":[],"feedback":"x"}""").score()).isEqualTo(0.33);
+                 "errors":[],"feedback":"x"}""");
+        assertThat(oneOfThree.verdict()).isEqualTo(GradeResult.Verdict.PARTIAL);
+        // Something wrong, or nothing right, earns no such allowance.
+        GradeResult withAnError = grade("""
+                {"points":[{"point":"a","status":"partly"},{"point":"b","status":"missing"}],
+                 "errors":["says the TLB is on disk"],"feedback":"x"}""");
+        assertThat(withAnError.score()).isZero();
+        assertThat(withAnError.verdict()).isEqualTo(GradeResult.Verdict.INCORRECT);
+        assertThat(grade("""
+                {"points":[{"point":"a","status":"missing"}],"errors":[],"feedback":"x"}""").score()).isZero();
     }
 
     @Test

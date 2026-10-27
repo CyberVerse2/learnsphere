@@ -32,6 +32,9 @@ import org.slf4j.LoggerFactory;
  *   models/rerank/*.gguf
  * </pre>
  *
+ * <p>A model split into parts ({@code <name>-00001-of-00003.gguf} and so on, as {@code llama-gguf-split}
+ * writes them) counts as one model: its first part, which is what llama-server is given.
+ *
  * <p>Model choice: a chat model is available when its files, the server, and the embedding and reranking
  * models exist; the 9B model also needs at least {@value #MIN_GIB_9B} GiB of memory, so it is not offered when
  * memory is unknown.
@@ -50,6 +53,8 @@ public final class ModelCatalog {
     public static final String DEFAULT_EMBEDDING_NAME = "Qwen3-Embedding-0.6B-Q8_0";
 
     private static final Logger LOG = LoggerFactory.getLogger(ModelCatalog.class);
+    /** {@code -00001-of-00003} before {@code .gguf}: one part of a split model. */
+    private static final Pattern SPLIT_PART = Pattern.compile("(?i)-(\\d{5})-of-\\d{5}(?=\\.gguf$)");
     private static final Pattern BUILD_NUMBER = Pattern.compile("(?:^|[^a-z])b(\\d{3,})(?:$|[^0-9])");
 
     /**
@@ -242,11 +247,20 @@ public final class ModelCatalog {
     }
 
     private static Optional<Path> findModel(Path folder) {
-        List<Path> candidates = ggufFiles(folder).stream().filter(p -> !isProjector(p)).toList();
+        List<Path> candidates = ggufFiles(folder).stream()
+                .filter(p -> !isProjector(p))
+                .filter(p -> !isLaterSplitPart(p))
+                .toList();
         if (candidates.size() > 1) {
             LOG.warn("Several models in {}; using {}", folder, candidates.getFirst().getFileName());
         }
         return candidates.stream().findFirst();
+    }
+
+    /** True for the second and later parts of a split model; llama-server finds them from the first. */
+    private static boolean isLaterSplitPart(Path file) {
+        Matcher m = SPLIT_PART.matcher(file.getFileName().toString());
+        return m.find() && Integer.parseInt(m.group(1)) != 1;
     }
 
     private static boolean isProjector(Path file) {
@@ -270,7 +284,7 @@ public final class ModelCatalog {
     }
 
     private static String stem(Path file) {
-        String name = file.getFileName().toString();
+        String name = SPLIT_PART.matcher(file.getFileName().toString()).replaceFirst("");
         int dot = name.lastIndexOf('.');
         return dot > 0 ? name.substring(0, dot) : name;
     }
