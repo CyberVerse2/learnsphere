@@ -194,6 +194,7 @@ class SettingsPageTest {
 
         // Storage: the space used, the folder, a backup.
         robot.interact(() -> settings.scrollTo(Section.STORAGE));
+        waitFor("the index to mark Storage", () -> settings.selectedSection() == Section.STORAGE);
         waitFor("the space used", () -> settings.spaceUsedText().matches("\\d+(\\.\\d)? (bytes|KB|MB)"));
         Node storage = settings.section(Section.STORAGE);
         robot.clickOn(robot.from(storage).lookup("Show in " + SystemFiles.fileManagerName()).queryButton());

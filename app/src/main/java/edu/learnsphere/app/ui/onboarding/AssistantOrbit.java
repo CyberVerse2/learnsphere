@@ -49,6 +49,9 @@ public final class AssistantOrbit extends Region {
     private final Circle sphere = new Circle(SPHERE_RADIUS);
     private final Arc back = new Arc(0, 0, ORBIT_RX, ORBIT_RY, 0, 180);
     private final Arc front = new Arc(0, 0, ORBIT_RX, ORBIT_RY, 180, 180);
+    /** The moon on the far half of the orbit, drawn behind the sphere. */
+    private final Circle moonBehind = new Circle(MOON_RADIUS);
+    /** The moon on the near half, drawn in front of the sphere. */
     private final Circle moon = new Circle(MOON_RADIUS);
     private final StackPane mark = new StackPane();
     private final Group orbit = new Group();
@@ -70,6 +73,7 @@ public final class AssistantOrbit extends Region {
         }
         back.getStyleClass().add("back");
         moon.getStyleClass().add("orbit-moon");
+        moonBehind.getStyleClass().add("orbit-moon");
         mark.getStyleClass().add("orbit-mark");
         mark.setMinSize(SPHERE_RADIUS * 2, SPHERE_RADIUS * 2);
         mark.setMaxSize(SPHERE_RADIUS * 2, SPHERE_RADIUS * 2);
@@ -78,6 +82,8 @@ public final class AssistantOrbit extends Region {
         orbit.getTransforms().add(new Rotate(TILT, 0, 0));
         orbit.setLayoutX(WIDTH / 2);
         orbit.setLayoutY(HEIGHT / 2);
+        // A fixed drawing order; the moon changes sides by showing one of its two circles.
+        orbit.getChildren().setAll(back, moonBehind, sphere, mark, front, moon);
         getChildren().add(orbit);
         angle.addListener((obs, old, value) -> placeMoon());
         travel = new Timeline(
@@ -143,14 +149,20 @@ public final class AssistantOrbit extends Region {
     /** Puts the moon on the orbit at the current angle, behind the sphere on the far half. */
     private void placeMoon() {
         double radians = Math.toRadians(angle.get());
-        moon.setCenterX(ORBIT_RX * Math.cos(radians));
-        moon.setCenterY(-ORBIT_RY * Math.sin(radians));
+        double x = ORBIT_RX * Math.cos(radians);
+        double y = -ORBIT_RY * Math.sin(radians);
         boolean behind = Math.sin(radians) > 0;
-        if (behind) {
-            orbit.getChildren().setAll(back, moon, sphere, mark, front);
-        } else {
-            orbit.getChildren().setAll(back, sphere, mark, front, moon);
+        for (Circle circle : new Circle[] {moon, moonBehind}) {
+            circle.setCenterX(x);
+            circle.setCenterY(y);
         }
+        moonBehind.setVisible(behind);
+        moon.setVisible(!behind);
+    }
+
+    /** Where the moon is drawn, in the drawing's centre-based coordinates, and whether it is behind (tests). */
+    double[] moonPosition() {
+        return new double[] {moon.getCenterX(), moon.getCenterY(), moonBehind.isVisible() ? 1 : 0};
     }
 
     @Override

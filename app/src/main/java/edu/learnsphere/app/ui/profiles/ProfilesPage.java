@@ -34,6 +34,7 @@ import javafx.scene.control.Label;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.SeparatorMenuItem;
+import javafx.scene.control.Tooltip;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.FlowPane;
@@ -240,6 +241,12 @@ public final class ProfilesPage implements View {
         tile.getStyleClass().add("profile-tile");
         if (current) {
             tile.getStyleClass().add("current");
+        }
+        if (profile.displayName().length() > 22) {
+            // Long names are cut short on the tile; the whole name shows on hover.
+            Tooltip full = new Tooltip(profile.displayName());
+            full.setShowDelay(javafx.util.Duration.millis(400));
+            tile.setTooltip(full);
         }
         tile.setAccessibleText(profile.displayName() + (profile.passwordProtected() ? ", has a password" : "")
                 + ", " + detail(profile, current));

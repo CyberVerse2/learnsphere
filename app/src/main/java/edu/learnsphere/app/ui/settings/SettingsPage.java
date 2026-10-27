@@ -107,6 +107,10 @@ public final class SettingsPage extends PageView {
     private SegmentedControl<ThemePreference> theme;
     private ToggleSwitch reduceMotion;
     private ChangeListener<Number> scrollSpy;
+    /** The section chosen in the index, kept selected while the page stays where that choice scrolled it. */
+    private Section pinned;
+    private double pinnedTop = Double.NaN;
+    private boolean spyQueued;
 
     public SettingsPage(AppContext context, Navigator navigator) {
         this(context, navigator, SystemFiles::standard);
@@ -167,8 +171,16 @@ public final class SettingsPage extends PageView {
         }
         Bounds bounds = content.sceneToLocal(target.localToScene(target.getLayoutBounds()));
         double top = Math.max(0, Math.min(bounds.getMinY() - 16, contentHeight - viewport));
+        pinned = section;
+        pinnedTop = top;
         page().setVvalue(top / (contentHeight - viewport));
         select(section);
+    }
+
+    /** The section the index marks (tests). */
+    public Section selectedSection() {
+        return indexItems.entrySet().stream().filter(e -> e.getValue().isSelected()).map(Map.Entry::getKey)
+                .findFirst().orElse(null);
     }
 
     private void render(Data data) {
@@ -218,33 +230,71 @@ public final class SettingsPage extends PageView {
         loadSpaceUsed();
     }
 
-    /** Keeps the index in view while the sections scroll, and marks the section at the top. */
+    /**
+     * Keeps the index in view while the sections scroll, and marks the section at the top. The marking waits
+     * for the layout after a scroll, so it reads where the sections ended up; a section chosen in the index
+     * stays marked until the page moves away from where that choice scrolled it (the last sections can't
+     * reach the top).
+     */
     private void followScroll(HBox body) {
         if (scrollSpy != null) {
             page().vvalueProperty().removeListener(scrollSpy);
         }
         scrollSpy = (obs, old, value) -> {
-            Node content = page().getContent();
-            double contentHeight = content.getLayoutBounds().getHeight();
-            double viewport = page().getViewportBounds().getHeight();
-            double scrollTop = Math.max(0, (contentHeight - viewport) * value.doubleValue());
-            Bounds bodyBounds = content.sceneToLocal(body.localToScene(body.getLayoutBounds()));
-            double maxShift = Math.max(0, bodyBounds.getHeight() - index.getHeight());
-            index.setTranslateY(Math.min(maxShift, Math.max(0, scrollTop - bodyBounds.getMinY() + 16)));
-            Section current = Section.APPEARANCE;
-            for (Map.Entry<Section, Node> entry : sections.entrySet()) {
-                Node card = entry.getValue();
-                Bounds bounds = content.sceneToLocal(card.localToScene(card.getLayoutBounds()));
-                if (bounds.getMinY() <= scrollTop + viewport * 0.3) {
-                    current = entry.getKey();
-                }
+            placeIndex(body);
+            if (!spyQueued) {
+                spyQueued = true;
+                javafx.application.Platform.runLater(() -> {
+                    spyQueued = false;
+                    placeIndex(body);
+                    markSection();
+                });
             }
-            if (value.doubleValue() >= 0.999) {
-                current = Section.ABOUT;
-            }
-            select(current);
         };
         page().vvalueProperty().addListener(scrollSpy);
+    }
+
+    private double scrollTop() {
+        Node content = page().getContent();
+        double contentHeight = content.getLayoutBounds().getHeight();
+        double viewport = page().getViewportBounds().getHeight();
+        return Math.max(0, (contentHeight - viewport) * page().getVvalue());
+    }
+
+    private void placeIndex(HBox body) {
+        Node content = page().getContent();
+        if (body.getScene() == null) {
+            return;
+        }
+        Bounds bodyBounds = content.sceneToLocal(body.localToScene(body.getLayoutBounds()));
+        double maxShift = Math.max(0, bodyBounds.getHeight() - index.getHeight());
+        index.setTranslateY(Math.min(maxShift, Math.max(0, scrollTop() - bodyBounds.getMinY() + 16)));
+    }
+
+    private void markSection() {
+        Node content = page().getContent();
+        double top = scrollTop();
+        if (pinned != null && Math.abs(top - pinnedTop) < 2) {
+            select(pinned);
+            return;
+        }
+        pinned = null;
+        double viewport = page().getViewportBounds().getHeight();
+        Section current = Section.APPEARANCE;
+        for (Map.Entry<Section, Node> entry : sections.entrySet()) {
+            Node card = entry.getValue();
+            if (card.getScene() == null) {
+                continue;
+            }
+            Bounds bounds = content.sceneToLocal(card.localToScene(card.getLayoutBounds()));
+            if (bounds.getMinY() <= top + viewport * 0.3) {
+                current = entry.getKey();
+            }
+        }
+        if (page().getVvalue() >= 0.999) {
+            current = Section.ABOUT;
+        }
+        select(current);
     }
 
     private void select(Section section) {
