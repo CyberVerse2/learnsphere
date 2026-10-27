@@ -1,6 +1,7 @@
 package edu.learnsphere.core.db;
 
 import edu.learnsphere.core.model.Concept;
+import edu.learnsphere.core.model.ItemOrigin;
 import java.time.Clock;
 import java.util.Collection;
 import java.util.HashMap;
@@ -8,10 +9,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import org.jdbi.v3.core.mapper.RowMapper;
 import org.jdbi.v3.core.statement.PreparedBatch;
 
-/** Key concepts of courses and modules. Item tags live in {@link LearningItemRepository}. */
+/**
+ * Key concepts of courses and modules. Item tags live in {@link LearningItemRepository}.
+ *
+ * <p>Each concept also records who wrote it ({@code concepts.origin}, {@link ItemOrigin} codes): concepts
+ * are inserted as {@link ItemOrigin#MANUAL}; the concept extraction marks its own with
+ * {@link #setOrigin}, so extracting again can replace only those ({@link #deleteUnusedExtracted}).
+ */
 public final class ConceptRepository {
 
     static final RowMapper<Concept> CONCEPT = (rs, ctx) -> new Concept(
@@ -105,6 +113,46 @@ public final class ConceptRepository {
     /** Deletes a module's concepts (before extracting them again). Item tags go with them. */
     public int deleteByModule(String moduleId) {
         return db.withHandle(h -> h.createUpdate("DELETE FROM concepts WHERE module_id = :m").bind("m", moduleId).execute());
+    }
+
+    /**
+     * Records who wrote these concepts: {@link ItemOrigin#AI} for concepts the study assistant extracted,
+     * {@link ItemOrigin#MANUAL} once a creator adds or edits one. Returns how many changed.
+     */
+    public int setOrigin(Collection<String> ids, ItemOrigin origin) {
+        Objects.requireNonNull(origin, "origin");
+        if (ids.isEmpty()) {
+            return 0;
+        }
+        return db.withHandle(h -> h.createUpdate("""
+                        UPDATE concepts SET origin = :o, updated_at = :now WHERE id IN (<ids>) AND origin <> :o
+                        """)
+                .bind("o", origin.code()).bindList("ids", List.copyOf(ids)).bind("now", clock.millis())
+                .execute());
+    }
+
+    /** Ids of the module's concepts that the study assistant extracted (origin {@code ai}). */
+    public Set<String> extractedIds(String moduleId) {
+        return Set.copyOf(db.withHandle(h -> h.createQuery("SELECT id FROM concepts WHERE module_id = :m AND origin = 'ai'")
+                .bind("m", moduleId).mapTo(String.class).list()));
+    }
+
+    /**
+     * Deletes the module's extracted concepts (origin {@code ai}) that no item is tagged with, except those in
+     * {@code keepIds}. Concepts a creator wrote or edited are never deleted. Returns how many were deleted.
+     */
+    public int deleteUnusedExtracted(String moduleId, Collection<String> keepIds) {
+        String keep = keepIds.isEmpty() ? "" : " AND id NOT IN (<keep>)";
+        return db.withHandle(h -> {
+            var update = h.createUpdate("""
+                    DELETE FROM concepts WHERE module_id = :m AND origin = 'ai'
+                      AND NOT EXISTS (SELECT 1 FROM item_concepts ic WHERE ic.concept_id = concepts.id)
+                    """ + keep).bind("m", moduleId);
+            if (!keepIds.isEmpty()) {
+                update.bindList("keep", List.copyOf(keepIds));
+            }
+            return update.execute();
+        });
     }
 
     /** Approved items tagged with each concept of a course, keyed by concept id. */
