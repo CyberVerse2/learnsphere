@@ -229,13 +229,19 @@ public final class CourseImporter {
     }
 
     private static void requireImportable(PackageInfo info, boolean allowOlder) {
-        if (info.createdHere()) {
+        requireImportable(info.packageId(), info.versionNumber(), info.existingCourseId(), info.installedVersion(),
+                info.createdHere(), allowOlder);
+    }
+
+    private static void requireImportable(String packageId, int versionNumber, String courseId, Integer installedVersion,
+                                          boolean createdHere, boolean allowOlder) {
+        if (createdHere) {
             throw new ConflictException(SharingMessages.COURSE_MADE_HERE,
-                    "Package " + info.packageId() + " belongs to course " + info.existingCourseId() + " created here");
+                    "Package " + packageId + " belongs to course " + courseId + " created here");
         }
-        if (!allowOlder && info.isOlderThanInstalled()) {
-            throw new ConflictException(SharingMessages.NEWER_VERSION_INSTALLED, "Package version " + info.versionNumber()
-                    + " is older than installed version " + info.installedVersion());
+        if (!allowOlder && installedVersion != null && versionNumber < installedVersion) {
+            throw new ConflictException(SharingMessages.NEWER_VERSION_INSTALLED, "Package version " + versionNumber
+                    + " is older than installed version " + installedVersion);
         }
     }
 
@@ -461,9 +467,8 @@ public final class CourseImporter {
             if (!Objects.equals(existing.map(Course::id).orElse(null), plannedExistingId)) {
                 throw LearnSphereException.unexpected("Course for package " + m.packageId() + " changed during import", null);
             }
-            existing.ifPresent(c -> requireImportable(new PackageInfo(m.packageId(), m.formatVersion(), m.title(), null, null,
-                    m.coverHue(), m.versionNumber(), m.createdAt(), 0, 0, 0, 0, m.isProtected(), c.id(), c.versionNumber(),
-                    c.isCreatedHere()), allowOlder));
+            existing.ifPresent(c -> requireImportable(m.packageId(), m.versionNumber(), c.id(), c.versionNumber(),
+                    c.isCreatedHere(), allowOlder));
 
             CourseInfo info = content.course.course();
             Course course = new Course(courseId, info.title().strip(), info.subtitle(), info.description(), info.authorName(),
@@ -477,8 +482,7 @@ public final class CourseImporter {
             } else {
                 repos.courses().update(course);
             }
-            syncModules(courseId, content, now);
-            syncConcepts(courseId, content, now);
+            int structureChanges = syncModules(courseId, content, now) + syncConcepts(courseId, content, now);
             List<Document> removed = syncDocuments(courseId, content, passages, changed, now);
             ItemChanges items = syncItems(courseId, content, now);
             syncVersion(courseId, content, now);
@@ -486,7 +490,7 @@ public final class CourseImporter {
 
             boolean current = existing.isPresent() && existing.get().versionNumber() == m.versionNumber()
                     && items.added() == 0 && items.updated() == 0 && items.retired() == 0
-                    && removed.isEmpty() && changed.isEmpty();
+                    && removed.isEmpty() && changed.isEmpty() && structureChanges == 0;
             ImportOutcome outcome = existing.isEmpty() ? ImportOutcome.CREATED
                     : current ? ImportOutcome.ALREADY_CURRENT : ImportOutcome.UPDATED;
             ImportResult result = new ImportResult(outcome, courseId, course.title(), m.versionNumber(), items.added(),
@@ -501,11 +505,14 @@ public final class CourseImporter {
         });
     }
 
-    private void syncModules(String courseId, PackageContent content, long now) {
+    /** Brings the course's modules in line with the package; returns how many changed. */
+    private int syncModules(String courseId, PackageContent content, long now) {
         Set<String> wanted = content.modules.stream().map(ModuleData::id).collect(Collectors.toSet());
+        int changes = 0;
         for (CourseModule module : repos.modules().listByCourse(courseId)) {
             if (!wanted.contains(module.id())) {
                 repos.modules().delete(module.id());
+                changes++;
             }
         }
         Map<String, CourseModule> stored = byId(repos.modules().listByCourse(courseId), CourseModule::id);
@@ -515,22 +522,28 @@ public final class CourseImporter {
             CourseModule current = stored.get(d.id());
             if (current == null) {
                 repos.modules().insert(new CourseModule(d.id(), courseId, d.title(), summary, position, now, now));
+                changes++;
             } else if (!current.title().equals(d.title()) || !current.summary().equals(summary)
                     || current.position() != position) {
                 repos.modules().update(new CourseModule(d.id(), courseId, d.title(), summary, position,
                         current.createdAt(), now));
+                changes++;
             }
             position++;
         }
+        return changes;
     }
 
-    private void syncConcepts(String courseId, PackageContent content, long now) {
+    /** Brings the course's concepts in line with the package; returns how many changed. */
+    private int syncConcepts(String courseId, PackageContent content, long now) {
         List<ConceptData> concepts = content.course.concepts();
         Set<String> wanted = concepts.stream().map(ConceptData::id).collect(Collectors.toSet());
         Map<String, Concept> stored = byId(repos.concepts().listByCourse(courseId), Concept::id);
+        int changes = 0;
         for (Concept concept : stored.values()) {
             if (!wanted.contains(concept.id())) {
                 repos.concepts().delete(concept.id());
+                changes++;
             }
         }
         for (ConceptData d : concepts) {
@@ -538,15 +551,19 @@ public final class CourseImporter {
             Concept current = stored.get(d.id());
             if (current == null) {
                 repos.concepts().insert(new Concept(d.id(), courseId, d.moduleId(), d.name(), description, now, now));
+                changes++;
             } else if (!Objects.equals(current.moduleId(), d.moduleId())) {
                 // Concepts cannot move between modules in place; the item tags are set again below.
                 repos.concepts().delete(d.id());
                 repos.concepts().insert(new Concept(d.id(), courseId, d.moduleId(), d.name(), description,
                         current.createdAt(), now));
+                changes++;
             } else if (!current.name().equals(d.name()) || !current.description().equals(description)) {
                 repos.concepts().update(d.id(), d.name(), description);
+                changes++;
             }
         }
+        return changes;
     }
 
     /** Replaces changed documents with their pages and passages, removes missing ones; returns those removed. */

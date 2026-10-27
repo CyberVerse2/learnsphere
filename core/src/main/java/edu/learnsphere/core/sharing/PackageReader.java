@@ -85,6 +85,9 @@ public final class PackageReader implements AutoCloseable {
             size = Files.size(file);
             zip = new ZipFile(file.toFile());
         } catch (ZipException e) {
+            if (looksLikeZip(file)) {
+                throw PackageContent.damaged("Unreadable zip " + file, e);
+            }
             throw new InvalidInputException(SharingMessages.NOT_A_COURSE_FILE, "Not a zip file: " + file, e);
         } catch (IOException e) {
             throw new InvalidInputException(SharingMessages.FILE_NOT_OPENED, "Cannot read " + file, e);
@@ -96,6 +99,16 @@ public final class PackageReader implements AutoCloseable {
         } catch (RuntimeException e) {
             closeQuietly(zip);
             throw e;
+        }
+    }
+
+    /** True when the file starts like a zip archive, so a failure to open it means it is damaged or cut short. */
+    private static boolean looksLikeZip(Path file) {
+        try (InputStream in = Files.newInputStream(file)) {
+            byte[] magic = in.readNBytes(4);
+            return magic.length == 4 && magic[0] == 'P' && magic[1] == 'K' && magic[2] == 3 && magic[3] == 4;
+        } catch (IOException e) {
+            return false;
         }
     }
 
