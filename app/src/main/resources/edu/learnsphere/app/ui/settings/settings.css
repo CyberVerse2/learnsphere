@@ -1,4 +1,8 @@
-/* Settings and the licences dialog. Colours come from the -ls-* tokens of learnsphere.css. */
+/*
+ * Settings and the licences dialog. Colours come from the -ls-* tokens of learnsphere.css; sizes follow the
+ * type roles of DESIGN.md (Title 24 for section titles, Body 14 for rows, Caption 12 for notes) and spacing
+ * stays on its scale (4, 8, 12, 16, 24, 32, 48).
+ */
 
 .settings-body {
     -fx-padding: 8px 0 0 0;
@@ -52,13 +56,15 @@
     -fx-spacing: 0;
 }
 
-.settings-section-title {
-    -fx-font-size: 20px;
+.settings-section-subtitle {
+    -fx-font-size: 14px;
+    -fx-text-fill: -ls-text-muted;
 }
 
-.settings-section-subtitle {
-    -fx-font-size: 13px;
-    -fx-text-fill: -ls-text-muted;
+/* Body role: interface text under each row's title, muted. */
+.settings-row-detail {
+    -fx-font-size: 14px;
+    -fx-line-spacing: 4px;
 }
 
 .settings-section > .hairline {
@@ -66,19 +72,19 @@
 }
 
 .settings-section > .settings-row {
-    -fx-padding: 18px 0 18px 0;
+    -fx-padding: 16px 0 16px 0;
 }
 
 .settings-section > .settings-row:last-child {
-    -fx-padding: 18px 0 0 0;
+    -fx-padding: 16px 0 0 0;
 }
 
 .settings-section > VBox:first-child {
-    -fx-padding: 0 0 18px 0;
+    -fx-padding: 0 0 16px 0;
 }
 
+/* The chosen retention in the Title role (Newsreader 24, from .text-title). */
 .retention-value {
-    -fx-font-size: 22px;
     -fx-text-fill: -ls-text;
 }
 
@@ -103,9 +109,6 @@
     -fx-text-fill: -ls-text-faint;
 }
 
-.about-name {
-    -fx-font-size: 20px;
-}
 
 /* ---- Licences dialog ------------------------------------------------------------------------------ */
 
@@ -128,7 +131,7 @@
 }
 
 .licences {
-    -fx-padding: 20px 16px 20px 0;
+    -fx-padding: 24px 16px 24px 0;
 }
 
 .licences-group-title {
@@ -141,12 +144,12 @@
 }
 
 .licence-use {
-    -fx-font-size: 13px;
+    -fx-font-size: 14px;
     -fx-text-fill: -ls-text-muted;
 }
 
 .licence-licence {
-    -fx-font-size: 13px;
+    -fx-font-size: 12px;
     -fx-text-fill: -ls-text;
 }
 
@@ -162,9 +165,9 @@
 
 .licence-text {
     -fx-font-size: 12px;
-    -fx-line-spacing: 2px;
+    -fx-line-spacing: 4px;
     -fx-text-fill: -ls-text-muted;
     -fx-background-color: -ls-surface-sunken;
     -fx-background-radius: 8px;
-    -fx-padding: 12px 14px 12px 14px;
+    -fx-padding: 12px 16px 12px 16px;
 }

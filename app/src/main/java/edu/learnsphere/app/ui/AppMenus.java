@@ -29,6 +29,9 @@ import javafx.scene.input.KeyCombination;
  * Ctrl elsewhere). On macOS the bar moves into the system menu bar; elsewhere it sits at the top of the
  * window with the {@code in-window} style.
  *
+ * <p>While a form or progress card is open over the window, the items that leave the page are disabled, so
+ * their shortcuts do nothing until it closes.
+ *
  * <ul>
  *   <li>File: Switch profile (Shift+Shortcut+P), Settings (Shortcut+,), Quit (Shortcut+Q, not on macOS,
  *       whose application menu has its own)</li>
@@ -55,14 +58,17 @@ public final class AppMenus {
         if (!systemMenuBar) {
             bar.getStyleClass().add("in-window");
         }
-        BooleanBinding noProfile = Bindings.createBooleanBinding(() -> context.workspace() == null,
-                context.workspaceProperty());
+        // Nothing navigates away under an open form: its work would finish on a page that has gone.
+        BooleanBinding formOpen = Bindings.isNotEmpty(window.overlays().modals().getChildren());
+        BooleanBinding noProfileOrForm = Bindings.createBooleanBinding(() -> context.workspace() == null,
+                context.workspaceProperty()).or(formOpen);
 
         MenuItem switchProfile = item("Switch profile", shortcut(KeyCode.P, true),
                 () -> navigator.navigate(Destination.PROFILES));
+        switchProfile.disableProperty().bind(formOpen);
         MenuItem settings = item("Settings", shortcut(KeyCode.COMMA, false),
                 () -> navigator.navigate(Destination.SETTINGS));
-        settings.disableProperty().bind(noProfile);
+        settings.disableProperty().bind(noProfileOrForm);
         Menu file = new Menu("File");
         file.getItems().addAll(switchProfile, new SeparatorMenuItem(), settings);
         if (!systemMenuBar) {
@@ -82,11 +88,11 @@ public final class AppMenus {
                         () -> navigator.navigate(new Destination.Study(SessionRequest.studyNext()))));
         go.getItems().forEach(menuItem -> {
             if (!(menuItem instanceof SeparatorMenuItem)) {
-                menuItem.disableProperty().bind(noProfile);
+                menuItem.disableProperty().bind(noProfileOrForm);
             }
         });
         MenuItem back = item("Back", shortcut(KeyCode.OPEN_BRACKET, false), navigator::back);
-        back.disableProperty().bind(navigator.canGoBackProperty().not());
+        back.disableProperty().bind(navigator.canGoBackProperty().not().or(formOpen));
         go.getItems().addAll(new SeparatorMenuItem(), back);
 
         Menu appearance = new Menu("Appearance");
@@ -102,8 +108,10 @@ public final class AppMenus {
         Menu view = new Menu("View");
         view.getItems().addAll(appearance, reduceMotion);
         if (context.isDemo()) {
-            view.getItems().addAll(new SeparatorMenuItem(), item("Components", shortcut(KeyCode.G, true),
-                    () -> navigator.navigate(Destination.GALLERY)));
+            MenuItem gallery = item("Components", shortcut(KeyCode.G, true),
+                    () -> navigator.navigate(Destination.GALLERY));
+            gallery.disableProperty().bind(formOpen);
+            view.getItems().addAll(new SeparatorMenuItem(), gallery);
         }
 
         bar.getMenus().addAll(file, go, view);

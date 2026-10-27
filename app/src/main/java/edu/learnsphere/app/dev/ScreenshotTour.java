@@ -15,6 +15,7 @@ import edu.learnsphere.app.ui.profiles.UnlockPage;
 import edu.learnsphere.app.ui.settings.LicencesDialog;
 import edu.learnsphere.app.ui.settings.SettingsPage;
 import edu.learnsphere.app.ui.study.StudyPage;
+import edu.learnsphere.core.AppPaths;
 import edu.learnsphere.core.events.AssistantStatusChanged;
 import edu.learnsphere.core.model.Citation;
 import edu.learnsphere.core.service.AssistantStatus;
@@ -307,6 +308,12 @@ public final class ScreenshotTour {
             } catch (Throwable ignored) {
                 // The toolkit never started.
             }
+        }
+        try {
+            // The demo profiles were made for this tour alone.
+            TemporaryHome.deleteIfTemporary(AppPaths.resolve());
+        } catch (RuntimeException e) {
+            System.err.println("Could not delete the tour's app home: " + e.getMessage());
         }
         System.exit(status);
     }

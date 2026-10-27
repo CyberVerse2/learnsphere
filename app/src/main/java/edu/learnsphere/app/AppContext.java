@@ -190,10 +190,13 @@ public final class AppContext implements AutoCloseable {
      *
      * @param password the password (wiped afterwards), or null for a profile without one
      * @throws InvalidInputException with {@link UserMessage#WRONG_PASSWORD} when the password is wrong
+     * @throws IllegalStateException when the app is quitting ({@link #close()} has started): nothing opens
      */
     public synchronized Workspace open(String profileId, char[] password) {
         Objects.requireNonNull(profileId, "profileId");
         try {
+            // An open queued just before quitting must not start a profile (and its assistant) afterwards.
+            requireNotClosed(profileId);
             if (openWorkspace != null && openWorkspace.profile().id().equals(profileId)) {
                 return openWorkspace;
             }
@@ -206,6 +209,11 @@ public final class AppContext implements AutoCloseable {
             closeWorkspace();
             long started = System.nanoTime();
             Workspace opened = profiles.open(profileId, password == null ? null : password.clone());
+            if (closed.get()) {
+                // Quitting began while it opened (close() waits for this lock, but not every caller does).
+                opened.close();
+                requireNotClosed(profileId);
+            }
             openWorkspace = opened;
             LOG.info("Opened profile {} in {} ms", profileId, (System.nanoTime() - started) / 1_000_000);
             try {
@@ -283,6 +291,12 @@ public final class AppContext implements AutoCloseable {
     /** True once {@link #close()} has run. */
     public boolean isClosed() {
         return closed.get();
+    }
+
+    private void requireNotClosed(String profileId) {
+        if (closed.get()) {
+            throw new IllegalStateException("The app is quitting; not opening profile " + profileId);
+        }
     }
 
     /**

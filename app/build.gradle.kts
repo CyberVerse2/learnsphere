@@ -87,6 +87,8 @@ tasks.register<JavaExec>("screenshots") {
     systemProperty("learnsphere.demo", "true")
     // -Pshots=settings,profiles renders only the shots whose names start with those words.
     systemProperty("learnsphere.shots", providers.gradleProperty("shots").getOrElse(""))
+    // The home below is made for this run; the tour deletes it when it ends.
+    systemProperty("learnsphere.temporaryHome", "true")
     val outputDir = layout.buildDirectory.dir("screenshots")
     outputs.dir(outputDir)
     outputs.upToDateWhen { false }
@@ -108,6 +110,8 @@ tasks.register<JavaExec>("realRun") {
     // -Pruntime=/path/to/runtime; the project's own runtime folder otherwise.
     systemProperty("learnsphere.runtime",
         providers.gradleProperty("runtime").getOrElse(rootProject.layout.projectDirectory.dir("runtime").asFile.absolutePath))
+    // The home below is made for this run; the run deletes it once every step passed (kept for its logs otherwise).
+    systemProperty("learnsphere.temporaryHome", "true")
     val outputDir = layout.buildDirectory.dir("real-run")
     outputs.dir(outputDir)
     outputs.upToDateWhen { false }

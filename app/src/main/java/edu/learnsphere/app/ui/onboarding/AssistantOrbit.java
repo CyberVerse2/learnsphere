@@ -26,31 +26,36 @@ import org.kordamp.ikonli.javafx.FontIcon;
 
 /**
  * The study assistant's readiness drawn in the orbit language of the course covers: a sphere with a tilted
- * orbit and one moon. While it gets ready the moon travels the orbit, dimmed on the far side as it passes
- * behind the sphere (so it never disappears); when it is ready the moon comes to rest and the sphere shows a check; when it can't run the moon
- * stops and the sphere shows a warning. With reduced motion the moon rests and only the sphere changes.
+ * orbit and one moon. While it gets ready the moon travels the orbit, smaller and dimmer on the far side,
+ * where the sphere hides it as it passes behind; when it is ready the moon comes to rest in front and the
+ * sphere shows a check; when it can't run the moon stops and the sphere shows a warning. With reduced motion
+ * the moon rests and only the sphere changes.
  * Style classes: {@code assistant-orbit} plus {@code starting}, {@code ready} or {@code unavailable}; parts
  * {@code orbit-sphere}, {@code orbit-line}, {@code orbit-moon}, {@code orbit-mark}.
  */
 public final class AssistantOrbit extends Region {
 
     /** Width and height of the drawing. */
-    public static final double WIDTH = 104;
-    public static final double HEIGHT = 72;
+    public static final double WIDTH = 136;
+    public static final double HEIGHT = 96;
 
-    private static final double SPHERE_RADIUS = 20;
-    private static final double ORBIT_RX = 42;
-    private static final double ORBIT_RY = 12;
-    private static final double MOON_RADIUS = 4.5;
+    private static final double SPHERE_RADIUS = 26;
+    private static final double ORBIT_RX = 56;
+    private static final double ORBIT_RY = 16;
+    private static final double MOON_RADIUS = 6;
+    /** On the far side the moon is further away, so it looks smaller. */
+    private static final double FAR_MOON_RADIUS = 4.5;
     private static final double TILT = -14;
     /** Where the moon rests: on the near side, to the right of the sphere. */
     private static final double REST_ANGLE = 322;
+    /** One trip round the orbit, unhurried. */
+    private static final double PERIOD_MS = 3000;
 
     private final Circle sphere = new Circle(SPHERE_RADIUS);
     private final Arc back = new Arc(0, 0, ORBIT_RX, ORBIT_RY, 0, 180);
     private final Arc front = new Arc(0, 0, ORBIT_RX, ORBIT_RY, 180, 180);
-    /** The moon on the far half of the orbit: dimmed, and drawn over the sphere so it stays in sight. */
-    private final Circle moonBehind = new Circle(MOON_RADIUS);
+    /** The moon on the far half of the orbit: smaller, dimmer, and drawn behind the sphere. */
+    private final Circle moonBehind = new Circle(FAR_MOON_RADIUS);
     /** The moon on the near half, drawn in front of the sphere. */
     private final Circle moon = new Circle(MOON_RADIUS);
     private final StackPane mark = new StackPane();
@@ -83,12 +88,13 @@ public final class AssistantOrbit extends Region {
         orbit.setLayoutX(WIDTH / 2);
         orbit.setLayoutY(HEIGHT / 2);
         // A fixed drawing order; the moon changes sides by showing one of its two circles.
-        orbit.getChildren().setAll(back, sphere, mark, moonBehind, front, moon);
+        orbit.getChildren().setAll(back, moonBehind, sphere, mark, front, moon);
         getChildren().add(orbit);
         angle.addListener((obs, old, value) -> placeMoon());
+        // The moon sets off from its resting place along the near side, so it is in view as it starts.
         travel = new Timeline(
-                new KeyFrame(Duration.ZERO, new KeyValue(angle, 0, Interpolator.LINEAR)),
-                new KeyFrame(Duration.millis(2400), new KeyValue(angle, 360, Interpolator.LINEAR)));
+                new KeyFrame(Duration.ZERO, new KeyValue(angle, 360, Interpolator.LINEAR)),
+                new KeyFrame(Duration.millis(PERIOD_MS), new KeyValue(angle, 0, Interpolator.LINEAR)));
         travel.setCycleCount(Animation.INDEFINITE);
         sceneProperty().addListener((obs, old, scene) -> animate());
         Motion.reduceMotionProperty().addListener(new WeakChangeListener<>(motionListener));
@@ -129,7 +135,7 @@ public final class AssistantOrbit extends Region {
     }
 
     private static FontIcon icon(Feather glyph) {
-        FontIcon icon = Icons.of(glyph, 18);
+        FontIcon icon = Icons.of(glyph, 22);
         icon.getStyleClass().add("orbit-icon");
         return icon;
     }
@@ -137,7 +143,7 @@ public final class AssistantOrbit extends Region {
     private void animate() {
         boolean move = state == AssistantState.STARTING && getScene() != null && !Motion.reduced();
         if (move && travel.getStatus() != Animation.Status.RUNNING) {
-            travel.playFrom(Duration.millis(2400 * REST_ANGLE / 360));
+            travel.playFrom(Duration.millis(PERIOD_MS * (360 - REST_ANGLE) / 360));
         } else if (!move && travel.getStatus() == Animation.Status.RUNNING) {
             travel.stop();
         }
@@ -146,7 +152,7 @@ public final class AssistantOrbit extends Region {
         }
     }
 
-    /** Puts the moon on the orbit at the current angle, dimmed on the far half. */
+    /** Puts the moon on the orbit at the current angle, smaller and dimmer on the far half. */
     private void placeMoon() {
         double radians = Math.toRadians(angle.get());
         double x = ORBIT_RX * Math.cos(radians);

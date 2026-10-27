@@ -4,20 +4,27 @@ import edu.learnsphere.app.AppContext;
 import edu.learnsphere.app.ui.SystemFiles;
 import edu.learnsphere.app.ui.UiTasks;
 import edu.learnsphere.app.ui.components.FormDialog;
+import edu.learnsphere.app.ui.components.Overlays;
 import edu.learnsphere.app.ui.components.Toasts;
+import edu.learnsphere.core.error.InvalidInputException;
 import edu.learnsphere.core.error.UserMessage;
 import edu.learnsphere.core.service.ProfileSummary;
 import java.nio.file.Path;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import javafx.beans.Observable;
 import javafx.beans.binding.Bindings;
 import javafx.beans.binding.BooleanBinding;
 import javafx.scene.Node;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.TextField;
+import javafx.scene.control.TextInputControl;
 import javafx.stage.Window;
 
 /**
@@ -25,6 +32,10 @@ import javafx.stage.Window;
  * change or remove its password; back it up to one file; restore a backup as another profile; delete it
  * after typing its name. Changes to the open profile show at once in the sidebar and the window title.
  * The profile choice and Settings share these forms. FX thread.
+ *
+ * <p>A profile with a password that is not the open one asks for that password before it is edited, backed
+ * up or deleted, so nobody without it can rename, copy or remove it. The notices these actions leave go to
+ * the window rather than the page they started on, which may have been replaced by the time the work ends.
  */
 public final class ProfileActions {
 
@@ -45,19 +56,28 @@ public final class ProfileActions {
 
     /** Edits the name and avatar colour; {@code after} gets the saved profile. */
     public FormDialog.Handle edit(ProfileSummary profile, Node anchor, Consumer<ProfileSummary> after) {
+        Node window = window(anchor);
         TextField name = new TextField(profile.displayName());
         name.getStyleClass().add("profile-name-field");
         AvatarPicker colours = new AvatarPicker(profile.avatarHue());
         colours.setName(profile.displayName());
         name.textProperty().addListener((obs, old, text) -> colours.setName(text));
+        PasswordField password = passwordFieldFor(profile);
+        List<Node> fields = new ArrayList<>(List.of(FormDialog.field("Name", name),
+                FormDialog.field("Avatar colour", colours)));
+        if (password != null) {
+            fields.add(FormDialog.field("This profile's password", password));
+        }
         return FormDialog.of("Edit profile")
-                .content(FormDialog.field("Name", name), FormDialog.field("Avatar colour", colours))
+                .content(fields.toArray(Node[]::new))
                 .confirm("Save changes")
-                .confirmEnabled(Bindings.createBooleanBinding(() -> !name.getText().isBlank(), name.textProperty()))
+                .confirmEnabled(whenever(() -> !name.getText().isBlank() && filledOrAbsent(password), name, password))
                 .action(() -> {
                     String chosen = name.getText().strip();
                     int hue = colours.getHue();
+                    char[] secret = password == null ? null : take(password);
                     return () -> {
+                        requirePassword(profile, secret);
                         ProfileSummary saved = profile;
                         if (!chosen.equals(profile.displayName())) {
                             saved = context.profiles().rename(profile.id(), chosen);
@@ -69,14 +89,15 @@ public final class ProfileActions {
                         return saved;
                     };
                 }, saved -> {
-                    Toasts.success(anchor, "Changes saved");
+                    Toasts.success(window, "Changes saved");
                     after.accept(saved);
                 })
-                .show(anchor);
+                .show(window);
     }
 
     /** Adds a password to a profile without one. */
     public FormDialog.Handle addPassword(ProfileSummary profile, Node anchor, Consumer<ProfileSummary> after) {
+        Node window = window(anchor);
         PasswordField password = new PasswordField();
         PasswordField again = new PasswordField();
         return FormDialog.of("Add a password")
@@ -94,14 +115,15 @@ public final class ProfileActions {
                         return saved;
                     };
                 }, saved -> {
-                    Toasts.success(anchor, "Password added");
+                    Toasts.success(window, "Password added");
                     after.accept(saved);
                 })
-                .show(anchor);
+                .show(window);
     }
 
     /** Changes the password of a protected profile (the current one first). */
     public FormDialog.Handle changePassword(ProfileSummary profile, Node anchor, Consumer<ProfileSummary> after) {
+        Node window = window(anchor);
         PasswordField current = new PasswordField();
         PasswordField password = new PasswordField();
         PasswordField again = new PasswordField();
@@ -120,14 +142,15 @@ public final class ProfileActions {
                         return saved;
                     };
                 }, saved -> {
-                    Toasts.success(anchor, "Password changed");
+                    Toasts.success(window, "Password changed");
                     after.accept(saved);
                 })
-                .show(anchor);
+                .show(window);
     }
 
     /** Removes the password of a protected profile, after the current one. */
     public FormDialog.Handle removePassword(ProfileSummary profile, Node anchor, Consumer<ProfileSummary> after) {
+        Node window = window(anchor);
         PasswordField current = new PasswordField();
         return FormDialog.of("Remove the password?")
                 .message("Anyone who uses this computer can then open this profile.")
@@ -142,31 +165,53 @@ public final class ProfileActions {
                         return saved;
                     };
                 }, saved -> {
-                    Toasts.success(anchor, "Password removed");
+                    Toasts.success(window, "Password removed");
                     after.accept(saved);
                 })
-                .show(anchor);
+                .show(window);
     }
 
     /**
      * Asks where to save a backup of {@code profile}, then saves it while a progress card shows. Works whether
-     * or not the profile is open.
+     * or not the profile is open; a protected profile that isn't open asks for its password first.
      */
     public void backup(ProfileSummary profile, Node anchor) {
-        Window owner = anchor.getScene() == null ? null : anchor.getScene().getWindow();
+        Node window = window(anchor);
+        PasswordField password = passwordFieldFor(profile);
+        if (password == null) {
+            chooseAndBackUp(profile, window);
+            return;
+        }
+        FormDialog.of("Back up " + profile.displayName())
+                .message("Enter this profile's password to save a copy of it.")
+                .content(FormDialog.field("Password", password))
+                .confirm("Continue")
+                .confirmEnabled(filled(password))
+                .action(() -> {
+                    char[] secret = take(password);
+                    return () -> {
+                        requirePassword(profile, secret);
+                        return true;
+                    };
+                }, checked -> chooseAndBackUp(profile, window))
+                .show(window);
+    }
+
+    private void chooseAndBackUp(ProfileSummary profile, Node window) {
+        Window owner = window.getScene() == null ? null : window.getScene().getWindow();
         String suggested = safeFileName(profile.displayName()) + " backup " + LocalDate.now(context.clock()) + ".zip";
         files.get().chooseSave(owner, "Back up profile", suggested, BACKUP_KIND, "zip").ifPresent(zip -> {
-            FormDialog.Handle progress = FormDialog.progress(anchor, "Backing up " + profile.displayName(),
+            FormDialog.Handle progress = FormDialog.progress(window, "Backing up " + profile.displayName(),
                     "Saving the courses, PDFs and progress in this profile. This can take a minute when there are many PDFs.");
             UiTasks.run(() -> {
                 context.profiles().backup(profile.id(), zip);
                 return zip;
             }, saved -> {
                 progress.close();
-                Toasts.success(anchor, "Backup saved");
+                Toasts.success(window, "Backup saved");
             }, message -> {
                 progress.close();
-                Toasts.error(anchor, message);
+                Toasts.error(window, message);
             });
         });
     }
@@ -176,29 +221,32 @@ public final class ProfileActions {
      * restored profile.
      */
     public void restore(Node anchor, Consumer<ProfileSummary> after) {
-        Window owner = anchor.getScene() == null ? null : anchor.getScene().getWindow();
-        files.get().chooseOpen(owner, "Restore a profile", BACKUP_KIND, "zip").ifPresent(zip -> restore(zip, anchor, after));
+        Node window = window(anchor);
+        Window owner = window.getScene() == null ? null : window.getScene().getWindow();
+        files.get().chooseOpen(owner, "Restore a profile", BACKUP_KIND, "zip").ifPresent(zip -> restore(zip, window, after));
     }
 
     /** Restores the backup {@code zip} as another profile while a progress card shows. */
     public void restore(Path zip, Node anchor, Consumer<ProfileSummary> after) {
-        FormDialog.Handle progress = FormDialog.progress(anchor, "Restoring a profile",
+        Node window = window(anchor);
+        FormDialog.Handle progress = FormDialog.progress(window, "Restoring a profile",
                 "Adding its courses, PDFs and progress to this computer.");
         UiTasks.run(() -> context.profiles().restore(zip), restored -> {
             progress.close();
-            Toasts.success(anchor, "Profile restored");
+            Toasts.success(window, "Profile restored");
             after.accept(restored);
         }, message -> {
             progress.close();
-            Toasts.error(anchor, message);
+            Toasts.error(window, message);
         });
     }
 
     /**
-     * Deletes {@code profile} once its name is typed. The open profile can't be deleted: the form says so and
-     * offers to close it instead, after which {@code closed} runs.
+     * Deletes {@code profile} once its name is typed (and its password, when it has one). The open profile can't
+     * be deleted: the form says so and offers to close it instead, after which {@code closed} runs.
      */
     public FormDialog.Handle delete(ProfileSummary profile, Node anchor, Runnable deleted, Runnable closed) {
+        Node window = window(anchor);
         if (profile.id().equals(context.openProfileId())) {
             return FormDialog.of("Delete " + profile.displayName() + "?")
                     .message(PROFILE_OPEN.text())
@@ -207,32 +255,90 @@ public final class ProfileActions {
                         context.closeWorkspace();
                         return true;
                     }, ignored -> closed.run())
-                    .show(anchor);
+                    .show(window);
         }
         TextField typed = new TextField();
         typed.setPromptText(profile.displayName());
         typed.getStyleClass().add("delete-confirm-field");
-        BooleanBinding nameTyped = Bindings.createBooleanBinding(
-                () -> typed.getText().strip().equalsIgnoreCase(profile.displayName().strip()), typed.textProperty());
+        PasswordField password = passwordFieldFor(profile);
+        BooleanBinding ready = whenever(() -> typed.getText().strip().equalsIgnoreCase(profile.displayName().strip())
+                && filledOrAbsent(password), typed, password);
+        List<Node> fields = new ArrayList<>(List.of(FormDialog.field("Type the profile's name to confirm", typed)));
+        if (password != null) {
+            fields.add(FormDialog.field("This profile's password", password));
+        }
         return FormDialog.of("Delete " + profile.displayName() + "?")
                 .message("Its courses, PDFs and progress are removed from this computer. This can't be undone.")
-                .content(FormDialog.field("Type the profile's name to confirm", typed))
+                .content(fields.toArray(Node[]::new))
                 .confirm("Delete profile")
                 .danger()
-                .confirmEnabled(nameTyped)
-                .action(() -> () -> {
-                    context.profiles().delete(profile.id());
-                    return true;
+                .confirmEnabled(ready)
+                .action(() -> {
+                    char[] secret = password == null ? null : take(password);
+                    return () -> {
+                        requirePassword(profile, secret);
+                        context.profiles().delete(profile.id());
+                        return true;
+                    };
                 }, ignored -> {
-                    Toasts.success(anchor, "Profile deleted");
+                    Toasts.success(window, "Profile deleted");
                     deleted.run();
                 })
-                .show(anchor);
+                .show(window);
+    }
+
+    /**
+     * The window's own layer for forms and notices: unlike the page that started an action, it is still there
+     * when the action ends.
+     */
+    private static Node window(Node anchor) {
+        return Overlays.find(anchor).host();
+    }
+
+    /** A field for the profile's password when one is needed to act on it; null when it isn't. */
+    private PasswordField passwordFieldFor(ProfileSummary profile) {
+        if (!profile.passwordProtected() || profile.id().equals(context.openProfileId())) {
+            return null;
+        }
+        PasswordField password = new PasswordField();
+        password.getStyleClass().add("profile-password-check");
+        return password;
+    }
+
+    /**
+     * Checks {@code password} (wiped afterwards) against the profile's; does nothing when it is null (no
+     * password needed). Blocking.
+     *
+     * @throws InvalidInputException with {@link UserMessage#WRONG_PASSWORD} when it is wrong
+     */
+    private void requirePassword(ProfileSummary profile, char[] password) {
+        if (password == null) {
+            return;
+        }
+        boolean right;
+        try {
+            right = context.profiles().checkPassword(profile.id(), password.clone());
+        } finally {
+            Arrays.fill(password, '\0');
+        }
+        if (!right) {
+            throw new InvalidInputException(UserMessage.WRONG_PASSWORD, "Wrong password for profile " + profile.id());
+        }
+    }
+
+    /** {@code check}, worked out again whenever one of the (non-null) {@code fields} changes. */
+    private static BooleanBinding whenever(BooleanSupplier check, TextInputControl... fields) {
+        return Bindings.createBooleanBinding(check::getAsBoolean, Arrays.stream(fields).filter(Objects::nonNull)
+                .map(TextInputControl::textProperty).toArray(Observable[]::new));
+    }
+
+    private static boolean filledOrAbsent(PasswordField password) {
+        return password == null || !password.getText().isEmpty();
     }
 
     private static BooleanBinding filled(PasswordField... fields) {
         return Bindings.createBooleanBinding(() -> Arrays.stream(fields).noneMatch(f -> f.getText().isEmpty()),
-                Arrays.stream(fields).map(PasswordField::textProperty).toArray(javafx.beans.Observable[]::new));
+                Arrays.stream(fields).map(PasswordField::textProperty).toArray(Observable[]::new));
     }
 
     private static boolean matches(PasswordField password, PasswordField again) {

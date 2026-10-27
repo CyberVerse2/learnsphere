@@ -98,6 +98,20 @@ class AppContextTest {
         assertThat(app.context().openProfileId()).isNull();
     }
 
+    @Test
+    void nothingOpensOnceQuittingHasBegun() {
+        app = RealWorkspaces.at(dir, assistant);
+        AppContext context = app.context();
+        ProfileSummary ada = context.profiles().create(new ProfileDraft("Ada", 210, null));
+        context.close();
+
+        // An open queued just before quitting runs afterwards: it must not start the profile or its assistant.
+        assertThatThrownBy(() -> context.open(ada.id(), null)).isInstanceOf(IllegalStateException.class);
+        assertThat(context.openLastProfile()).isEmpty();
+        assertThat(context.openProfileId()).isNull();
+        assertThat(assistant.starts()).isZero();
+    }
+
     private static void published(AppContext context, Workspace workspace) {
         RealWorkspaces.await(() -> context.workspace() == workspace, Duration.ofSeconds(10), "the profile to show");
     }

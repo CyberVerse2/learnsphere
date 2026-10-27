@@ -36,7 +36,8 @@ import javax.imageio.ImageIO;
  * assistant to be ready, renders Home and the assistant settings to PNG, then quits as the app does and checks
  * that no study assistant process is left. Prints the timings and exits with 0 when every step passed. Usage:
  * {@code RealRun <output folder>} (run through {@code ./gradlew :app:realRun}, which sets the app home and
- * {@code learnsphere.runtime}).
+ * {@code learnsphere.runtime}). A home the build made for the run ({@link TemporaryHome}) is deleted when every
+ * step passed; after a failure it is kept for its logs and its path is printed.
  */
 public final class RealRun {
 
@@ -71,7 +72,26 @@ public final class RealRun {
                 // The toolkit never started.
             }
         }
+        cleanUp(status == 0);
         System.exit(status);
+    }
+
+    /** Deletes the run's own home once every step passed (no process is left using it); keeps it otherwise. */
+    private static void cleanUp(boolean passed) {
+        AppPaths paths = AppPaths.resolve();
+        if (!TemporaryHome.isTemporary()) {
+            return;
+        }
+        if (!passed) {
+            report("home_kept", paths.home() + " (for its logs)");
+            return;
+        }
+        try {
+            TemporaryHome.deleteIfTemporary(paths);
+            report("home_deleted", !Files.exists(paths.home()));
+        } catch (RuntimeException e) {
+            report("home_deleted", "false: " + e.getMessage());
+        }
     }
 
     private static boolean run(Path out) throws Exception {

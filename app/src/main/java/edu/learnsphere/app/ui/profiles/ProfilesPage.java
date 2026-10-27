@@ -224,18 +224,19 @@ public final class ProfilesPage implements View {
         name.setWrapText(true);
         name.setMaxWidth(TILE_WIDTH - 32);
         name.setTextAlignment(javafx.scene.text.TextAlignment.CENTER);
-        name.setAlignment(Pos.CENTER);
+        // From the top, so a name on two lines starts level with the names beside it.
+        name.setAlignment(Pos.TOP_CENTER);
         name.setMnemonicParsing(false);
         Label meta = new Label(detail(profile, current));
         meta.getStyleClass().addAll("text-caption", "profile-tile-meta");
-        HBox metaLine = new HBox(5, meta);
+        HBox metaLine = new HBox(4, meta);
         metaLine.setAlignment(Pos.CENTER);
         if (profile.passwordProtected()) {
             var lock = Icons.of(Feather.LOCK, 12);
             lock.getStyleClass().add("profile-lock");
             metaLine.getChildren().addFirst(lock);
         }
-        VBox box = new VBox(10, avatar, name, metaLine);
+        VBox box = new VBox(12, avatar, name, metaLine);
         box.setAlignment(Pos.TOP_CENTER);
         Button tile = new Button(null, box);
         tile.getStyleClass().add("profile-tile");
@@ -314,7 +315,7 @@ public final class ProfilesPage implements View {
         circle.setMaxSize(72, 72);
         Label label = new Label("Add a profile");
         label.getStyleClass().add("profile-tile-name");
-        VBox box = new VBox(10, circle, label);
+        VBox box = new VBox(12, circle, label);
         box.setAlignment(Pos.TOP_CENTER);
         Button add = new Button(null, box);
         add.getStyleClass().addAll("profile-tile", "add");

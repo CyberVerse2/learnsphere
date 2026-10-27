@@ -53,6 +53,10 @@ public final class OnboardingPage implements View {
         WELCOME, PROFILE, ASSISTANT
     }
 
+    /** What still works when the study assistant can't run on this computer (onboarding and Settings say it). */
+    public static final String WITHOUT_ASSISTANT = "You can still study, practise and follow your progress. Asking "
+            + "questions and making practice questions need the study assistant.";
+
     /** Avatar colours offered, as hues. */
     public static final List<Integer> AVATAR_HUES = AvatarPicker.COLOURS.stream().map(AvatarPicker.Colour::hue).toList();
 
@@ -113,7 +117,13 @@ public final class OnboardingPage implements View {
             colours.setName(text);
             profileError.setText("");
         });
-        password.textProperty().addListener((obs, old, text) -> profileError.setText(""));
+        password.textProperty().addListener((obs, old, text) -> {
+            profileError.setText("");
+            if (text.isEmpty()) {
+                // No password, nothing to confirm: the hidden confirmation must not keep an old one.
+                again.clear();
+            }
+        });
         again.textProperty().addListener((obs, old, text) -> profileError.setText(""));
         profileError.getStyleClass().add("onboarding-error");
         profileError.setWrapText(true);
@@ -232,7 +242,7 @@ public final class OnboardingPage implements View {
 
     private Node welcome() {
         SphereArt art = SphereArt.cover(SphereArt.ACCENT_HUE);
-        art.setPrefSize(448, 200);
+        art.setPrefSize(456, 200);
         art.setMinHeight(200);
         art.setCornerRadius(10);
         Label title = new Label("Welcome to LearnSphere");
@@ -268,7 +278,8 @@ public final class OnboardingPage implements View {
         confirm.visibleProperty().bind(password.textProperty().isNotEmpty());
         confirm.managedProperty().bind(confirm.visibleProperty());
 
-        Button create = new Button("Create profile");
+        // Once the profile exists (an earlier open failed), the button opens it rather than making another.
+        Button create = new Button(createdProfileId == null ? "Create profile" : "Continue");
         create.getStyleClass().addAll("primary", "large");
         create.setDefaultButton(true);
         create.disableProperty().bind(name.textProperty().map(String::isBlank));
@@ -283,7 +294,7 @@ public final class OnboardingPage implements View {
         VBox fields = new VBox(16, FormDialog.field("Name", name), FormDialog.field("Password (optional)", password),
                 confirm, FormDialog.field("Avatar colour", colours));
         fields.getStyleClass().add("onboarding-fields");
-        VBox box = new VBox(new VBox(6, overline, title, body), fields, profileError, actions);
+        VBox box = new VBox(new VBox(8, overline, title, body), fields, profileError, actions);
         box.getStyleClass().addAll("onboarding-step-body", "profile");
         Platform.runLater(name::requestFocus);
         return box;
@@ -302,7 +313,8 @@ public final class OnboardingPage implements View {
         if (displayName.isEmpty()) {
             return;
         }
-        if (!password.getText().equals(again.getText())) {
+        boolean withPassword = !password.getText().isEmpty();
+        if (withPassword && !password.getText().equals(again.getText())) {
             // Clearing the field clears the sentence too, so the sentence comes after.
             again.clear();
             profileError.setText(ProfileActions.PASSWORDS_DIFFER.text());
@@ -310,12 +322,12 @@ public final class OnboardingPage implements View {
             return;
         }
         int hue = colours.getHue();
-        char[] secret = password.getText().isEmpty() ? null : password.getText().toCharArray();
+        char[] secret = withPassword ? password.getText().toCharArray() : null;
         // Creating the profile wipes its copy of the password; opening it needs its own.
         char[] forOpening = secret == null ? null : secret.clone();
         create.disableProperty().unbind();
         create.setDisable(true);
-        name.setDisable(true);
+        lockProfileFields(true);
         disposer.add(UiTasks.run(() -> {
             if (createdProfileId == null) {
                 createdProfileId = context.profiles().create(new ProfileDraft(displayName, hue, secret)).id();
@@ -332,10 +344,22 @@ public final class OnboardingPage implements View {
                 show(Step.ASSISTANT);
             }
         }, message -> {
-            name.setDisable(false);
+            if (createdProfileId != null) {
+                // The profile exists as it was typed: trying again opens it, so its fields stay as they are.
+                create.setText("Try again");
+            } else {
+                lockProfileFields(false);
+            }
             create.disableProperty().bind(name.textProperty().map(String::isBlank));
             profileError.setText(message.text());
         }));
+    }
+
+    private void lockProfileFields(boolean locked) {
+        name.setDisable(locked);
+        password.setDisable(locked);
+        again.setDisable(locked);
+        colours.setDisable(locked);
     }
 
     private Node assistant() {
@@ -344,8 +368,8 @@ public final class OnboardingPage implements View {
         Label title = new Label("Meet your study assistant");
         title.getStyleClass().add("text-title");
         title.setWrapText(true);
-        Label body = new Label("It answers your questions from your own PDFs, showing the page each answer comes "
-                + "from, and writes practice questions for you to check.");
+        Label body = new Label("It answers your questions from your own PDFs and shows the page each answer comes "
+                + "from. It also writes practice questions for you to check.");
         body.getStyleClass().add("onboarding-body");
         body.setWrapText(true);
 
@@ -384,7 +408,7 @@ public final class OnboardingPage implements View {
         } else {
             showStatus(AssistantStatus.starting(null));
         }
-        VBox box = new VBox(new VBox(6, overline, title, body), status, privacy, finish);
+        VBox box = new VBox(new VBox(8, overline, title, body), status, privacy, finish);
         box.getStyleClass().addAll("onboarding-step-body", "assistant");
         Platform.runLater(finish::requestFocus);
         return box;
@@ -397,8 +421,7 @@ public final class OnboardingPage implements View {
             case STARTING -> "The first time can take a minute. You can start now: it keeps getting ready while "
                     + "you look around.";
             case READY -> "Ask it about your PDFs whenever you like.";
-            case UNAVAILABLE -> "You can still study, practise and follow your progress. Asking questions and "
-                    + "making practice questions need the study assistant.";
+            case UNAVAILABLE -> WITHOUT_ASSISTANT;
             case FAILED -> "You can still study, practise and follow your progress while it's stopped.";
         });
         boolean canRestart = status.state() == AssistantState.FAILED;

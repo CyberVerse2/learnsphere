@@ -1,6 +1,7 @@
 package edu.learnsphere.app.acceptance;
 
 import static edu.learnsphere.app.testing.TestWindows.current;
+import static edu.learnsphere.app.testing.TestWindows.fx;
 import static edu.learnsphere.app.testing.TestWindows.settle;
 import static edu.learnsphere.app.testing.TestWindows.texts;
 import static edu.learnsphere.app.testing.TestWindows.waitFor;
@@ -210,6 +211,29 @@ class T01FirstRunTest {
         robot.clickOn("Back");
         assertThat(onboarding.step()).isEqualTo(OnboardingPage.Step.WELCOME);
         assertThat(app.context().profiles().list()).isEmpty();
+    }
+
+    @Test
+    void clearingThePasswordMakesAProfileWithoutOne(FxRobot robot) {
+        app = RealWorkspaces.at(dir, new GatedRuntime());
+        window = TestWindows.show(robot, stage, app.context(), new RecordingFiles());
+        OnboardingPage onboarding = current(window, OnboardingPage.class);
+        robot.clickOn("Get started");
+        robot.clickOn(onboarding.nameField()).write("Ada Lovelace");
+        robot.clickOn(onboarding.passwordField()).write("lamp");
+        robot.clickOn(onboarding.confirmField()).write("lamp");
+
+        // Changing their mind: no password after all. The hidden confirmation doesn't keep the old one.
+        robot.interact(() -> onboarding.passwordField().clear());
+        assertThat(fx(() -> onboarding.confirmField().getText())).isEmpty();
+        assertThat(texts(robot, ".field-label")).doesNotContain("Type the password again");
+        robot.clickOn("Create profile");
+        settle();
+
+        assertThat(onboarding.profileErrorText()).isEmpty();
+        assertThat(onboarding.step()).isEqualTo(OnboardingPage.Step.ASSISTANT);
+        assertThat(app.context().profiles().list()).singleElement()
+                .satisfies(profile -> assertThat(profile.passwordProtected()).isFalse());
     }
 
     @Test

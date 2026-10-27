@@ -17,10 +17,14 @@ import edu.learnsphere.app.ui.components.Skeleton;
 import edu.learnsphere.app.ui.components.StatusPill;
 import edu.learnsphere.app.ui.components.Toasts;
 import edu.learnsphere.app.ui.components.Tone;
+import edu.learnsphere.app.ui.onboarding.OnboardingPage;
 import edu.learnsphere.app.ui.profiles.ProfileActions;
+import edu.learnsphere.ai.runtime.HardwareProbe;
+import edu.learnsphere.ai.runtime.ModelCatalog;
 import edu.learnsphere.core.events.AssistantStatusChanged;
 import edu.learnsphere.core.profile.AppPreferences;
 import edu.learnsphere.core.service.AppSettings;
+import edu.learnsphere.core.service.AssistantState;
 import edu.learnsphere.core.service.AssistantStatus;
 import edu.learnsphere.core.service.ModelOption;
 import edu.learnsphere.core.service.ProfileSummary;
@@ -34,6 +38,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 import javafx.beans.value.ChangeListener;
@@ -45,6 +51,7 @@ import javafx.scene.control.Label;
 import javafx.scene.control.RadioButton;
 import javafx.scene.control.Slider;
 import javafx.scene.control.Spinner;
+import javafx.scene.control.SpinnerValueFactory;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.layout.HBox;
@@ -57,7 +64,8 @@ import javafx.scene.layout.VBox;
  * Appearance (system, light or dark, and reduce motion) for the whole app; Study (how well to remember,
  * session length, new questions per day); the Study assistant (readiness, restart, how it answers, and
  * describing figures in PDFs); the Profile (name, colour, password, switching); Storage (where the profile is
- * kept, the space it uses, backing it up); and About (version and licences). Every change applies at once.
+ * kept, the space it uses, backing it up); and About (version and licences). Every change applies at once,
+ * and quick changes to one setting are stored in the order they were made (the last one wins).
  */
 public final class SettingsPage extends PageView {
 
@@ -89,15 +97,18 @@ public final class SettingsPage extends PageView {
     private static final double INDEX_WIDTH = 176;
 
     private record Data(AppPreferences preferences, AppSettings settings, AssistantStatus assistant,
-                        List<ModelOption> models) {
+                        List<ModelOption> models, HardwareProbe.Hardware hardware) {
     }
+
+    /** What this computer offers; it doesn't change while the app runs. */
+    private static volatile HardwareProbe.Hardware computer;
 
     private final Supplier<SystemFiles> files;
     private final ProfileActions actions;
     private final Map<Section, Node> sections = new LinkedHashMap<>();
     private final Map<Section, ToggleButton> indexItems = new LinkedHashMap<>();
     private final ToggleGroup indexGroup = new ToggleGroup();
-    private final VBox index = new VBox(2);
+    private final VBox index = new VBox(4);
     private final VBox modelChoices = new VBox(12);
     private final StatusPill assistantPill = new StatusPill(StatusPill.Status.WORKING, "Getting ready");
     private final Label assistantMessage = new Label();
@@ -107,6 +118,14 @@ public final class SettingsPage extends PageView {
     private SegmentedControl<ThemePreference> theme;
     private ToggleSwitch reduceMotion;
     private ChangeListener<Number> scrollSpy;
+    /** The latest save asked for, per setting; an older save that hasn't run yet is skipped. */
+    private final Map<String, Long> latestSave = new ConcurrentHashMap<>();
+    private final AtomicLong saveSequence = new AtomicLong();
+    private final Object saveLock = new Object();
+    private AssistantState assistantState = AssistantState.STARTING;
+    private HardwareProbe.Hardware hardware;
+    /** True while a refused choice of how it answers is put back, so putting it back saves nothing. */
+    private boolean revertingModel;
     /** The section chosen in the index, kept selected while the page stays where that choice scrolled it. */
     private Section pinned;
     private double pinnedTop = Double.NaN;
@@ -131,7 +150,7 @@ public final class SettingsPage extends PageView {
     @Override
     public void onShown() {
         load(() -> new Data(context.preferences().get(), workspace().settings().current(),
-                workspace().assistant().status(), workspace().assistant().modelOptions()), this::render);
+                workspace().assistant().status(), workspace().assistant().modelOptions(), computer()), this::render);
         on(AssistantStatusChanged.class, event -> {
             showAssistant(event.status());
             run(() -> workspace().assistant().modelOptions(), this::showModels, message -> { });
@@ -183,7 +202,17 @@ public final class SettingsPage extends PageView {
                 .findFirst().orElse(null);
     }
 
+    private static HardwareProbe.Hardware computer() {
+        HardwareProbe.Hardware found = computer;
+        if (found == null) {
+            found = HardwareProbe.probe();
+            computer = found;
+        }
+        return found;
+    }
+
     private void render(Data data) {
+        hardware = data.hardware();
         sections.clear();
         sections.put(Section.APPEARANCE, appearance(data.preferences()));
         sections.put(Section.STUDY, study(data.settings()));
@@ -311,13 +340,14 @@ public final class SettingsPage extends PageView {
         theme.setValue(preferences.theme());
         theme.valueProperty().addListener((obs, old, value) -> {
             if (value != null) {
-                savePreferences(p -> p.withTheme(value));
+                savePreferences("theme", p -> p.withTheme(value));
             }
         });
         theme.setAccessibleText("Theme");
         reduceMotion = new ToggleSwitch();
         reduceMotion.setSelected(preferences.reduceMotion());
-        reduceMotion.selectedProperty().addListener((obs, old, on) -> savePreferences(p -> p.withReduceMotion(on)));
+        reduceMotion.selectedProperty().addListener((obs, old, on) ->
+                savePreferences("reduceMotion", p -> p.withReduceMotion(on)));
         reduceMotion.setAccessibleText("Reduce motion");
         return section(Section.APPEARANCE, "For every profile on this computer.",
                 row("Theme", "Match your computer, or always use light or dark.", theme),
@@ -345,7 +375,7 @@ public final class SettingsPage extends PageView {
         retention.setAccessibleText("How well to remember");
         retention.getStyleClass().add("retention-slider");
         Label value = new Label();
-        value.getStyleClass().add("retention-value");
+        value.getStyleClass().addAll("text-title", "retention-value");
         value.setMinWidth(Region.USE_PREF_SIZE);
         Chip recommended = new Chip("Recommended", Tone.ACCENT);
         Label meaning = new Label();
@@ -371,7 +401,7 @@ public final class SettingsPage extends PageView {
                 saveSetting(SettingKeys.DESIRED_RETENTION, round(retention.getValue()));
             }
         });
-        HBox valueLine = new HBox(10, value, recommended);
+        HBox valueLine = new HBox(12, value, recommended);
         valueLine.setAlignment(Pos.CENTER_LEFT);
         VBox control = new VBox(8, valueLine, retention);
         control.setMinWidth(Region.USE_PREF_SIZE);
@@ -382,7 +412,7 @@ public final class SettingsPage extends PageView {
                 + "more reviews and a stronger memory, or lower for fewer reviews.");
         detail.getStyleClass().add("settings-row-detail");
         detail.setWrapText(true);
-        VBox text = new VBox(3, title, detail, meaning);
+        VBox text = new VBox(4, title, detail, meaning);
         HBox.setHgrow(text, Priority.ALWAYS);
         HBox retentionRow = new HBox(32, text, control);
         retentionRow.setAlignment(Pos.CENTER_LEFT);
@@ -419,7 +449,8 @@ public final class SettingsPage extends PageView {
         spinner.setAccessibleText(name);
         spinner.getStyleClass().add("settings-spinner");
         spinner.valueProperty().addListener((obs, old, chosen) -> {
-            if (chosen != null && !chosen.equals(old)) {
+            // A typed number outside the range shows up here before the spinner brings it back inside.
+            if (chosen != null && !chosen.equals(old) && chosen >= min && chosen <= max) {
                 saveSetting(key, chosen);
             }
         });
@@ -432,10 +463,15 @@ public final class SettingsPage extends PageView {
         return spinner;
     }
 
-    private static void commit(Spinner<Integer> spinner) {
+    /** Takes the typed number, brought inside the spinner's range (a number too large becomes its largest). */
+    static void commit(Spinner<Integer> spinner) {
         String text = spinner.getEditor().getText();
         try {
-            spinner.getValueFactory().setValue(Integer.valueOf(text.strip()));
+            int typed = Integer.parseInt(text.strip());
+            if (spinner.getValueFactory() instanceof SpinnerValueFactory.IntegerSpinnerValueFactory range) {
+                typed = Math.max(range.getMin(), Math.min(range.getMax(), typed));
+            }
+            spinner.getValueFactory().setValue(typed);
         } catch (NumberFormatException e) {
             spinner.getEditor().setText(String.valueOf(spinner.getValue()));
         }
@@ -473,7 +509,7 @@ public final class SettingsPage extends PageView {
         Label choiceDetail = new Label("Changing this restarts the study assistant, which takes a moment.");
         choiceDetail.getStyleClass().add("settings-row-detail");
         choiceDetail.setWrapText(true);
-        VBox choice = new VBox(14, new VBox(3, choiceTitle, choiceDetail), modelChoices);
+        VBox choice = new VBox(16, new VBox(4, choiceTitle, choiceDetail), modelChoices);
         choice.getStyleClass().add("settings-row");
 
         ToggleSwitch figures = new ToggleSwitch();
@@ -487,6 +523,7 @@ public final class SettingsPage extends PageView {
     }
 
     private void showAssistant(AssistantStatus status) {
+        assistantState = status.state();
         assistantPill.set(switch (status.state()) {
             case READY -> StatusPill.Status.READY;
             case STARTING -> StatusPill.Status.WORKING;
@@ -504,24 +541,26 @@ public final class SettingsPage extends PageView {
     }
 
     private void showModels(List<ModelOption> options) {
+        // While it can't run on this computer there is nothing to choose: the options only say what each is.
+        boolean canRun = assistantState != AssistantState.UNAVAILABLE;
         ToggleGroup group = new ToggleGroup();
         List<Node> rows = new ArrayList<>();
-        ModelChoice recommended = options.stream().filter(ModelOption::recommended).map(ModelOption::choice)
-                .findFirst().orElse(null);
+        ModelChoice recommended = canRun ? options.stream().filter(ModelOption::recommended).map(ModelOption::choice)
+                .findFirst().orElse(null) : null;
         for (ModelOption option : options) {
             RadioButton button = new RadioButton(modelLabel(option.choice()));
             button.setToggleGroup(group);
             button.setSelected(option.selected());
-            button.setDisable(!option.available() && !option.selected());
+            button.setDisable(!canRun || (!option.available() && !option.selected()));
             button.setUserData(option.choice());
             button.getStyleClass().add("model-option");
             button.setMnemonicParsing(false);
-            Label detail = new Label(modelDetail(option, recommended));
+            Label detail = new Label(modelDetail(option, recommended, canRun ? hardware : null));
             detail.getStyleClass().addAll("settings-row-detail", "model-option-detail");
             detail.setWrapText(true);
             HBox head = new HBox(8, button);
             head.setAlignment(Pos.CENTER_LEFT);
-            if (option.recommended()) {
+            if (canRun && option.recommended()) {
                 head.getChildren().add(new Chip("Best fit here", Tone.ACCENT));
             }
             VBox row = new VBox(4, head, detail);
@@ -533,7 +572,7 @@ public final class SettingsPage extends PageView {
             rows.add(row);
         }
         group.selectedToggleProperty().addListener((obs, old, selected) -> {
-            if (selected == null) {
+            if (selected == null || revertingModel) {
                 return;
             }
             ModelChoice choice = (ModelChoice) selected.getUserData();
@@ -543,23 +582,32 @@ public final class SettingsPage extends PageView {
             }, saved -> { }, message -> {
                 Toasts.error(page(), message);
                 if (old != null) {
-                    old.setSelected(true);
+                    revertingModel = true;
+                    try {
+                        old.setSelected(true);
+                    } finally {
+                        revertingModel = false;
+                    }
                 }
             });
         });
         modelChoices.getChildren().setAll(rows);
     }
 
-    /** The name of a way of answering, as people see it. */
     /** The line under the status: once ready, which way it answers; otherwise the status's own sentence. */
     static String statusLine(AssistantStatus status) {
         ModelChoice model = status.activeModel();
         if (status.isReady() && model != null && model != ModelChoice.AUTO) {
             return "Giving " + modelLabel(model).toLowerCase(Locale.ROOT) + " answers.";
         }
+        if (status.state() == AssistantState.UNAVAILABLE) {
+            // The pill already says it can't run here; say what still works.
+            return OnboardingPage.WITHOUT_ASSISTANT;
+        }
         return status.message().text();
     }
 
+    /** The name of a way of answering, as people see it. */
     static String modelLabel(ModelChoice choice) {
         return switch (choice) {
             case AUTO -> "Automatic";
@@ -568,15 +616,32 @@ public final class SettingsPage extends PageView {
         };
     }
 
-    /** What a way of answering does and needs, and whether this computer has it. */
-    static String modelDetail(ModelOption option, ModelChoice recommended) {
+    /**
+     * What a way of answering does and needs, and, when this computer can't use it, why: not enough memory, or
+     * not included with the app.
+     *
+     * @param recommended what Automatic picks here, or null to leave it unnamed
+     * @param computer    what this computer offers, or null while the study assistant can't run at all (the
+     *                    options then only say what each one is)
+     */
+    static String modelDetail(ModelOption option, ModelChoice recommended, HardwareProbe.Hardware computer) {
         String base = switch (option.choice()) {
             case AUTO -> recommended == null ? "Picks the best fit for this computer."
                     : "Picks the best fit for this computer: " + modelLabel(recommended) + ".";
             case CHAT_4B -> "Fast answers that run well on most computers.";
-            case CHAT_9B -> "More careful answers, a little slower. Needs 12 GB of memory or more; best with 16 GB.";
+            case CHAT_9B -> "More careful answers, a little slower. Needs " + ModelCatalog.MIN_GIB_9B
+                    + " GB of memory or more; best with " + ModelCatalog.RECOMMEND_GIB_9B + " GB.";
         };
-        return option.available() ? base : base + " Not available on this computer.";
+        if (option.available() || computer == null || option.choice() == ModelChoice.AUTO) {
+            return base;
+        }
+        if (option.choice() == ModelChoice.CHAT_9B && !computer.memoryKnown()) {
+            return base + " Not available on this computer.";
+        }
+        if (option.choice() == ModelChoice.CHAT_9B && !computer.hasAtLeastGib(ModelCatalog.MIN_GIB_9B)) {
+            return base + " This computer has " + Math.round(computer.totalMemoryGib()) + " GB.";
+        }
+        return base + " Not included in this copy of LearnSphere.";
     }
 
     // ---- Profile ---------------------------------------------------------------------------------------
@@ -599,7 +664,7 @@ public final class SettingsPage extends PageView {
         name.setMnemonicParsing(false);
         Label detail = new Label(profile.passwordProtected() ? "Has a password" : "No password");
         detail.getStyleClass().add("settings-row-detail");
-        VBox text = new VBox(2, name, detail);
+        VBox text = new VBox(4, name, detail);
         HBox.setHgrow(text, Priority.ALWAYS);
         Button edit = new Button("Edit profile");
         edit.getStyleClass().add("small");
@@ -694,14 +759,28 @@ public final class SettingsPage extends PageView {
     // ---- Shared ----------------------------------------------------------------------------------------
 
     private <T> void saveSetting(SettingKey<T> key, T value) {
-        run(() -> {
-            workspace().settings().set(key, value);
-            return null;
-        }, ignored -> { }, message -> Toasts.error(page(), message));
+        saveInOrder("setting:" + key.key(), () -> workspace().settings().set(key, value));
     }
 
-    private void savePreferences(UnaryOperator<AppPreferences> change) {
-        run(() -> context.preferences().update(change), ignored -> { }, message -> Toasts.error(page(), message));
+    private void savePreferences(String name, UnaryOperator<AppPreferences> change) {
+        saveInOrder("preference:" + name, () -> context.preferences().update(change));
+    }
+
+    /**
+     * Saves in the background, latest wins: saves run one at a time, and a save of {@code name} that a newer
+     * one has replaced before it ran is skipped, so dragging 20 → 25 → 30 never ends up stored as 25.
+     */
+    private void saveInOrder(String name, Runnable write) {
+        long sequence = saveSequence.incrementAndGet();
+        latestSave.put(name, sequence);
+        run(() -> {
+            synchronized (saveLock) {
+                if (latestSave.get(name) == sequence) {
+                    write.run();
+                }
+            }
+            return null;
+        }, ignored -> { }, message -> Toasts.error(page(), message));
     }
 
     private static Node section(Section section, String subtitle, Node... rows) {
@@ -732,7 +811,7 @@ public final class SettingsPage extends PageView {
         Label sub = new Label(detail);
         sub.getStyleClass().add("settings-row-detail");
         sub.setWrapText(true);
-        VBox text = new VBox(3, label, sub);
+        VBox text = new VBox(4, label, sub);
         HBox.setHgrow(text, Priority.ALWAYS);
         HBox row = new HBox(32, text, control);
         row.setAlignment(Pos.CENTER_LEFT);

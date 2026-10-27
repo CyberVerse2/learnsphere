@@ -146,7 +146,7 @@ public final class UnlockPage implements View {
         switchProfile.getStyleClass().addAll("quiet", "unlock-switch");
         switchProfile.setOnAction(event -> navigator.navigate(Destination.PROFILES));
 
-        HBox heading = new HBox(10, name, working);
+        HBox heading = new HBox(12, name, working);
         heading.setAlignment(Pos.CENTER);
         VBox text = new VBox(8, heading, prompt);
         text.setAlignment(Pos.CENTER);

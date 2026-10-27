@@ -1,7 +1,10 @@
-/* First run and adding a profile (full screen). Card and step dots live in learnsphere.css. */
+/*
+ * First run and adding a profile (full screen). Card and step dots live in learnsphere.css. Sizes follow the
+ * type roles of DESIGN.md (Heading 15, Body 14, Caption 12) and spacing stays on its scale.
+ */
 
 .onboarding-card {
-    -fx-padding: 32px 36px 32px 36px;
+    -fx-padding: 32px;
 }
 
 .onboarding-step-body {
@@ -18,7 +21,7 @@
 
 .onboarding-body {
     -fx-font-size: 14px;
-    -fx-line-spacing: 3px;
+    -fx-line-spacing: 4px;
     -fx-text-fill: -ls-text-muted;
     -fx-padding: 4px 0 0 0;
 }
@@ -33,7 +36,7 @@
 }
 
 .onboarding-error {
-    -fx-font-size: 13px;
+    -fx-font-size: 14px;
     -fx-text-fill: -ls-danger-text;
 }
 
@@ -45,7 +48,7 @@
 .onboarding-status {
     -fx-background-color: -ls-surface-sunken;
     -fx-background-radius: 12px;
-    -fx-padding: 16px 20px 16px 12px;
+    -fx-padding: 16px 24px 16px 16px;
 }
 
 .onboarding-status-title {
@@ -54,8 +57,8 @@
 }
 
 .onboarding-status-detail {
-    -fx-font-size: 13px;
-    -fx-line-spacing: 2px;
+    -fx-font-size: 14px;
+    -fx-line-spacing: 4px;
     -fx-text-fill: -ls-text-muted;
 }
 
@@ -64,8 +67,8 @@
 }
 
 .onboarding-privacy {
-    -fx-font-size: 13px;
-    -fx-line-spacing: 2px;
+    -fx-font-size: 14px;
+    -fx-line-spacing: 4px;
     -fx-text-fill: -ls-text-muted;
 }
 
@@ -77,21 +80,23 @@
 
 .assistant-orbit .orbit-line {
     -fx-fill: transparent;
-    -fx-stroke: -ls-border-strong;
-    -fx-stroke-width: 1.25px;
+    -fx-stroke: -ls-illo-line;
+    -fx-stroke-width: 1.5px;
 }
 
+/* The far half of the orbit, behind the sphere. */
 .assistant-orbit .orbit-line.back {
-    -fx-stroke: -ls-border;
+    -fx-opacity: 0.55;
 }
 
 /* While it gets ready the orbit takes the accent, so the travelling moon reads as progress. */
 .assistant-orbit.starting .orbit-line {
-    -fx-stroke: -ls-accent-muted;
+    -fx-stroke: -ls-accent;
+    -fx-opacity: 0.55;
 }
 
 .assistant-orbit.starting .orbit-line.back {
-    -fx-stroke: -ls-border-strong;
+    -fx-opacity: 0.3;
 }
 
 .assistant-orbit .orbit-sphere {
@@ -104,9 +109,9 @@
     -fx-fill: -ls-accent;
 }
 
-/* On the far side the moon is seen through the sphere, so the travelling moon never vanishes. */
+/* On the far side the moon is further away: dimmer, and hidden while it passes behind the sphere. */
 .assistant-orbit .orbit-moon.far {
-    -fx-opacity: 0.4;
+    -fx-opacity: 0.6;
 }
 
 .assistant-orbit .orbit-icon {

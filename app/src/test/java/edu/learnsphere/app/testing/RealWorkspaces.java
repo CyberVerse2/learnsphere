@@ -11,6 +11,7 @@ import edu.learnsphere.core.service.Workspace;
 import edu.learnsphere.core.service.impl.WorkspaceImpl;
 import edu.learnsphere.core.spi.AiCapabilities;
 import edu.learnsphere.core.spi.AiRuntime;
+import edu.learnsphere.core.spi.Embedder;
 import edu.learnsphere.pdf.testing.TestPdf;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -90,6 +91,22 @@ public final class RealWorkspaces implements AutoCloseable {
     public static RealWorkspaces at(Path dir, AiRuntime runtime) {
         FakeAi fakes = FakeAi.create();
         return new RealWorkspaces(dir, fakes, withRuntime(fakes, runtime), Clock.systemDefaultZone());
+    }
+
+    /**
+     * The app over the home under {@code dir} as it is, with nothing open (as after quitting and starting
+     * again), and {@code ai} as every AI capability: build it from {@link FakeAi#capabilities()} with the parts
+     * a test controls swapped in. {@link #fakeAi()} is then an unused set of fakes.
+     */
+    public static RealWorkspaces at(Path dir, AiCapabilities ai) {
+        return new RealWorkspaces(dir, FakeAi.create(), ai, Clock.systemDefaultZone());
+    }
+
+    /** The fakes' capabilities with {@code embedder} making passages searchable. */
+    public static AiCapabilities withEmbedder(FakeAi fakes, Embedder embedder) {
+        AiCapabilities base = fakes.capabilities();
+        return new AiCapabilities(base.runtime(), embedder, base.reranker(), base.answerer(), base.conceptExtractor(),
+                base.itemGenerator(), base.supportChecker(), base.grader(), base.pageReader(), base.figureDescriber());
     }
 
     /** The fakes' capabilities with {@code runtime} as the study assistant. */

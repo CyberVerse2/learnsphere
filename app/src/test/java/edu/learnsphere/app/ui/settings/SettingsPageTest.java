@@ -8,6 +8,7 @@ import static edu.learnsphere.app.testing.TestWindows.waitFor;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import atlantafx.base.controls.ToggleSwitch;
+import edu.learnsphere.ai.runtime.HardwareProbe;
 import edu.learnsphere.app.testing.GatedRuntime;
 import edu.learnsphere.app.testing.RealWorkspaces;
 import edu.learnsphere.app.testing.RecordingFiles;
@@ -16,6 +17,7 @@ import edu.learnsphere.app.ui.Destination;
 import edu.learnsphere.app.ui.MainWindow;
 import edu.learnsphere.app.ui.SystemFiles;
 import edu.learnsphere.app.ui.settings.SettingsPage.Section;
+import edu.learnsphere.core.service.ModelOption;
 import edu.learnsphere.core.service.ProfileDraft;
 import edu.learnsphere.core.service.SettingKeys;
 import edu.learnsphere.core.service.ThemePreference;
@@ -24,6 +26,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Optional;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
 import javafx.scene.control.RadioButton;
@@ -154,7 +157,9 @@ class SettingsPageTest {
         assertThat(options).extracting(RadioButton::getText).containsExactly("Automatic", "Quick", "Thorough");
         assertThat(options.get(0).isSelected()).isTrue();
         assertThat(options.get(2).isDisabled()).isTrue();
-        assertThat(texts(robot, ".model-option-detail")).anyMatch(text -> text.endsWith("Not available on this computer."));
+        // Thorough isn't in this runtime: the reason is the true one for this computer.
+        assertThat(texts(robot, ".model-option-detail")).anyMatch(text -> text.endsWith(
+                "Not included in this copy of LearnSphere.") || text.matches(".* This computer has \\d+ GB\\."));
         assertThat(texts(robot, ".chip")).contains("Best fit here");
 
         robot.clickOn(options.get(1));
@@ -227,14 +232,85 @@ class SettingsPageTest {
         assertThat(SettingsPage.retentionMeaning(0.9)).isEqualTo("You'll remember about 9 in 10 questions when they come back.");
         assertThat(SettingsPage.retentionMeaning(0.97)).isEqualTo("You'll remember about 97 in 100 questions when they come back.");
         assertThat(SettingsPage.modelLabel(ModelChoice.CHAT_9B)).isEqualTo("Thorough");
-        assertThat(SettingsPage.modelDetail(new edu.learnsphere.core.service.ModelOption(ModelChoice.AUTO, true, false, true),
-                ModelChoice.CHAT_4B)).isEqualTo("Picks the best fit for this computer: Quick.");
-        assertThat(SettingsPage.modelDetail(new edu.learnsphere.core.service.ModelOption(ModelChoice.CHAT_9B, false, false, false),
-                ModelChoice.CHAT_4B)).endsWith("Needs 12 GB of memory or more; best with 16 GB. Not available on this computer.");
+        ModelOption automatic = new ModelOption(ModelChoice.AUTO, true, false, true);
+        ModelOption thorough = new ModelOption(ModelChoice.CHAT_9B, false, false, false);
+        assertThat(SettingsPage.modelDetail(automatic, ModelChoice.CHAT_4B, computer(24)))
+                .isEqualTo("Picks the best fit for this computer: Quick.");
+        assertThat(SettingsPage.modelDetail(automatic, null, null)).isEqualTo("Picks the best fit for this computer.");
+        // Unavailable for want of memory, or because it didn't come with the app, or for a reason unknown.
+        assertThat(SettingsPage.modelDetail(thorough, ModelChoice.CHAT_4B, computer(8)))
+                .isEqualTo("More careful answers, a little slower. Needs 12 GB of memory or more; best with 16 GB. "
+                        + "This computer has 8 GB.");
+        assertThat(SettingsPage.modelDetail(thorough, ModelChoice.CHAT_4B, computer(24)))
+                .endsWith("best with 16 GB. Not included in this copy of LearnSphere.");
+        assertThat(SettingsPage.modelDetail(thorough, ModelChoice.CHAT_4B, computer(0)))
+                .endsWith("best with 16 GB. Not available on this computer.");
+        assertThat(SettingsPage.modelDetail(thorough, null, null)).as("while it can't run at all")
+                .endsWith("best with 16 GB.");
         assertThat(SettingsPage.themeLabel(ThemePreference.SYSTEM)).isEqualTo("Match computer");
         assertThat(SettingsPage.statusLine(edu.learnsphere.core.service.AssistantStatus.ready(ModelChoice.CHAT_9B)))
                 .isEqualTo("Giving thorough answers.");
         assertThat(SettingsPage.statusLine(edu.learnsphere.core.service.AssistantStatus.unavailable()))
-                .isEqualTo("Your study assistant can't run on this computer.");
+                .isEqualTo("You can still study, practise and follow your progress. Asking questions and making "
+                        + "practice questions need the study assistant.");
+    }
+
+    @Test
+    void whenTheAssistantCantRunHereThereIsNothingToChoose(FxRobot robot) {
+        GatedRuntime assistant = new GatedRuntime();
+        app = RealWorkspaces.at(dir, assistant);
+        String id = app.context().profiles().create(new ProfileDraft("Ada Lovelace", 210, null)).id();
+        app.context().open(id, null);
+        RealWorkspaces.await(() -> app.context().workspace() != null, Duration.ofSeconds(10), "the profile");
+        SettingsPage settings = open(robot);
+        Node section = settings.section(Section.ASSISTANT);
+        assistant.release();
+        waitFor("ready", () -> texts(robot, ".status-pill-label").contains("Ready"));
+        assertThat(robot.from(section).lookup(".chip").queryAll()).as("the best fit is named").isNotEmpty();
+
+        assistant.unavailable();
+        waitFor("can't run", () -> texts(robot, ".status-pill-label").contains("Can't run here"));
+        settle();
+        assertThat(texts(robot, ".settings-row-detail")).contains("You can still study, practise and follow your "
+                + "progress. Asking questions and making practice questions need the study assistant.");
+        assertThat(robot.from(section).lookup(".chip").queryAll()).as("no best fit").isEmpty();
+        assertThat(texts(robot, ".model-option-detail")).contains("Picks the best fit for this computer.")
+                .noneMatch(text -> text.contains("Not included") || text.contains(": Quick"));
+        assertThat(robot.from(section).lookup(".model-option").queryAllAs(RadioButton.class))
+                .allMatch(RadioButton::isDisabled);
+        assertThat(robot.from(section).lookup("Restart").tryQuery().filter(TestWindows::shown)).isEmpty();
+    }
+
+    @Test
+    void quickChangesAreStoredInOrderAndTypedNumbersStayInRange(FxRobot robot) {
+        app = RealWorkspaces.open(dir);
+        SettingsPage settings = open(robot);
+        @SuppressWarnings("unchecked")
+        List<Spinner<Integer>> spinners = robot.from(settings.section(Section.STUDY)).lookup(".spinner")
+                .queryAllAs(Spinner.class).stream().map(s -> (Spinner<Integer>) s).toList();
+        Spinner<Integer> perDay = spinners.get(1);
+
+        // Twelve quick steps: the last one is what's kept, whatever order the saves ran in.
+        robot.interact(() -> {
+            for (int step = 0; step < 12; step++) {
+                perDay.increment();
+            }
+        });
+        int last = fx(perDay::getValue);
+        settle();
+        assertThat(app.workspace().settings().get(SettingKeys.NEW_ITEMS_PER_DAY)).isEqualTo(last);
+
+        // A number past the largest becomes the largest, with nothing to complain about.
+        robot.clickOn(perDay.getEditor());
+        robot.interact(() -> perDay.getEditor().selectAll());
+        robot.write("500").type(KeyCode.TAB);
+        settle();
+        assertThat(fx(perDay::getValue)).isEqualTo(200);
+        assertThat(app.workspace().settings().get(SettingKeys.NEW_ITEMS_PER_DAY)).isEqualTo(200);
+        assertThat(texts(robot, ".toast-message")).isEmpty();
+    }
+
+    private static HardwareProbe.Hardware computer(int gigabytes) {
+        return new HardwareProbe.Hardware(Optional.empty(), gigabytes * HardwareProbe.GIB, 8);
     }
 }

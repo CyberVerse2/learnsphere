@@ -1,4 +1,7 @@
-/* Profile choice and unlock (full screen). Tile basics live in learnsphere.css; colours are -ls-* tokens. */
+/*
+ * Profile choice and unlock (full screen). Tile basics live in learnsphere.css; colours are -ls-* tokens and
+ * text sizes follow the type roles of DESIGN.md (Body 14 for actions and messages).
+ */
 
 .profiles-page {
     -fx-padding: 24px 32px 24px 32px;
@@ -56,16 +59,16 @@
 }
 
 .profiles-status {
-    -fx-font-size: 13px;
+    -fx-font-size: 14px;
     -fx-text-fill: -ls-danger-text;
 }
 
 .restore-button {
-    -fx-font-size: 13px;
+    -fx-font-size: 14px;
 }
 
 .full-screen-back {
-    -fx-font-size: 13px;
+    -fx-font-size: 14px;
 }
 
 .profile-menu .danger-item > .label {
@@ -102,11 +105,11 @@
 }
 
 .unlock-error {
-    -fx-font-size: 13px;
+    -fx-font-size: 14px;
     -fx-text-fill: -ls-danger-text;
     -fx-max-width: 320px;
 }
 
 .unlock-switch {
-    -fx-font-size: 13px;
+    -fx-font-size: 14px;
 }

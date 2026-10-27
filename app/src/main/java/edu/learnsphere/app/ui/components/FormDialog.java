@@ -191,7 +191,7 @@ public final class FormDialog {
         Label text = new Label(label);
         text.getStyleClass().add("field-label");
         text.setLabelFor(control);
-        VBox box = new VBox(6, text, control);
+        VBox box = new VBox(8, text, control);
         box.getStyleClass().add("form-field");
         if (hint != null) {
             Label below = new Label(hint);

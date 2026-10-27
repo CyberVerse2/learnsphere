@@ -1,4 +1,5 @@
-/* FormDialog: a small form in the modal card. Colours come from the -ls-* tokens of learnsphere.css. */
+/* FormDialog: a small form in the modal card (padded like every modal card). Colours come from the -ls-* tokens
+   of learnsphere.css; text sizes and spacing follow DESIGN.md. */
 
 .form-dialog-card {
     -fx-spacing: 0;
@@ -18,11 +19,11 @@
 
 .form-dialog-body {
     -fx-spacing: 16px;
-    -fx-padding: 20px 0 0 0;
+    -fx-padding: 24px 0 0 0;
 }
 
 .form-field {
-    -fx-spacing: 6px;
+    -fx-spacing: 8px;
 }
 
 .form-field-hint {
@@ -31,7 +32,7 @@
 }
 
 .form-dialog-error {
-    -fx-font-size: 13px;
+    -fx-font-size: 14px;
     -fx-text-fill: -ls-danger-text;
     -fx-padding: 12px 0 0 0;
 }
@@ -41,6 +42,6 @@
 }
 
 .form-dialog-progress {
-    -fx-padding: 20px 0 4px 0;
+    -fx-padding: 24px 0 8px 0;
     -fx-alignment: center-left;
 }

@@ -39,7 +39,7 @@ public final class LicencesDialog {
     }
 
     private static Node list() {
-        VBox groups = new VBox(28);
+        VBox groups = new VBox(24);
         groups.getStyleClass().add("licences");
         for (Licences.Group group : Licences.ALL) {
             Label title = new Label(group.title().toUpperCase(java.util.Locale.ROOT));
@@ -74,7 +74,7 @@ public final class LicencesDialog {
         Label notice = new Label(entry.notice());
         notice.getStyleClass().add("licence-notice");
         notice.setWrapText(true);
-        VBox box = new VBox(2, name, use, licence, notice);
+        VBox box = new VBox(4, name, use, licence, notice);
         box.getStyleClass().add("licence-entry");
         Optional<String> text = entry.text();
         if (text.isPresent()) {
