@@ -3,6 +3,7 @@ package edu.learnsphere.testbench.probe;
 import edu.learnsphere.core.spi.AiCapabilities;
 import edu.learnsphere.core.spi.AiRuntime;
 import edu.learnsphere.core.spi.AiStatus;
+import edu.learnsphere.core.spi.AnswerRequest;
 import edu.learnsphere.core.spi.Capabilities;
 import edu.learnsphere.core.spi.ChunkDraft;
 import edu.learnsphere.core.spi.Chunker;
@@ -272,7 +273,9 @@ public final class Recorder {
         }
 
         @Override
-        public GroundedAnswer answer(String question, List<Passage> passages, TokenSink sink, CancellationToken token) {
+        public GroundedAnswer answer(AnswerRequest request, TokenSink sink, CancellationToken token) {
+            String question = request.message();
+            List<Passage> passages = request.passages();
             long start = System.nanoTime();
             AtomicLong first = new AtomicLong(-1);
             TokenSink timed = piece -> {
@@ -280,7 +283,7 @@ public final class Recorder {
                 sink.accept(piece);
             };
             try {
-                GroundedAnswer answer = delegate.answer(question, passages, timed, token);
+                GroundedAnswer answer = delegate.answer(request, timed, token);
                 answerCalls.add(new AnswerCall(question, List.copyOf(passages), answer.text(), answer.insufficient(),
                         first.get(), since(start), null));
                 return answer;

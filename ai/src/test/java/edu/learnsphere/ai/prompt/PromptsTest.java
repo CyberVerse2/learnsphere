@@ -39,7 +39,7 @@ class PromptsTest {
     void everyPromptLoadsWithTheExpectedPlaceholders() throws IllegalAccessException {
         Map<PromptTemplate, Set<String>> expected = Map.ofEntries(
                 Map.entry(Prompts.ANSWER_SYSTEM, Set.of()),
-                Map.entry(Prompts.ANSWER_USER, Set.of("passages", "question")),
+                Map.entry(Prompts.ANSWER_USER, Set.of("course", "topics", "passages", "last", "message")),
                 Map.entry(Prompts.CONCEPTS_SYSTEM, Set.of("min", "max")),
                 Map.entry(Prompts.CONCEPTS_USER, Set.of("module", "passages")),
                 Map.entry(Prompts.ITEMS_SYSTEM, Set.of()),
@@ -64,8 +64,8 @@ class PromptsTest {
     }
 
     @Test
-    void theAnswerPromptTeachesTheSentinelAndCitations() {
-        assertThat(Prompts.ANSWER_SYSTEM.text()).contains(Prompts.NOT_IN_MATERIAL).contains("[");
+    void theAnswerPromptTeachesCitationsAndTheCourseInEveryMessage() {
+        assertThat(Prompts.ANSWER_SYSTEM.text()).contains("[n]").contains("quiz");
         assertThat(Prompts.ANSWER_EXAMPLE_ANSWER.text()).containsPattern("\\[\\d]");
     }
 

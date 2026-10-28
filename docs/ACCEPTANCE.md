@@ -55,7 +55,7 @@ Expected text is quoted exactly where the wording matters; everywhere else the t
 
 - The answer streams in, then is replaced by the final text with at least one citation chip such as "p. 4".
 - Step 3 opens the source viewer on page 4 with the cited passage highlighted.
-- Step 4 shows the insufficient-evidence card ("Your material doesn't cover this. Try rephrasing, or add a document that does.") and no answer is requested from the study assistant.
+- Step 4 gets a reply saying the course material doesn't cover it, with no citation chip.
 - Step 5 stops the answer and stores the message as cancelled.
 - The thread appears under recent questions on Home.
 

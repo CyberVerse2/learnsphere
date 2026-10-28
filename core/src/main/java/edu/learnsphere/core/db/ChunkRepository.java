@@ -113,6 +113,19 @@ public final class ChunkRepository {
                 .bind("c", courseId).map(CHUNK).list());
     }
 
+    /**
+     * Up to {@code limit} chunks of a course's ready PDFs picked at random, from those with at least
+     * {@code minLength} characters of text (passages to teach from when a message names no subject).
+     */
+    public List<Chunk> sample(String courseId, int limit, int minLength) {
+        return db.withHandle(h -> h.createQuery("""
+                        SELECT c.* FROM chunks c JOIN documents d ON d.id = c.document_id
+                        WHERE c.course_id = :c AND d.status = 'ready' AND length(c.text) >= :min
+                        ORDER BY random() LIMIT :limit
+                        """)
+                .bind("c", courseId).bind("min", minLength).bind("limit", limit).map(CHUNK).list());
+    }
+
     /** Section headings of a course's ready PDFs in reading order, repeats included (topics to offer). */
     public List<String> sectionTitles(String courseId) {
         return db.withHandle(h -> h.createQuery("""

@@ -28,7 +28,6 @@ import edu.learnsphere.core.service.AskPhase;
 import edu.learnsphere.core.service.AssistantState;
 import edu.learnsphere.core.service.AssistantStatus;
 import edu.learnsphere.core.service.CourseSummary;
-import edu.learnsphere.core.service.SessionRequest;
 import edu.learnsphere.core.service.SourcePassage;
 import edu.learnsphere.core.service.ThreadSummary;
 import edu.learnsphere.core.service.Workspace;
@@ -850,22 +849,6 @@ public final class AskPage implements View {
         }
 
         @Override
-        public void onGuidance(Answer answer) {
-            Fx.run(() -> {
-                run.exchange.showGuidance(answer.text(), answer.suggestions());
-                finished(run);
-            });
-        }
-
-        @Override
-        public void onPractice(Answer answer) {
-            Fx.run(() -> {
-                run.exchange.showPractice(answer.text());
-                finished(run);
-            });
-        }
-
-        @Override
         public void onError(UserMessage message) {
             Fx.run(() -> {
                 if (UserMessage.ASSISTANT_STARTING.equals(message) && !run.isCancelled() && !disposer.isDisposed()) {
@@ -1071,11 +1054,6 @@ public final class AskPage implements View {
         @Override
         public void addDocuments() {
             navigator.navigate(new Destination.Studio(courseId, StudioTab.DOCUMENTS));
-        }
-
-        @Override
-        public void startQuiz() {
-            navigator.navigate(new Destination.Study(SessionRequest.studyNext(courseId)));
         }
     }
 

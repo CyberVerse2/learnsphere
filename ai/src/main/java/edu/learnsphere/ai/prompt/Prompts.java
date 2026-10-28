@@ -7,24 +7,27 @@ package edu.learnsphere.ai.prompt;
  */
 public final class Prompts {
 
-    /**
-     * What the answerer replies when the passages do not contain the answer. Never shown to users:
-     * {@code LlamaGroundedAnswerer} turns it into an insufficient-evidence result.
-     */
-    public static final String NOT_IN_MATERIAL = "NOT_IN_MATERIAL";
-
-    /** Grounded answers: rules for citing numbered passages and refusing with {@link #NOT_IN_MATERIAL}. */
+    /** Chat replies: how to talk, cite numbered passages, say what the course doesn't cover and quiz. */
     public static final PromptTemplate ANSWER_SYSTEM = PromptTemplate.load("answer-system.txt");
-    /** Grounded answers: {@code {{passages}}}, {@code {{question}}}. */
+    /** Chat replies: {@code {{course}}}, {@code {{topics}}}, {@code {{passages}}}, {@code {{message}}}. */
     public static final PromptTemplate ANSWER_USER = PromptTemplate.load("answer-user.txt");
-    /** Grounded answers, worked example: passages shared by both example questions. */
+    /** Chat replies, worked examples: passages shared by every example message. */
     public static final PromptTemplate ANSWER_EXAMPLE_PASSAGES = PromptTemplate.load("answer-example-passages.txt");
-    /** Grounded answers, worked example: a question the example passages answer. */
+    /** Chat replies, worked example: a question the example passages answer. */
     public static final PromptTemplate ANSWER_EXAMPLE_QUESTION = PromptTemplate.load("answer-example-question.txt");
-    /** Grounded answers, worked example: the cited answer to {@link #ANSWER_EXAMPLE_QUESTION}. */
+    /** Chat replies, worked example: the cited answer to {@link #ANSWER_EXAMPLE_QUESTION}. */
     public static final PromptTemplate ANSWER_EXAMPLE_ANSWER = PromptTemplate.load("answer-example-answer.txt");
-    /** Grounded answers, worked example: a related question the passages don't answer (reply: the sentinel). */
-    public static final PromptTemplate ANSWER_EXAMPLE_REFUSAL = PromptTemplate.load("answer-example-refusal.txt");
+    /** Chat replies, worked example: a related question the passages don't answer. */
+    public static final PromptTemplate ANSWER_EXAMPLE_UNCOVERED_QUESTION =
+            PromptTemplate.load("answer-example-uncovered-question.txt");
+    /** Chat replies, worked example: saying the course doesn't cover {@link #ANSWER_EXAMPLE_UNCOVERED_QUESTION}. */
+    public static final PromptTemplate ANSWER_EXAMPLE_UNCOVERED = PromptTemplate.load("answer-example-uncovered.txt");
+    /** Chat replies, worked example: one quiz question in reply to "quiz me". */
+    public static final PromptTemplate ANSWER_EXAMPLE_QUIZ = PromptTemplate.load("answer-example-quiz.txt");
+    /** Chat replies, worked example: a wrong answer to {@link #ANSWER_EXAMPLE_QUIZ}. */
+    public static final PromptTemplate ANSWER_EXAMPLE_QUIZ_REPLY = PromptTemplate.load("answer-example-quiz-reply.txt");
+    /** Chat replies, worked example: marking {@link #ANSWER_EXAMPLE_QUIZ_REPLY}. */
+    public static final PromptTemplate ANSWER_EXAMPLE_QUIZ_MARKED = PromptTemplate.load("answer-example-quiz-marked.txt");
 
     /** Concept extraction: {@code {{min}}}, {@code {{max}}}. */
     public static final PromptTemplate CONCEPTS_SYSTEM = PromptTemplate.load("concepts-system.txt");

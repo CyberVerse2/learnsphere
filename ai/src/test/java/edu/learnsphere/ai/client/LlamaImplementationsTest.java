@@ -11,6 +11,7 @@ import edu.learnsphere.ai.prompt.Prompts;
 import edu.learnsphere.core.error.LearnSphereException;
 import edu.learnsphere.core.model.Difficulty;
 import edu.learnsphere.core.model.ItemType;
+import edu.learnsphere.core.spi.AnswerRequest;
 import edu.learnsphere.core.spi.ConceptDraft;
 import edu.learnsphere.core.spi.EmbedKind;
 import edu.learnsphere.core.spi.GradeResult;
@@ -73,51 +74,44 @@ class LlamaImplementationsTest {
     // ------------------------------------------------------------------ answers
 
     @Test
-    void answersStreamWithCitationsAfterTheWorkedExamples() {
+    void repliesStreamAfterTheWorkedExamplesAndTheConversation() {
         server.reply(Reply.text("Pages ", "map to frames [1]."));
         List<String> streamed = new ArrayList<>();
-        GroundedAnswer answer = new LlamaGroundedAnswerer(chat).answer("What is paging?", List.of(PAGING, TLB),
-                streamed::add, CancellationToken.NONE);
+        AnswerRequest request = new AnswerRequest("Operating systems", List.of("Paging", "Scheduling"),
+                List.of(new QuestionReader.Turn("What is memory?", "Memory holds running programs.")),
+                "and paging?", List.of(PAGING, TLB));
+        GroundedAnswer answer = new LlamaGroundedAnswerer(chat).answer(request, streamed::add, CancellationToken.NONE);
 
         assertThat(answer.insufficient()).isFalse();
         assertThat(answer.text()).isEqualTo("Pages map to frames [1].");
         assertThat(String.join("", streamed)).isEqualTo(answer.text());
         JsonNode messages = server.lastChatRequest().path("messages");
-        assertThat(messages).hasSize(6);
-        assertThat(messages.get(4).path("content").asText()).isEqualTo(Prompts.NOT_IN_MATERIAL);
-        assertThat(lastUserText()).contains("[1] OS notes · p. 4 · Paging", "[2] OS notes · pp. 4–5 · TLB",
-                "What is paging?");
+        assertThat(messages).hasSize(12);
+        assertThat(messages.get(6).path("content").asText()).isEqualTo(Prompts.ANSWER_EXAMPLE_QUIZ.render());
+        assertThat(messages.get(8).path("content").asText()).isEqualTo(Prompts.ANSWER_EXAMPLE_QUIZ_MARKED.render());
+        assertThat(messages.get(9).path("content").asText()).isEqualTo("What is memory?");
+        assertThat(messages.get(10).path("content").asText()).isEqualTo("Memory holds running programs.");
+        assertThat(lastUserText()).contains("Course: Operating systems", "Topics the course covers: Paging, Scheduling",
+                "[1] OS notes · p. 4 · Paging", "[2] OS notes · pp. 4–5 · TLB",
+                "You last said: Memory holds running programs.\n\nStudent: and paging?");
     }
 
     @Test
-    void theSentinelBecomesInsufficientEvidenceAndIsNeverStreamed() {
-        server.reply(Reply.text("NOT_IN", "_MATERIAL"));
-        List<String> streamed = new ArrayList<>();
-        GroundedAnswer answer = new LlamaGroundedAnswerer(chat).answer("Who wrote Linux?", List.of(PAGING),
-                streamed::add, CancellationToken.NONE);
-        assertThat(answer.insufficient()).isTrue();
-        assertThat(streamed).isEmpty();
+    void latexInAReplyBecomesPlainSymbols() {
+        assertThat(LlamaGroundedAnswerer.plainSymbols("So $p \\Rightarrow p$ is a tautology and $p \\land \\neg p$ is not."))
+                .isEqualTo("So p ⇒ p is a tautology and p ∧ ¬ p is not.");
+        assertThat(LlamaGroundedAnswerer.plainSymbols("Prices from $5 to $10 [1].")).isEqualTo("Prices from $5 to $10 [1].");
+        assertThat(LlamaGroundedAnswerer.plainSymbols("\\forall x : \\mathbb{N}")).isEqualTo("∀ x : ℕ");
     }
 
     @Test
-    void aRefusalInTheModelsOwnWordsIsInsufficientEvidenceAndNeverShown() {
-        server.reply(Reply.text("The passages ", "don't cover ", "who wrote ", "Linux."));
+    void aReplySayingTheCourseDoesNotCoverSomethingIsShownAsWritten() {
+        server.reply(Reply.text("Your course material ", "doesn't cover who wrote Linux."));
         StringBuilder shown = new StringBuilder();
         GroundedAnswer answer = new LlamaGroundedAnswerer(chat).answer("Who wrote Linux?", List.of(PAGING),
                 shown::append, CancellationToken.NONE);
-        assertThat(answer.insufficient()).isTrue();
-        assertThat(shown).isEmpty();
-    }
-
-    @Test
-    void aRemarkAboutTheMaterialBeforeACitedAnswerIsShown() {
-        server.reply(Reply.text("The notes only describe ", "two algorithms. ", "FCFS runs jobs ",
-                "in arrival order [1]."));
-        StringBuilder shown = new StringBuilder();
-        GroundedAnswer answer = new LlamaGroundedAnswerer(chat).answer("Which algorithms are there?",
-                List.of(PAGING), shown::append, CancellationToken.NONE);
         assertThat(answer.insufficient()).isFalse();
-        assertThat(answer.text()).isEqualTo("The notes only describe two algorithms. FCFS runs jobs in arrival order [1].");
+        assertThat(answer.text()).isEqualTo("Your course material doesn't cover who wrote Linux.");
         assertThat(shown.toString()).isEqualTo(answer.text());
     }
 
@@ -127,18 +121,6 @@ class LlamaImplementationsTest {
                 CancellationToken.NONE);
         assertThat(answer.insufficient()).isTrue();
         assertThat(server.chatRequests()).isEmpty();
-    }
-
-    @Test
-    void refusalDetectionOnlyLooksAtTheOpening() {
-        assertThat(LlamaGroundedAnswerer.refusesInItsOwnWords("Your notes don't explain the banker's algorithm.")).isTrue();
-        assertThat(LlamaGroundedAnswerer.refusesInItsOwnWords("The material does not mention TCP.")).isTrue();
-        assertThat(LlamaGroundedAnswerer.refusesInItsOwnWords(
-                "Paging uses frames [1]. The passages don't cover segmentation.")).isFalse();
-        assertThat(LlamaGroundedAnswerer.refusesInItsOwnWords("The TLB caches page-table entries [2].")).isFalse();
-        assertThat(LlamaGroundedAnswerer.refusesInItsOwnWords(
-                "The notes only describe two algorithms. FCFS runs jobs in arrival order [1].")).isFalse();
-        assertThat(LlamaGroundedAnswerer.refusesInItsOwnWords("The notes only cover paging, not segmentation.")).isTrue();
     }
 
     // ------------------------------------------------------------------ embeddings and rerank

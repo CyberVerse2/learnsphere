@@ -39,9 +39,8 @@ import org.slf4j.LoggerFactory;
  * title face, the answer in reading type with page chips where it cites the material, then the sources it
  * used and a copy button. The answer area moves through the states of an answer: a quiet progress line, the
  * streamed preview, and then the final answer, the "material doesn't cover this" card, a guidance card
- * (the reply to a greeting or to a question that names no topic), a practice card (the reply to "quiz me",
- * with Start a quiz), an error with Try again, or the stopped answer. The first two cards offer topics as
- * chips. FX thread only.
+ * (a stored reply that helps the learner ask), an error with Try again, or the stopped answer. Both cards
+ * offer topics as chips. FX thread only.
  */
 final class ExchangeView extends VBox {
 
@@ -66,8 +65,6 @@ final class ExchangeView extends VBox {
         INSUFFICIENT,
         /** A greeting, or a question naming no topic, was answered with how to ask. */
         GUIDANCE,
-        /** A request to be quizzed was answered with a quiz to start. */
-        PRACTICE,
         /** The answer couldn't be produced. */
         FAILED,
         /** The learner stopped the answer. */
@@ -98,8 +95,6 @@ final class ExchangeView extends VBox {
         /** Opens the place where PDFs are added to the course. */
         void addDocuments();
 
-        /** Starts a quiz on the course. */
-        void startQuiz();
     }
 
     private final String question;
@@ -253,22 +248,6 @@ final class ExchangeView extends VBox {
         showCard(Feather.MESSAGE_CIRCLE, cardContent(text, suggestions.isEmpty() ? host.topics() : suggestions));
     }
 
-    /** The reply to a request to be quizzed, with a button that starts a quiz on the course. */
-    void showPractice(String reply) {
-        finish(State.PRACTICE);
-        text = reply == null ? "" : reply.strip();
-        citations = List.of();
-        VBox content = cardContent(text, List.of());
-        Button start = new Button("Start a quiz", Icons.of(Feather.PLAY, 14));
-        start.getStyleClass().addAll("primary", "small");
-        start.setOnAction(event -> host.startQuiz());
-        HBox actions = new HBox(8, start);
-        actions.getStyleClass().add("ask-insufficient-actions");
-        actions.setAlignment(Pos.CENTER_LEFT);
-        content.getChildren().add(actions);
-        showCard(Feather.CHECK_SQUARE, content);
-    }
-
     /** The sentence of a card, then its topics as chips that put a question about the topic in the question box. */
     private VBox cardContent(String sentence, List<String> topics) {
         Label message = new Label(sentence);
@@ -382,8 +361,7 @@ final class ExchangeView extends VBox {
         switch (message.status()) {
             case COMPLETE -> showAnswer(message.content(), message.citations());
             case INSUFFICIENT -> showInsufficient(message.content(), message.suggestions());
-            case GUIDANCE -> showGuidance(message.content(), message.suggestions());
-            case PRACTICE -> showPractice(message.content());
+            case GUIDANCE, PRACTICE -> showGuidance(message.content(), message.suggestions());
             case ERROR -> showError(message.content().isBlank() ? UserMessage.SOMETHING_WENT_WRONG
                     : UserMessage.of(message.content()), last);
             case CANCELLED -> showStopped(message.content(), message.citations(), last);

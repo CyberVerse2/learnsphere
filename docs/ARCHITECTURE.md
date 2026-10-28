@@ -136,7 +136,7 @@ Migration `V1__initial.sql` creates:
 | `study_sessions` | `course_id` NULL, `kind`, `started_at`, `ended_at` |
 | `attempts` | `item_id`, `session_id`, `response`, `correct`, `score` (0–1), `rating` (1–4), `confidence` (1–3), `hint_used`, `duration_ms`, `graded_by` (`rule`/`ai`/`self`), `feedback`, `disputed` |
 | `chat_threads` | `course_id`, `title` |
-| `chat_messages` | `thread_id`, `role` (`user`/`assistant`), `content`, `status` (`complete`/`insufficient`/`error`/`cancelled`/`guidance`/`practice`), `citations_json`, `suggestions_json` (topics offered with a guidance or insufficient-evidence reply) |
+| `chat_messages` | `thread_id`, `role` (`user`/`assistant`), `content`, `status` (`complete`/`insufficient`/`error`/`cancelled`/`guidance`/`practice`), `citations_json`, `suggestions_json` (topics offered with an insufficient-evidence card; `guidance` and `practice` replies are shown as the same card) |
 | `jobs` | `kind`, `payload_json`, `status` (`queued`/`running`/`done`/`failed`/`cancelled`), `priority`, `attempts`, `progress`, `message` (progress line, or the `UserMessage` text of a failure), `result_json` (what a finished job produced), `subject_id` |
 | `flags` | `item_id`, `reason`, `note`, `source` (`self`/`learner_feedback`), `resolved_at` |
 | `class_insights` | `course_id`, `learner_label`, `payload_json`, `imported_at` |
@@ -164,7 +164,7 @@ Interfaces live in `edu.learnsphere.core.service`; implementations in `edu.learn
 | `Workspace` | an opened profile; exposes every per-profile service below; `close()` releases database, index and AI processes |
 | `CourseService` | list (filter: all, studying, creating), get, create, update details, set cover hue, set visibility, archive, delete, publish (freezes approved items into a new `course_versions` row), versions, modules (add, rename, summary, reorder, delete), enrol/leave, mark opened |
 | `DocumentService` | import PDF into a course/module (copies file, enqueues ingestion), list, get, remove, retry, pages needing review, edit page text, approve pages, render page image (cached PNG), locate a passage on a page (normalized rectangles for highlighting) |
-| `AskService` | threads per course, messages, `ask(threadId, question, AnswerListener)` returning a `Cancellable`; listener gets tokens, then a completed `Answer` with `Citation`s, an insufficient-evidence result, a guidance reply, a practice reply, or an error; `topics(courseId, limit)` for topic chips |
+| `AskService` | threads per course, messages, `ask(threadId, question, AnswerListener)` returning a `Cancellable`; listener gets tokens, then a completed `Answer` with `Citation`s, an insufficient-evidence result, or an error; `topics(courseId, limit)` for topic chips |
 | `GenerationService` | extract concepts for a module, generate items (`GenerationRequest`: course, module, item types, count, difficulty) as a job with progress, regenerate one item |
 | `ItemService` | list with filters, get, review queue (drafts with their source passage, paged), create manual item, edit, approve, approve many, reject, retire, delete; flags (add, list, resolve) |
 | `PracticeService` | start a session (`STUDY_NEXT`, `MODULE_QUIZ`, `FLASHCARDS`, `WEAK_CONCEPTS`, optional course/module, size), submit an answer, rate a flashcard, use a hint (or its steps, gentlest first: where to look in the material, then the hint itself), preview when an item would come back for each rating without recording anything, finish (summary), dispute an AI grade |
@@ -193,8 +193,8 @@ In `edu.learnsphere.core.spi`:
 | `Reranker` | ai | relevance scores (0–1) for (query, passage) pairs |
 | `PageReader` | ai | transcribe a page image to Markdown text; flags illegible spans |
 | `FigureDescriber` | ai | describe figures and diagrams on a page image |
-| `QuestionReader` | ai | a follow-up rewritten to stand on its own from the conversation so far (and whether it is a question, a greeting or names no subject) |
-| `GroundedAnswerer` | ai | stream an answer to a question from numbered passages, citing `[n]`, or report that the passages don't contain the answer |
+| `QuestionReader` | ai | a follow-up rewritten to stand on its own from the conversation so far, for searching |
+| `GroundedAnswerer` | ai | stream the study assistant's reply to a message in a conversation (`AnswerRequest`: course, topics, earlier exchanges, message, numbered passages), citing `[n]` |
 | `ConceptExtractor` | ai | 5–15 key concepts for a module from its passages |
 | `ItemGenerator` | ai | quiz/flashcard drafts from passages and concepts as structured JSON |
 | `SupportChecker` | ai | whether a passage supports an item's answer |
@@ -215,17 +215,20 @@ In `edu.learnsphere.core.spi`:
 
 Every stage is idempotent and updates `documents.status`/`progress`, so an interrupted import resumes where it stopped.
 
-### Answer a question (`AskService`)
+### Answer a message (`AskService`)
+
+Ask is a chat with the study assistant about one course. Every message reaches the model, which replies as a tutor would (answering, greeting, teaching, quizzing one question at a time, or saying the course doesn't cover something) and takes every fact from passages of the course, cited `[n]`.
 
 1. Confirm the course exists in this profile and is either created here or enrolled.
-2. Greetings, thanks, questions about the assistant and, in a new conversation, requests that name no subject ("tell me about this topic") are recognised by their words (`Greetings`); they get a `guidance` reply offering the course's topics, and nothing is searched. Requests to be quizzed ("quiz me", "test me", "what questions could come up in the exam?") get a `practice` reply whose Start a quiz button opens a Study next session for the course, or, when the course has no approved questions, a `guidance` reply saying so. Words settle these because the 4B model labels them unreliably. In a conversation that already has answers, `QuestionReader` rewrites the message with the last 3 answered questions so a follow-up such as "give an example" stands on its own, and steps 3–8 use that question (the message as typed if reading fails). A first question is used as typed, with no extra model call.
-   Topics are the course's module titles, else its concept names, else the section headings of its ready PDFs with numbering, worked examples, exercises and front and back matter removed, spread evenly across the course.
-3. Embed the question (`QUERY`).
+2. Decide what to search for. A first message is searched as typed. In a conversation that already has answers, `QuestionReader` rewrites the message with the last 3 exchanges so a follow-up such as "give an example" stands on its own (the message as typed if reading fails).
+3. Embed the search text (`QUERY`).
 4. Hybrid search restricted to the course: BM25 top 40 + vector top 40, reciprocal rank fusion (k = 60), keep 24.
-5. Rerank the 24; keep up to 6 passages scoring at or above the evidence threshold (setting `evidence.threshold`, default 0.35, tuned by the testbench). None left → insufficient-evidence answer, and the model is not called. The insufficient-evidence reply offers the course's topics.
-6. `GroundedAnswerer` streams an answer from passages labelled `[1]…[n]` with document title and page.
-7. `CitationValidator` keeps only in-range `[n]` markers; an answer with no valid citation, or the model's own "not in the material" signal, becomes the insufficient-evidence result.
-8. Store both messages with citations (`documentId`, `title`, `pageStart`, `pageEnd`, `chunkId`, `snippet`) and offered topics.
+5. Rerank the 24; keep up to 6 passages scoring at or above the evidence threshold (setting `evidence.threshold`, default 0.35, tuned by the testbench). Passages the conversation's last answer cited fill the remaining places (up to 3), so a follow-up, or the learner's answer to a quiz question, keeps its topic. With no passages at all (a greeting, "teach me something", or a question the course doesn't cover), 4 passages are picked at random from the course's ready PDFs, preferring ones of at least 300 characters.
+6. `GroundedAnswerer` gets the course title, up to 12 course topics, the last 3 exchanges (citation markers removed), the message, and the passages labelled `[1]…[n]` with document title and page, and streams its reply. The rules (`answer-system.txt`) and worked examples (a cited answer, a question the passages don't cover, "quiz me" and a wrong answer marked) come first and are the same for every message, so the model server reuses them from its prompt cache.
+7. `CitationValidator` keeps only in-range `[n]` markers. A reply needs no citation: greetings and quiz questions state no facts.
+8. Store both messages with citations (`documentId`, `title`, `pageStart`, `pageEnd`, `chunkId`, `snippet`) as `complete`. When the course has no ready PDF, or the model writes nothing, the reply is instead the insufficient-evidence card (`insufficient`) offering the course's topics.
+
+Topics are the course's module titles, else its concept names, else the section headings of its ready PDFs with numbering, worked examples, exercises and front and back matter removed, spread evenly across the course.
 
 ### Generate learning items (`GenerationService`)
 

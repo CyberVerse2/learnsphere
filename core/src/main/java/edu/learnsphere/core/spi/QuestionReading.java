@@ -18,9 +18,7 @@ public record QuestionReading(Kind kind, String question) {
         /** A greeting or a question about the assistant itself ("hello", "what can you do?"). */
         GREETING,
         /** A request that names no subject ("tell me about this topic") with nothing earlier to say which. */
-        VAGUE,
-        /** A request to be quizzed ("quiz me", "what questions could come up in the exam?"). */
-        PRACTICE
+        VAGUE
     }
 
     public QuestionReading {

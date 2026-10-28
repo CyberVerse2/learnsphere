@@ -17,22 +17,20 @@ import edu.learnsphere.core.service.RecentQuestion;
 import edu.learnsphere.core.service.ThreadSummary;
 import edu.learnsphere.core.util.Cancellable;
 import edu.learnsphere.core.util.CancellationToken;
-import edu.learnsphere.ai.fake.FakeQuestionReader;
 import edu.learnsphere.core.model.Course;
 import edu.learnsphere.core.model.CourseModule;
-import edu.learnsphere.core.spi.QuestionReading;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 /**
- * {@link AskService} over the {@link DemoStore}. Questions are matched to the course's passages by shared
- * words; a good match is answered word by word from the passages with numbered citations, and a question
- * the material doesn't cover gets the insufficient-evidence answer, as the real assistant would. Greetings and
- * requests that name no subject get a guidance reply offering the course's module titles
- * ({@link FakeQuestionReader} decides which).
+ * {@link AskService} over the {@link DemoStore}, replying by rule the way the study assistant would: a greeting
+ * gets a greeting, "quiz me" gets a question on one of the course's topics, a message that shares words with the
+ * course's passages is answered word by word from them with numbered citations, and anything else is told the
+ * course doesn't cover it, with two of its topics to try.
  */
 final class DemoAsk implements AskService {
 
@@ -45,7 +43,6 @@ final class DemoAsk implements AskService {
     private final DemoStore store;
     private final DemoProgress progress;
     private final Duration wordDelay;
-    private final FakeQuestionReader reader = new FakeQuestionReader();
 
     DemoAsk(DemoStore store, DemoProgress progress, Duration wordDelay) {
         this.store = store;
@@ -191,24 +188,17 @@ final class DemoAsk implements AskService {
             pause(Duration.ofMillis(500));
             String text;
             List<Citation> citations = new ArrayList<>();
-            List<String> suggestions = List.of();
-            MessageStatus status;
-            QuestionReading reading = reader.read(question.content(), List.of(), cancelled);
-            if (reading.kind() == QuestionReading.Kind.PRACTICE) {
-                status = MessageStatus.PRACTICE;
-                text = "Ready to practise? Start a quiz with questions from " + courseTitle(courseId) + ".";
-            } else if (reading.kind() != QuestionReading.Kind.QUESTION) {
-                status = MessageStatus.GUIDANCE;
-                suggestions = topics(courseId, 6);
-                text = reading.kind() == QuestionReading.Kind.GREETING
-                        ? "Hi! Ask me anything about " + courseTitle(courseId) + ", and I'll answer from its PDFs with the pages I used."
-                        : "Which topic do you mean? Name it in your question, or pick one below.";
+            String lower = question.content().toLowerCase(Locale.ROOT).strip();
+            List<String> topics = topics(courseId, 2);
+            if (lower.matches("(hi|hello|hey)\\b.*")) {
+                text = "Hi! What would you like to go over in " + courseTitle(courseId) + "?";
+            } else if (lower.contains("quiz") || lower.contains("test me")) {
+                text = "Here's one: what does your course say about "
+                        + (topics.isEmpty() ? courseTitle(courseId) : topics.getFirst()) + "? Have a go.";
             } else if (sources.isEmpty()) {
-                status = MessageStatus.INSUFFICIENT;
-                text = "Your material doesn't cover this. Try rephrasing, or add a document that does.";
-                suggestions = topics(courseId, 6);
+                text = "Your course material doesn't cover that."
+                        + (topics.isEmpty() ? "" : " It does cover " + String.join(" and ", topics) + ", if you'd like to start there.");
             } else {
-                status = MessageStatus.COMPLETE;
                 StringBuilder builder = new StringBuilder();
                 synchronized (store) {
                     for (int i = 0; i < sources.size(); i++) {
@@ -222,14 +212,14 @@ final class DemoAsk implements AskService {
                     }
                 }
                 text = builder.toString();
-                listener.onPhase(AskPhase.WRITING);
-                for (String word : text.split("(?<= )")) {
-                    if (cancelled.isCancelled()) {
-                        break;
-                    }
-                    listener.onToken(word);
-                    pause(wordDelay);
+            }
+            listener.onPhase(AskPhase.WRITING);
+            for (String word : text.split("(?<= )")) {
+                if (cancelled.isCancelled()) {
+                    break;
                 }
+                listener.onToken(word);
+                pause(wordDelay);
             }
             if (cancelled.isCancelled()) {
                 listener.onCancelled();
@@ -239,20 +229,12 @@ final class DemoAsk implements AskService {
             ChatMessage reply;
             synchronized (store) {
                 now = store.now();
-                reply = new ChatMessage(DemoStore.newId(), threadId, ChatRole.ASSISTANT, text, status, citations,
-                        suggestions, now);
+                reply = new ChatMessage(DemoStore.newId(), threadId, ChatRole.ASSISTANT, text, MessageStatus.COMPLETE,
+                        citations, List.of(), now);
                 store.messages.computeIfAbsent(threadId, k -> new ArrayList<>()).add(reply);
             }
-            Answer answer = new Answer(reply.id(), threadId, question.id(), text, status, citations, suggestions, now);
-            if (status == MessageStatus.PRACTICE) {
-                listener.onPractice(answer);
-            } else if (status == MessageStatus.GUIDANCE) {
-                listener.onGuidance(answer);
-            } else if (status == MessageStatus.INSUFFICIENT) {
-                listener.onInsufficientEvidence(answer);
-            } else {
-                listener.onAnswer(answer);
-            }
+            listener.onAnswer(new Answer(reply.id(), threadId, question.id(), text, MessageStatus.COMPLETE, citations,
+                    List.of(), now));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             listener.onCancelled();

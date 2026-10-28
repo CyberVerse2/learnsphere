@@ -1,19 +1,25 @@
 package edu.learnsphere.ai.fake;
 
+import edu.learnsphere.core.spi.AnswerRequest;
 import edu.learnsphere.core.spi.GroundedAnswer;
 import edu.learnsphere.core.spi.GroundedAnswerer;
 import edu.learnsphere.core.spi.Passage;
 import edu.learnsphere.core.spi.TokenSink;
 import edu.learnsphere.core.util.CancellationToken;
 import java.time.Duration;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.locks.LockSupport;
 
 /**
- * Answers with the first sentence of the first passage, cited as {@code [n]}, streamed word by word.
- * Returns insufficient evidence when there are no passages. An optional per-word delay makes streaming
- * visible in demo mode.
+ * Replies by rule, streamed word by word: a greeting gets a greeting, "quiz me" gets a question about the first
+ * passage, a message that shares a word with a passage gets that passage's first sentence cited as {@code [n]},
+ * and anything else gets a sentence saying the course doesn't cover it. Returns insufficient evidence when there
+ * are no passages. An optional per-word delay makes streaming visible in demo mode.
  */
 public final class FakeGroundedAnswerer implements GroundedAnswerer {
 
@@ -28,18 +34,15 @@ public final class FakeGroundedAnswerer implements GroundedAnswerer {
     }
 
     @Override
-    public GroundedAnswer answer(String question, List<Passage> passages, TokenSink sink, CancellationToken token) {
+    public GroundedAnswer answer(AnswerRequest request, TokenSink sink, CancellationToken token) {
         token.throwIfCancelled();
-        if (passages.isEmpty()) {
+        if (request.passages().isEmpty()) {
             return GroundedAnswer.insufficientEvidence();
         }
-        Passage first = passages.getFirst();
-        String sentence = FakeText.firstSentence(first.text());
-        if (sentence.isEmpty()) {
+        String text = reply(request);
+        if (text.isEmpty()) {
             return GroundedAnswer.insufficientEvidence();
         }
-        String body = sentence.substring(0, sentence.length() - 1);
-        String text = "Your material says: " + body + " [" + first.number() + "]" + sentence.charAt(sentence.length() - 1);
 
         String[] pieces = text.split("(?<= )");
         for (String piece : pieces) {
@@ -54,5 +57,36 @@ public final class FakeGroundedAnswerer implements GroundedAnswerer {
             }
         }
         return new GroundedAnswer(text, false);
+    }
+
+    private static String reply(AnswerRequest request) {
+        String message = request.message().toLowerCase(Locale.ROOT);
+        String course = request.course().isBlank() ? "this course" : request.course();
+        if (message.matches("(hi|hello|hey)\\b.*")) {
+            return "Hi! What would you like to go over in " + course + "?";
+        }
+        Passage first = request.passages().getFirst();
+        if (message.contains("quiz") || message.contains("test me")) {
+            String topic = first.sectionTitle() == null ? course : first.sectionTitle();
+            return "Here's one: what does your course say about " + topic + "?";
+        }
+        Set<String> words = new HashSet<>();
+        for (String word : message.split("[^a-z]+")) {
+            if (word.length() > 4) {
+                words.add(word);
+            }
+        }
+        Passage match = request.passages().stream()
+                .filter(p -> Arrays.stream(p.text().toLowerCase(Locale.ROOT).split("[^a-z]+")).anyMatch(words::contains))
+                .findFirst().orElse(null);
+        if (match == null) {
+            return "Your course material doesn't cover that.";
+        }
+        String sentence = FakeText.firstSentence(match.text());
+        if (sentence.isEmpty()) {
+            return "";
+        }
+        String body = sentence.substring(0, sentence.length() - 1);
+        return "Your material says: " + body + " [" + match.number() + "]" + sentence.charAt(sentence.length() - 1);
     }
 }

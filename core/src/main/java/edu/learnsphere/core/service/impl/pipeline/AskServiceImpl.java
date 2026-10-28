@@ -11,6 +11,7 @@ import edu.learnsphere.core.error.UnavailableException;
 import edu.learnsphere.core.model.ChatMessage;
 import edu.learnsphere.core.model.ChatRole;
 import edu.learnsphere.core.model.ChatThread;
+import edu.learnsphere.core.model.Chunk;
 import edu.learnsphere.core.model.Citation;
 import edu.learnsphere.core.model.Concept;
 import edu.learnsphere.core.model.Course;
@@ -19,7 +20,6 @@ import edu.learnsphere.core.model.CourseStatus;
 import edu.learnsphere.core.model.Document;
 import edu.learnsphere.core.model.DocumentStatus;
 import edu.learnsphere.core.model.Enrolment;
-import edu.learnsphere.core.model.ItemStatus;
 import edu.learnsphere.core.model.MessageStatus;
 import edu.learnsphere.core.service.Answer;
 import edu.learnsphere.core.service.AnswerListener;
@@ -30,6 +30,7 @@ import edu.learnsphere.core.service.RecentQuestion;
 import edu.learnsphere.core.service.SettingKeys;
 import edu.learnsphere.core.service.SettingsService;
 import edu.learnsphere.core.service.ThreadSummary;
+import edu.learnsphere.core.spi.AnswerRequest;
 import edu.learnsphere.core.spi.Capabilities;
 import edu.learnsphere.core.spi.EmbedKind;
 import edu.learnsphere.core.spi.Embedder;
@@ -49,6 +50,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -72,30 +74,28 @@ import org.slf4j.LoggerFactory;
  * {@link AnswerListener}:
  *
  * <ol>
- *   <li>the question is stored (the first question of an untitled conversation becomes its title);</li>
- *   <li>{@link AskPhase#SEARCHING}: a greeting, thanks, a question about the assistant, or (in a new
- *       conversation) a request that names no subject, recognised by its words ({@link Greetings}), gets a
- *       {@link MessageStatus#GUIDANCE} reply offering the course's {@link #topics}, and nothing is searched. A
- *       request to be quizzed gets a {@link MessageStatus#PRACTICE} reply offering a quiz when the course has
- *       approved questions (else a guidance reply saying it has none), and nothing is searched. In a
- *       conversation that has answers, the {@link QuestionReader} rewrites the message with the last
- *       {@value #EARLIER_TURNS} answered questions so a follow-up stands on its own, and that question is what gets
- *       searched and answered (if reading fails, the message as typed). A first question is used as typed;</li>
- *   <li>the question is embedded as a {@link EmbedKind#QUERY} and searched in the
- *       course with {@link SearchQuery#forCourse} (keyword top 40 + vector top 40, fusion k = 60, keep 24); hits
- *       from PDFs that are not ready are dropped;</li>
- *   <li>the {@link Reranker} scores the hits; up to {@value #MAX_PASSAGES} passages scoring at least the
- *       {@link SettingKeys#EVIDENCE_THRESHOLD} setting become the evidence, numbered {@code [1]…[n]}. With none,
- *       the answer is the insufficient-evidence card and the answerer is never asked. That card offers the
- *       course's topics;</li>
- *   <li>{@link AskPhase#WRITING}: the {@link GroundedAnswerer} streams the answer (tokens go to
- *       {@link AnswerListener#onToken});</li>
- *   <li>{@link CitationValidator} keeps only markers that point at a passage; an answer without a valid
- *       citation, or one the answerer marked as not covered, becomes the insufficient-evidence result;</li>
- *   <li>the answer is stored with its citations ({@link MessageStatus#COMPLETE} or
- *       {@link MessageStatus#INSUFFICIENT}), then {@link AnswerListener#onAnswer} or
- *       {@link AnswerListener#onInsufficientEvidence}; a guidance reply goes to {@link AnswerListener#onGuidance}, a practice reply to
- *       {@link AnswerListener#onPractice}.</li>
+ *   <li>the message is stored (the first message of an untitled conversation becomes its title);</li>
+ *   <li>{@link AskPhase#SEARCHING}: what to search for is the message as typed or, in a conversation that has
+ *       answers, the {@link QuestionReader}'s rewrite of it using the last {@value #EARLIER_TURNS} exchanges, so a
+ *       follow-up such as "give an example" stands on its own (the message as typed if reading fails);</li>
+ *   <li>that is embedded as a {@link EmbedKind#QUERY} and searched in the course with
+ *       {@link SearchQuery#forCourse} (keyword top 40 + vector top 40, fusion k = 60, keep 24); hits from PDFs that
+ *       are not ready are dropped;</li>
+ *   <li>the {@link Reranker} scores the hits, and up to {@value #MAX_PASSAGES} passages scoring at least the
+ *       {@link SettingKeys#EVIDENCE_THRESHOLD} setting are kept. Passages the conversation's last answer cited
+ *       fill the remaining places (up to {@value #CARRIED_PASSAGES}), so a follow-up or an answer to a quiz
+ *       question keeps its topic. With none at all (a greeting, "teach me something", or a question the course
+ *       doesn't cover), {@value #SAMPLED_PASSAGES} passages picked at random from the course's PDFs are used. The
+ *       passages are numbered {@code [1]…[n]};</li>
+ *   <li>{@link AskPhase#WRITING}: the {@link GroundedAnswerer} gets the course title, its {@link #topics}, the
+ *       conversation's last exchanges, the message and the passages, and streams its reply (tokens go to
+ *       {@link AnswerListener#onToken}). Every message reaches it: it greets, teaches, quizzes and says when the
+ *       course doesn't cover something, taking every fact from the passages;</li>
+ *   <li>{@link CitationValidator} keeps only markers that point at a passage, and the reply is stored as
+ *       {@link MessageStatus#COMPLETE} with its citations, then {@link AnswerListener#onAnswer}. A reply needs no
+ *       citation (a greeting or a quiz question has none). When the course has no PDF ready, or the answerer
+ *       writes nothing, the reply is the insufficient-evidence card ({@link MessageStatus#INSUFFICIENT},
+ *       {@link AnswerListener#onInsufficientEvidence}) offering the course's topics.</li>
  * </ol>
  *
  * <p>Cancelling the returned handle stops the answer: the partial answer is stored as
@@ -112,25 +112,20 @@ public final class AskServiceImpl implements AskService, AutoCloseable {
 
     /** Most passages given to the answerer. */
     public static final int MAX_PASSAGES = 6;
-    /** Answered questions of the conversation the question reader sees. */
+    /** Exchanges of the conversation the question reader and the answerer see. */
     static final int EARLIER_TURNS = 3;
-    /** Topics offered with a guidance reply or the insufficient-evidence card. */
+    /** Most passages the conversation's last answer cited that are given again with the next message. */
+    static final int CARRIED_PASSAGES = 3;
+    /** Passages picked at random from the course when nothing else applies. */
+    static final int SAMPLED_PASSAGES = 4;
+    /** Shortest passage, in characters, worth picking at random. */
+    private static final int SAMPLED_MIN_LENGTH = 300;
+    /** Topics offered with the insufficient-evidence card. */
     public static final int OFFERED_TOPICS = 6;
+    /** Topics the answerer may suggest. */
+    static final int REPLY_TOPICS = 12;
     /** Longest earlier answer the question reader sees, in characters. */
     private static final int EARLIER_ANSWER_LENGTH = 600;
-
-    /** The reply to a greeting; {@code %s} is the course title. */
-    static final String GREETING = "Hi! Ask me anything about %s, and I'll answer from its PDFs with the pages I used.";
-    /** The reply to thanks; {@code %s} is the course title. */
-    static final String YOU_ARE_WELCOME = "Glad to help. Ask me anything else about %s.";
-    /** The reply to a request that names no subject, when the course has topics to offer. */
-    static final UserMessage WHICH_TOPIC = UserMessage.of("Which topic do you mean? Name it in your question, or pick one below.");
-    /** The reply to a request that names no subject, when the course has no topics to offer. */
-    static final UserMessage NAME_THE_TOPIC = UserMessage.of("Which topic do you mean? Name it in your question.");
-    /** The reply to a request to be quizzed; {@code %s} is the course title. */
-    static final String QUIZ_READY = "Ready to practise? Start a quiz with questions from %s.";
-    /** The reply to a request to be quizzed when the course has no approved questions; {@code %s} is the course title. */
-    static final String NO_QUESTIONS = "%s has no practice questions yet. Ask me about any of its topics instead.";
 
     /** The insufficient-evidence card. */
     public static final UserMessage NOT_COVERED =
@@ -414,8 +409,10 @@ public final class AskServiceImpl implements AskService, AutoCloseable {
         }
 
         private List<QuestionReader.Turn> earlier = List.of();
+        /** Chunks the conversation's last answer cited, in citation order. */
+        private List<String> lastCited = List.of();
 
-        /** The conversation's last answered questions before this one, oldest first. */
+        /** The conversation's last answered exchanges before this one, oldest first; notes what the last one cited. */
         private List<QuestionReader.Turn> earlierTurns() {
             List<QuestionReader.Turn> turns = new ArrayList<>();
             String asked = null;
@@ -425,64 +422,38 @@ public final class AskServiceImpl implements AskService, AutoCloseable {
                 } else if (asked != null && m.status() == MessageStatus.COMPLETE) {
                     turns.add(new QuestionReader.Turn(asked,
                             PipelineText.shorten(PipelineText.withoutCitations(m.content()), EARLIER_ANSWER_LENGTH)));
+                    lastCited = m.citations().stream().map(Citation::chunkId).distinct().toList();
                     asked = null;
                 }
             }
             return List.copyOf(turns.subList(Math.max(0, turns.size() - EARLIER_TURNS), turns.size()));
         }
 
-        /** What the message asks: settled by its words, else as typed (a first question) or as the reader rewrites it. */
-        private QuestionReading read() {
-            Optional<QuestionReading.Kind> plain = Greetings.kindOf(message, !earlier.isEmpty());
-            if (plain.isPresent()) {
-                return new QuestionReading(plain.get(), message);
-            }
+        /** What to search for: the message as typed (a first message) or as the reader rewrites it. */
+        private String searchText() {
             if (earlier.isEmpty()) {
-                return QuestionReading.asIs(message);
+                return message;
             }
             try {
                 QuestionReading reading = reader.read(message, earlier, token);
-                if (reading.kind() == QuestionReading.Kind.QUESTION && reading.question().isBlank()) {
-                    return QuestionReading.asIs(message);
+                if (reading.kind() != QuestionReading.Kind.QUESTION || reading.question().isBlank()) {
+                    return message;
                 }
-                return reading;
+                return reading.question().strip();
             } catch (CancellationException | UnavailableException e) {
                 throw e;
             } catch (RuntimeException e) {
                 if (token.isCancelled()) {
                     throw e;
                 }
-                LOG.warn("Could not read a question in conversation {}; searching it as typed: {}", thread.id(), e.toString());
-                return QuestionReading.asIs(message);
+                LOG.warn("Could not read a message in conversation {}; searching it as typed: {}", thread.id(), e.toString());
+                return message;
             }
         }
 
         private void answer() {
             token.throwIfCancelled();
             listener.onPhase(AskPhase.SEARCHING);
-            QuestionReading reading = read();
-            token.throwIfCancelled();
-            switch (reading.kind()) {
-                case GREETING -> {
-                    Course course = repos.courses().get(thread.courseId());
-                    String reply = Greetings.isThanks(message) ? YOU_ARE_WELCOME : GREETING;
-                    guidance(UserMessage.of(reply.formatted(course.title().strip())), topics(thread.courseId(), OFFERED_TOPICS));
-                    return;
-                }
-                case VAGUE -> {
-                    List<String> topics = topics(thread.courseId(), OFFERED_TOPICS);
-                    guidance(topics.isEmpty() ? NAME_THE_TOPIC : WHICH_TOPIC, topics);
-                    return;
-                }
-                case PRACTICE -> {
-                    practice();
-                    return;
-                }
-                case QUESTION -> question = reading.question().strip();
-            }
-            if (!question.equals(message)) {
-                LOG.debug("Searching conversation {} for the follow-up as: {}", thread.id(), question);
-            }
             if (index.needsRebuild()) {
                 failed(MATERIAL_PREPARING);
                 return;
@@ -492,19 +463,26 @@ public final class AskServiceImpl implements AskService, AutoCloseable {
                 insufficient(NOTHING_READY);
                 return;
             }
+            question = searchText();
+            token.throwIfCancelled();
+            if (!question.equals(message)) {
+                LOG.debug("Searching conversation {} for the follow-up as: {}", thread.id(), question);
+            }
             float[] vector = embedder.embed(List.of(question), EmbedKind.QUERY, token).getFirst();
             token.throwIfCancelled();
             List<SearchHit> hits = index.search(SearchQuery.forCourse(thread.courseId(), question, vector)).stream()
                     .filter(hit -> thread.courseId().equals(hit.courseId()) && readyTitles.containsKey(hit.documentId()))
                     .toList();
-            passages = evidence(hits, readyTitles);
+            passages = numbered(withContext(evidence(hits, readyTitles), readyTitles));
             if (passages.isEmpty()) {
                 insufficient(NOT_COVERED);
                 return;
             }
             token.throwIfCancelled();
             listener.onPhase(AskPhase.WRITING);
-            GroundedAnswer result = answerer.answer(question, passages, piece -> {
+            AnswerRequest request = new AnswerRequest(repos.courses().get(thread.courseId()).title().strip(),
+                    topics(thread.courseId(), REPLY_TOPICS), earlier, message, passages);
+            GroundedAnswer result = answerer.answer(request, piece -> {
                 streamed.append(piece);
                 listener.onToken(piece);
             }, token);
@@ -514,16 +492,11 @@ public final class AskServiceImpl implements AskService, AutoCloseable {
                 return;
             }
             CitationValidator.Result validated = CitationValidator.validate(result.text(), passages);
-            if (!validated.hasCitations()) {
-                LOG.debug("Answer in conversation {} cited no passage; reporting insufficient evidence", thread.id());
-                insufficient(NOT_COVERED);
-                return;
-            }
             ChatMessage stored = store(validated.text(), MessageStatus.COMPLETE, validated.citations());
             listener.onAnswer(toAnswer(stored));
         }
 
-        /** Reranks the hits and keeps the best passages that clear the evidence threshold, numbered from 1. */
+        /** Reranks the hits and keeps the best passages that clear the evidence threshold, best first. */
         private List<Passage> evidence(List<SearchHit> hits, Map<String, String> titles) {
             if (hits.isEmpty()) {
                 return List.of();
@@ -547,6 +520,49 @@ public final class AskServiceImpl implements AskService, AutoCloseable {
                         titles.getOrDefault(hit.documentId(), hit.documentTitle()), hit.pageStart(), hit.pageEnd(),
                         hit.sectionTitle(), hit.text(), scores[i]));
             }
+            return result;
+        }
+
+        /**
+         * The passages found, then passages the conversation's last answer cited in the places left; with nothing
+         * at all, passages picked at random from the course (preferring longer ones).
+         */
+        private List<Passage> withContext(List<Passage> found, Map<String, String> titles) {
+            List<Passage> result = new ArrayList<>(found);
+            Set<String> present = new HashSet<>(found.stream().map(Passage::chunkId).toList());
+            List<String> carried = lastCited.stream().filter(id -> !present.contains(id))
+                    .limit(Math.min(CARRIED_PASSAGES, MAX_PASSAGES - result.size())).toList();
+            Map<String, Chunk> chunks = new HashMap<>();
+            repos.chunks().listByIds(carried).forEach(chunk -> chunks.put(chunk.id(), chunk));
+            for (String id : carried) {
+                Chunk chunk = chunks.get(id);
+                if (chunk != null && titles.containsKey(chunk.documentId())) {
+                    result.add(passage(chunk, titles));
+                }
+            }
+            if (result.isEmpty()) {
+                List<Chunk> sampled = repos.chunks().sample(thread.courseId(), SAMPLED_PASSAGES, SAMPLED_MIN_LENGTH);
+                if (sampled.isEmpty()) {
+                    sampled = repos.chunks().sample(thread.courseId(), SAMPLED_PASSAGES, 0);
+                }
+                sampled.stream()
+                        .filter(chunk -> titles.containsKey(chunk.documentId()))
+                        .forEach(chunk -> result.add(passage(chunk, titles)));
+            }
+            return result;
+        }
+
+        private static Passage passage(Chunk chunk, Map<String, String> titles) {
+            return new Passage(1, chunk.id(), chunk.documentId(), titles.get(chunk.documentId()), chunk.pageStart(),
+                    chunk.pageEnd(), chunk.sectionTitle(), chunk.text(), 0);
+        }
+
+        private static List<Passage> numbered(List<Passage> passages) {
+            List<Passage> result = new ArrayList<>();
+            for (Passage p : passages) {
+                result.add(new Passage(result.size() + 1, p.chunkId(), p.documentId(), p.documentTitle(), p.pageStart(),
+                        p.pageEnd(), p.sectionTitle(), p.text(), p.relevance()));
+            }
             return List.copyOf(result);
         }
 
@@ -556,25 +572,6 @@ public final class AskServiceImpl implements AskService, AutoCloseable {
                     topics(thread.courseId(), OFFERED_TOPICS), clock.millis());
             repos.chats().insertMessage(stored);
             listener.onInsufficientEvidence(toAnswer(stored));
-        }
-
-        /** A quiz on the course when it has approved questions, else a guidance reply offering its topics. */
-        private void practice() {
-            String title = repos.courses().get(thread.courseId()).title().strip();
-            if (repos.items().countByStatus(thread.courseId()).getOrDefault(ItemStatus.APPROVED, 0) == 0) {
-                guidance(UserMessage.of(NO_QUESTIONS.formatted(title)), topics(thread.courseId(), OFFERED_TOPICS));
-                return;
-            }
-            ChatMessage stored = ChatMessage.reply(thread.id(), QUIZ_READY.formatted(title), MessageStatus.PRACTICE,
-                    List.of(), clock.millis());
-            repos.chats().insertMessage(stored);
-            listener.onPractice(toAnswer(stored));
-        }
-
-        private void guidance(UserMessage reply, List<String> topics) {
-            ChatMessage stored = ChatMessage.reply(thread.id(), reply.text(), MessageStatus.GUIDANCE, topics, clock.millis());
-            repos.chats().insertMessage(stored);
-            listener.onGuidance(toAnswer(stored));
         }
 
         private void cancelled() {
@@ -646,14 +643,6 @@ public final class AskServiceImpl implements AskService, AutoCloseable {
 
         void onInsufficientEvidence(Answer answer) {
             guard(() -> delegate.onInsufficientEvidence(answer));
-        }
-
-        void onGuidance(Answer answer) {
-            guard(() -> delegate.onGuidance(answer));
-        }
-
-        void onPractice(Answer answer) {
-            guard(() -> delegate.onPractice(answer));
         }
 
         void onError(UserMessage message) {

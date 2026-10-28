@@ -12,6 +12,7 @@ import edu.learnsphere.core.spi.AiStatus;
 import edu.learnsphere.core.spi.ConceptDraft;
 import edu.learnsphere.core.spi.EmbedKind;
 import edu.learnsphere.core.spi.GradeResult;
+import edu.learnsphere.core.spi.AnswerRequest;
 import edu.learnsphere.core.spi.GroundedAnswer;
 import edu.learnsphere.core.spi.ItemDraft;
 import edu.learnsphere.core.spi.ItemGenerationRequest;
@@ -94,6 +95,17 @@ class FakesTest {
             assertThat(c.number()).isEqualTo(1);
             assertThat(c.pageStart()).isEqualTo(12);
         });
+    }
+
+    @Test
+    void answererGreetsQuizzesAndSaysWhatTheCourseDoesNotCover() {
+        FakeGroundedAnswerer answerer = new FakeGroundedAnswerer();
+        java.util.function.Function<String, String> reply = message -> answerer.answer(
+                new AnswerRequest("Biology", List.of(), List.of(), message, List.of(CELLS, PLANTS)), t -> { },
+                CancellationToken.NONE).text();
+        assertThat(reply.apply("hello")).isEqualTo("Hi! What would you like to go over in Biology?");
+        assertThat(reply.apply("quiz me")).startsWith("Here's one: what does your course say about");
+        assertThat(reply.apply("Who painted the Mona Lisa?")).isEqualTo("Your course material doesn't cover that.");
     }
 
     @Test

@@ -14,8 +14,6 @@ import edu.learnsphere.core.model.ChatMessage;
 import edu.learnsphere.core.model.Citation;
 import edu.learnsphere.core.model.MessageStatus;
 import edu.learnsphere.core.service.CourseDraft;
-import edu.learnsphere.core.service.ItemContent;
-import edu.learnsphere.core.service.SessionRequest;
 import edu.learnsphere.core.service.ThemePreference;
 import edu.learnsphere.core.service.ThreadSummary;
 import edu.learnsphere.core.service.Workspace;
@@ -154,40 +152,13 @@ class AskPageTest {
 
     /** ACCEPTANCE.md T03, steps 2 to 5 in one conversation, then Home. */
     @Test
-    void aGreetingGetsAShortReplyWithTheCourseTopicsAsChips(FxRobot robot) {
+    void aGreetingGetsAReplyFromTheAssistant(FxRobot robot) {
         open(robot, Destination.Ask.newThread(courseId));
         AskPage page = page();
-        ExchangeView exchange = askAndWait(robot, page, "hello", ExchangeView.State.GUIDANCE);
+        ExchangeView exchange = askAndWait(robot, page, "hello", ExchangeView.State.ANSWERED);
 
-        assertThat(fx(() -> labels(exchange, ".ask-insufficient-text")))
-                .containsExactly("Hi! Ask me anything about Cell Biology, and I'll answer from its PDFs with the pages I used.");
-        List<Button> chips = fx(() -> exchange.lookupAll(".ask-suggestion").stream().map(Button.class::cast).toList());
-        assertThat(fx(() -> chips.stream().map(Button::getText).toList())).contains("The cell membrane", "The nucleus");
-        assertThat(fx(() -> buttons(exchange).stream().map(Button::getText).toList())).doesNotContain("Rephrase question");
-        assertThat(workspace.ask().messages(fx(page::threadId)).getLast().status()).isEqualTo(MessageStatus.GUIDANCE);
-
-        robot.clickOn(chips.getFirst());
-        assertThat(fx(() -> page.composer().input().getText()))
-                .isEqualTo("What does the course say about the cell membrane?");
-    }
-
-    @Test
-    void quizMeOffersAQuizThatStartsStudying(FxRobot robot) {
-        String itemId = workspace.items().create(courseId, null,
-                ItemContent.flashcard("What do mitochondria produce?", "ATP.")).id();
-        workspace.items().approve(itemId);
-        open(robot, Destination.Ask.newThread(courseId));
-        AskPage page = page();
-        ExchangeView exchange = askAndWait(robot, page, "quiz me on what we're doing", ExchangeView.State.PRACTICE);
-
-        assertThat(fx(() -> labels(exchange, ".ask-insufficient-text")))
-                .containsExactly("Ready to practise? Start a quiz with questions from Cell Biology.");
-        assertThat(fx(() -> exchange.lookupAll(".ask-suggestion"))).isEmpty();
-        Button start = fx(() -> buttons(exchange).stream().filter(b -> b.getText().equals("Start a quiz"))
-                .findFirst().orElseThrow());
-        robot.clickOn(start);
-        assertThat(fx(() -> window.navigator().current()))
-                .isEqualTo(new Destination.Study(SessionRequest.studyNext(courseId)));
+        assertThat(fx(exchange::text)).isEqualTo("Hi! What would you like to go over in Cell Biology?");
+        assertThat(workspace.ask().messages(fx(page::threadId)).getLast().status()).isEqualTo(MessageStatus.COMPLETE);
     }
 
     @Test
@@ -212,11 +183,10 @@ class AskPageTest {
         assertThat(fx(() -> page.viewer().page())).isEqualTo(4);
         assertThat(fx(() -> page.viewer().highlightCount())).isPositive();
 
-        // 4. Not covered: the calm card, and nothing written.
-        ExchangeView notCovered = askAndWait(robot, page, NOT_COVERED, ExchangeView.State.INSUFFICIENT);
-        assertThat(fx(() -> labels(notCovered, ".ask-insufficient-text")))
-                .containsExactly("Your material doesn't cover this. Try rephrasing, or add a document that does.");
-        assertThat(fx(notCovered::streamedText)).isEmpty();
+        // 4. Not covered: the assistant says so, with nothing cited.
+        ExchangeView notCovered = askAndWait(robot, page, NOT_COVERED, ExchangeView.State.ANSWERED);
+        assertThat(fx(notCovered::text)).isEqualTo("Your course material doesn't cover that.");
+        assertThat(fx(() -> notCovered.lookup(".citation-chip"))).isNull();
 
         // 5. Cancelled while streaming: stored as cancelled.
         robot.interact(() -> page.composer().input().setText("How do ribosomes build proteins?"));
@@ -231,7 +201,7 @@ class AskPageTest {
                 WAIT, "the stopped answer to be stored");
         assertThat(workspace.ask().messages(threadId).stream().map(ChatMessage::status).toList())
                 .containsExactly(MessageStatus.COMPLETE, MessageStatus.COMPLETE, MessageStatus.COMPLETE,
-                        MessageStatus.INSUFFICIENT, MessageStatus.COMPLETE, MessageStatus.CANCELLED);
+                        MessageStatus.COMPLETE, MessageStatus.COMPLETE, MessageStatus.CANCELLED);
 
         // The conversation is among the recent questions on Home.
         assertThat(workspace.ask().recentQuestions(5)).anyMatch(q -> q.threadId().equals(threadId));
@@ -295,22 +265,14 @@ class AskPageTest {
     }
 
     @Test
-    void aQuestionTheMaterialDoesNotCoverGetsTheCalmCard(FxRobot robot) {
+    void aQuestionTheMaterialDoesNotCoverIsAnsweredSayingSo(FxRobot robot) {
         open(robot, Destination.Ask.newThread(courseId));
         AskPage page = page();
-        ExchangeView exchange = askAndWait(robot, page, NOT_COVERED, ExchangeView.State.INSUFFICIENT);
+        ExchangeView exchange = askAndWait(robot, page, NOT_COVERED, ExchangeView.State.ANSWERED);
 
-        assertThat(fx(() -> labels(exchange, ".ask-insufficient-text")))
-                .containsExactly("Your material doesn't cover this. Try rephrasing, or add a document that does.");
-        assertThat(fx(exchange::streamedText)).as("no answer was written").isEmpty();
+        assertThat(fx(exchange::text)).isEqualTo("Your course material doesn't cover that.");
         assertThat(fx(() -> exchange.lookup(".citation-chip"))).isNull();
-        List<ChatMessage> stored = workspace.ask().messages(fx(page::threadId));
-        assertThat(stored.getLast().status()).isEqualTo(MessageStatus.INSUFFICIENT);
-
-        Button rephrase = fx(() -> buttons(exchange).stream().filter(b -> b.getText().equals("Rephrase question"))
-                .findFirst().orElseThrow());
-        robot.clickOn(rephrase);
-        assertThat(fx(() -> page.composer().input().getText())).isEqualTo(NOT_COVERED);
+        assertThat(workspace.ask().messages(fx(page::threadId)).getLast().status()).isEqualTo(MessageStatus.COMPLETE);
     }
 
     @Test
