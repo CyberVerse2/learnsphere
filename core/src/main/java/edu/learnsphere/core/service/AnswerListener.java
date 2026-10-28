@@ -7,8 +7,8 @@ import edu.learnsphere.core.model.ChatMessage;
  * Receives an answer as it is produced. Called on a background thread: marshal to the FX thread.
  *
  * <p>Order: {@link #onQuestionSaved}, then {@link #onPhase} updates and {@link #onToken} calls, then
- * exactly one terminal call: {@link #onAnswer}, {@link #onInsufficientEvidence}, {@link #onError} or
- * {@link #onCancelled}.
+ * exactly one terminal call: {@link #onAnswer}, {@link #onInsufficientEvidence}, {@link #onGuidance},
+ * {@link #onPractice}, {@link #onError} or {@link #onCancelled}.
  *
  * <p>Streamed tokens are a preview. The stored answer can differ from them: citation markers that point
  * at no passage are removed, groups such as {@code [1, 3]} are split into {@code [1][3]}, and an answer
@@ -34,6 +34,23 @@ public interface AnswerListener {
 
     /** The material does not cover the question; {@code answer.text()} says so and suggests what to try. */
     void onInsufficientEvidence(Answer answer);
+
+    /**
+     * The message was a greeting, or asked about no particular subject: {@code answer.text()} says how to ask
+     * and {@code answer.suggestions()} holds topics of the course to offer. Nothing was searched. By default
+     * shown like {@link #onInsufficientEvidence}.
+     */
+    default void onGuidance(Answer answer) {
+        onInsufficientEvidence(answer);
+    }
+
+    /**
+     * The message asked to be quizzed and the course has practice questions: {@code answer.text()} offers a quiz
+     * on the course. Nothing was searched. By default shown like {@link #onGuidance}.
+     */
+    default void onPractice(Answer answer) {
+        onGuidance(answer);
+    }
 
     /** The answer could not be produced. */
     void onError(UserMessage message);

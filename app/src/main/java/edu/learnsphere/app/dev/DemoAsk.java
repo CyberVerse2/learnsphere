@@ -17,6 +17,10 @@ import edu.learnsphere.core.service.RecentQuestion;
 import edu.learnsphere.core.service.ThreadSummary;
 import edu.learnsphere.core.util.Cancellable;
 import edu.learnsphere.core.util.CancellationToken;
+import edu.learnsphere.ai.fake.FakeQuestionReader;
+import edu.learnsphere.core.model.Course;
+import edu.learnsphere.core.model.CourseModule;
+import edu.learnsphere.core.spi.QuestionReading;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -26,7 +30,9 @@ import java.util.Set;
 /**
  * {@link AskService} over the {@link DemoStore}. Questions are matched to the course's passages by shared
  * words; a good match is answered word by word from the passages with numbered citations, and a question
- * the material doesn't cover gets the insufficient-evidence answer, as the real assistant would.
+ * the material doesn't cover gets the insufficient-evidence answer, as the real assistant would. Greetings and
+ * requests that name no subject get a guidance reply offering the course's module titles
+ * ({@link FakeQuestionReader} decides which).
  */
 final class DemoAsk implements AskService {
 
@@ -39,6 +45,7 @@ final class DemoAsk implements AskService {
     private final DemoStore store;
     private final DemoProgress progress;
     private final Duration wordDelay;
+    private final FakeQuestionReader reader = new FakeQuestionReader();
 
     DemoAsk(DemoStore store, DemoProgress progress, Duration wordDelay) {
         this.store = store;
@@ -115,6 +122,18 @@ final class DemoAsk implements AskService {
     }
 
     @Override
+    public List<String> topics(String courseId, int limit) {
+        synchronized (store) {
+            return store.modules.values().stream()
+                    .filter(m -> m.courseId().equals(courseId))
+                    .sorted(Comparator.comparingInt(CourseModule::position))
+                    .map(CourseModule::title)
+                    .limit(Math.max(0, limit))
+                    .toList();
+        }
+    }
+
+    @Override
     public Cancellable ask(String threadId, String question, AnswerListener listener) {
         if (question == null || question.isBlank()) {
             throw new InvalidInputException(QUESTION_NEEDED, "blank question");
@@ -172,11 +191,22 @@ final class DemoAsk implements AskService {
             pause(Duration.ofMillis(500));
             String text;
             List<Citation> citations = new ArrayList<>();
+            List<String> suggestions = List.of();
             MessageStatus status;
-            if (sources.isEmpty()) {
+            QuestionReading reading = reader.read(question.content(), List.of(), cancelled);
+            if (reading.kind() == QuestionReading.Kind.PRACTICE) {
+                status = MessageStatus.PRACTICE;
+                text = "Ready to practise? Start a quiz with questions from " + courseTitle(courseId) + ".";
+            } else if (reading.kind() != QuestionReading.Kind.QUESTION) {
+                status = MessageStatus.GUIDANCE;
+                suggestions = topics(courseId, 6);
+                text = reading.kind() == QuestionReading.Kind.GREETING
+                        ? "Hi! Ask me anything about " + courseTitle(courseId) + ", and I'll answer from its PDFs with the pages I used."
+                        : "Which topic do you mean? Name it in your question, or pick one below.";
+            } else if (sources.isEmpty()) {
                 status = MessageStatus.INSUFFICIENT;
-                text = "Your course material doesn't cover this. Try asking about one of the topics in its "
-                        + "modules, or rephrase the question with words from your notes.";
+                text = "Your material doesn't cover this. Try rephrasing, or add a document that does.";
+                suggestions = topics(courseId, 6);
             } else {
                 status = MessageStatus.COMPLETE;
                 StringBuilder builder = new StringBuilder();
@@ -209,11 +239,16 @@ final class DemoAsk implements AskService {
             ChatMessage reply;
             synchronized (store) {
                 now = store.now();
-                reply = new ChatMessage(DemoStore.newId(), threadId, ChatRole.ASSISTANT, text, status, citations, now);
+                reply = new ChatMessage(DemoStore.newId(), threadId, ChatRole.ASSISTANT, text, status, citations,
+                        suggestions, now);
                 store.messages.computeIfAbsent(threadId, k -> new ArrayList<>()).add(reply);
             }
-            Answer answer = new Answer(reply.id(), threadId, question.id(), text, status, citations, now);
-            if (status == MessageStatus.INSUFFICIENT) {
+            Answer answer = new Answer(reply.id(), threadId, question.id(), text, status, citations, suggestions, now);
+            if (status == MessageStatus.PRACTICE) {
+                listener.onPractice(answer);
+            } else if (status == MessageStatus.GUIDANCE) {
+                listener.onGuidance(answer);
+            } else if (status == MessageStatus.INSUFFICIENT) {
                 listener.onInsufficientEvidence(answer);
             } else {
                 listener.onAnswer(answer);
@@ -223,6 +258,13 @@ final class DemoAsk implements AskService {
             listener.onCancelled();
         } catch (RuntimeException e) {
             listener.onError(UserMessage.SOMETHING_WENT_WRONG);
+        }
+    }
+
+    private String courseTitle(String courseId) {
+        synchronized (store) {
+            Course course = store.courses.get(courseId);
+            return course == null ? "this course" : course.title();
         }
     }
 

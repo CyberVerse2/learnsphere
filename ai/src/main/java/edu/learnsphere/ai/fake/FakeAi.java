@@ -28,6 +28,7 @@ import java.time.Duration;
  * @param grader          reference word overlap
  * @param pageReader      fixed transcription
  * @param figureDescriber one figure per page image
+ * @param questionReader  greetings by their first word, pointing words as follow-ups
  */
 public record FakeAi(
         FakeAiRuntime runtime,
@@ -39,7 +40,8 @@ public record FakeAi(
         FakeSupportChecker supportChecker,
         FakeShortAnswerGrader grader,
         FakePageReader pageReader,
-        FakeFigureDescriber figureDescriber) {
+        FakeFigureDescriber figureDescriber,
+        FakeQuestionReader questionReader) {
 
     /** Fakes with instant answers (tests). */
     public static FakeAi create() {
@@ -50,12 +52,12 @@ public record FakeAi(
     public static FakeAi create(Duration wordDelay) {
         return new FakeAi(new FakeAiRuntime(), new FakeEmbedder(), new FakeReranker(), new FakeGroundedAnswerer(wordDelay),
                 new FakeItemGenerator(), new FakeConceptExtractor(), new FakeSupportChecker(), new FakeShortAnswerGrader(),
-                new FakePageReader(), new FakeFigureDescriber());
+                new FakePageReader(), new FakeFigureDescriber(), new FakeQuestionReader());
     }
 
     /** Every fake as the AI slots of a {@link Capabilities}. */
     public AiCapabilities capabilities() {
         return new AiCapabilities(runtime, embedder, reranker, answerer, conceptExtractor, itemGenerator, supportChecker,
-                grader, pageReader, figureDescriber);
+                grader, pageReader, figureDescriber, questionReader);
     }
 }

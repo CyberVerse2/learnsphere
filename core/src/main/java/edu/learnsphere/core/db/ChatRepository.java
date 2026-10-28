@@ -18,6 +18,7 @@ import org.jdbi.v3.core.statement.Query;
 public final class ChatRepository {
 
     private static final TypeReference<List<Citation>> CITATIONS = new TypeReference<>() { };
+    private static final TypeReference<List<String>> SUGGESTIONS = new TypeReference<>() { };
 
     static final RowMapper<ChatThread> THREAD = (rs, ctx) -> new ChatThread(
             rs.getString("id"),
@@ -33,6 +34,7 @@ public final class ChatRepository {
             rs.getString("content"),
             MessageStatus.fromCode(rs.getString("status")),
             Json.read(rs.getString("citations_json"), CITATIONS),
+            Json.read(rs.getString("suggestions_json"), SUGGESTIONS),
             rs.getLong("created_at"));
 
     /** A thread with what a thread list needs: message count and the latest message. */
@@ -111,12 +113,14 @@ public final class ChatRepository {
     public void insertMessage(ChatMessage m) {
         db.useTransaction(h -> {
             h.createUpdate("""
-                            INSERT INTO chat_messages (id, thread_id, role, content, status, citations_json, created_at)
-                            VALUES (:id, :threadId, :role, :content, :status, :citations, :createdAt)
+                            INSERT INTO chat_messages (id, thread_id, role, content, status, citations_json,
+                                                       suggestions_json, created_at)
+                            VALUES (:id, :threadId, :role, :content, :status, :citations, :suggestions, :createdAt)
                             """)
                     .bind("id", m.id()).bind("threadId", m.threadId()).bind("role", m.role().code())
                     .bind("content", m.content()).bind("status", m.status().code())
-                    .bind("citations", Json.write(m.citations())).bind("createdAt", m.createdAt())
+                    .bind("citations", Json.write(m.citations())).bind("suggestions", Json.write(m.suggestions()))
+                    .bind("createdAt", m.createdAt())
                     .execute();
             touchThread(m.threadId(), m.createdAt());
         });

@@ -113,7 +113,8 @@ public final class Recorder {
         AiCapabilities recorded = new AiCapabilities(new PinnedRuntime(ai.runtime(), model), new RecordingEmbedder(ai.embedder()),
                 ai.reranker(), new RecordingAnswerer(ai.answerer()), ai.conceptExtractor(),
                 new RecordingGenerator(ai.itemGenerator()), new RecordingSupportChecker(ai.supportChecker()), ai.grader(),
-                new RecordingPageReader(ai.pageReader()), new RecordingFigureDescriber(ai.figureDescriber()));
+                new RecordingPageReader(ai.pageReader()), new RecordingFigureDescriber(ai.figureDescriber()),
+                ai.questionReader());
         SearchIndexFactory factory = base.searchIndexFactory();
         return Capabilities.builder()
                 .pdf(base.pdfInspector(), base.textExtractor(), new RecordingChunker(base.chunker()), base.pageRenderer(),

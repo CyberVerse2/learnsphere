@@ -3,9 +3,10 @@ package edu.learnsphere.core.model;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
+import edu.learnsphere.core.db.Migrations;
+import edu.learnsphere.core.testing.TestDb;
+import java.nio.file.Path;
+import java.time.Clock;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -13,7 +14,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /** Keeps the Java enum codes and the schema's CHECK lists in step. */
 class EnumCodesTest {
@@ -59,12 +62,14 @@ class EnumCodesTest {
     }
 
     @Test
-    void schemaCheckListsMatchEnumCodes() throws IOException {
+    void schemaCheckListsMatchEnumCodes(@TempDir Path dir) {
+        // Every migration script, so a later script that rebuilds a table with a longer list counts.
         String sql;
-        try (InputStream in = getClass().getResourceAsStream("/db/migration/V1__initial.sql")) {
-            assertThat(in).isNotNull();
-            sql = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        try (TestDb db = TestDb.open(dir)) {
+            sql = new Migrations(db.repos.database(), Clock.systemUTC()).scripts().stream()
+                    .map(Migrations.Script::sql).collect(Collectors.joining("\n"));
         }
+        assertThat(sql).contains("CREATE TABLE");
         for (Map.Entry<String, Class<? extends CodedEnum>> entry : COLUMNS) {
             Set<String> expected = new LinkedHashSet<>();
             Arrays.stream(entry.getValue().getEnumConstants()).forEach(v -> expected.add(v.code()));

@@ -13,7 +13,13 @@ public enum MessageStatus implements CodedEnum {
     ERROR,
 
     /** The learner stopped the answer. */
-    CANCELLED;
+    CANCELLED,
+
+    /** A reply that helps the learner ask: to a greeting, or to a request that names no subject. */
+    GUIDANCE,
+
+    /** The reply to a request to be quizzed, offering a quiz on the course. */
+    PRACTICE;
 
     private final String code = CodedEnum.codeOf(this);
 

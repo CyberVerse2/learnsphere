@@ -12,10 +12,16 @@ import edu.learnsphere.core.model.ChatMessage;
 import edu.learnsphere.core.model.ChatRole;
 import edu.learnsphere.core.model.ChatThread;
 import edu.learnsphere.core.model.Citation;
+import edu.learnsphere.core.model.Concept;
 import edu.learnsphere.core.model.Course;
 import edu.learnsphere.core.model.CourseOrigin;
 import edu.learnsphere.core.model.CourseStatus;
+import edu.learnsphere.core.model.Difficulty;
 import edu.learnsphere.core.model.DocumentStatus;
+import edu.learnsphere.core.model.ItemOrigin;
+import edu.learnsphere.core.model.ItemStatus;
+import edu.learnsphere.core.model.ItemType;
+import edu.learnsphere.core.model.LearningItem;
 import edu.learnsphere.core.model.MessageStatus;
 import edu.learnsphere.core.model.Visibility;
 import edu.learnsphere.core.service.Answer;
@@ -29,6 +35,8 @@ import edu.learnsphere.core.spi.Embedder;
 import edu.learnsphere.core.spi.GroundedAnswer;
 import edu.learnsphere.core.spi.GroundedAnswerer;
 import edu.learnsphere.core.spi.Passage;
+import edu.learnsphere.core.spi.QuestionReader;
+import edu.learnsphere.core.spi.QuestionReading;
 import edu.learnsphere.core.spi.TokenSink;
 import edu.learnsphere.core.util.Cancellable;
 import edu.learnsphere.core.util.CancellationToken;
@@ -76,7 +84,168 @@ class AskServiceImplTest {
     }
 
     private AskServiceImpl askWith(Embedder embedder, GroundedAnswerer answerer) {
-        return new AskServiceImpl(f.repos, f.settings, f.index, embedder, f.ai.reranker(), answerer);
+        return new AskServiceImpl(f.repos, f.settings, f.index, embedder, f.ai.reranker(), answerer, f.ai.questionReader());
+    }
+
+    private AskServiceImpl askWith(QuestionReader reader, GroundedAnswerer answerer) {
+        return new AskServiceImpl(f.repos, f.settings, f.index, f.ai.embedder(), f.ai.reranker(), answerer, reader);
+    }
+
+    // ---- reading the message -----------------------------------------------------------------------
+
+    @Test
+    void aGreetingGetsGuidanceWithTheCourseTopicsAndNothingIsSearched() {
+        CountingAnswerer answerer = new CountingAnswerer(f.ai.answerer());
+        AskServiceImpl service = askWith(f.ai.questionReader(), answerer);
+        ChatThread thread = thread();
+        Recorder recorder = new Recorder();
+
+        service.ask(thread.id(), "hello", recorder);
+
+        Answer answer = recorder.awaitGuidance();
+        service.close();
+        assertThat(answerer.calls).hasValue(0);
+        assertThat(answer.status()).isEqualTo(MessageStatus.GUIDANCE);
+        assertThat(answer.text()).isEqualTo(AskServiceImpl.GREETING.formatted("Biology"));
+        assertThat(answer.suggestions()).containsExactly("Cells");
+        assertThat(answer.citations()).isEmpty();
+        ChatMessage stored = ask.messages(thread.id()).getLast();
+        assertThat(stored.status()).isEqualTo(MessageStatus.GUIDANCE);
+        assertThat(stored.suggestions()).containsExactly("Cells");
+    }
+
+    @Test
+    void aRequestThatNamesNoTopicAsksWhichOne() {
+        ChatThread thread = thread();
+        Recorder recorder = new Recorder();
+
+        ask.ask(thread.id(), "tell me about this topic", recorder);
+
+        Answer answer = recorder.awaitGuidance();
+        assertThat(answer.text()).isEqualTo(AskServiceImpl.WHICH_TOPIC.text());
+        assertThat(answer.suggestions()).containsExactly("Cells");
+    }
+
+    @Test
+    void aRequestToBeQuizzedOffersAQuizAndNothingIsSearched() {
+        CountingAnswerer answerer = new CountingAnswerer(f.ai.answerer());
+        AskServiceImpl service = askWith(f.ai.questionReader(), answerer);
+        LearningItem item = LearningItem.draft(material.course().id(), null, ItemType.FLASHCARD, "What makes ATP?",
+                "Mitochondria", "Page 1 says so.", List.of(), Difficulty.MEDIUM, null, null, ItemOrigin.AI, f.t.now());
+        f.repos.items().insert(item.withStatus(ItemStatus.APPROVED, f.t.now()));
+        ChatThread thread = thread();
+        Recorder recorder = new Recorder();
+
+        service.ask(thread.id(), "quiz me on what we're doing", recorder);
+
+        Answer answer = recorder.awaitPractice();
+        service.close();
+        assertThat(answerer.calls).hasValue(0);
+        assertThat(answer.status()).isEqualTo(MessageStatus.PRACTICE);
+        assertThat(answer.text()).isEqualTo(AskServiceImpl.QUIZ_READY.formatted("Biology"));
+        assertThat(ask.messages(thread.id()).getLast().status()).isEqualTo(MessageStatus.PRACTICE);
+    }
+
+    @Test
+    void aRequestToBeQuizzedInACourseWithoutQuestionsOffersItsTopics() {
+        ChatThread thread = thread();
+        Recorder recorder = new Recorder();
+
+        ask.ask(thread.id(), "test me", recorder);
+
+        Answer answer = recorder.awaitGuidance();
+        assertThat(answer.text()).isEqualTo(AskServiceImpl.NO_QUESTIONS.formatted("Biology"));
+        assertThat(answer.suggestions()).containsExactly("Cells");
+    }
+
+    @Test
+    void aFollowUpIsSearchedAndAnsweredAsTheQuestionItStandsFor() {
+        List<List<QuestionReader.Turn>> seen = new CopyOnWriteArrayList<>();
+        List<String> answered = new CopyOnWriteArrayList<>();
+        QuestionReader reader = (message, earlier, token) -> {
+            seen.add(earlier);
+            return message.equals("and what do they build them from?")
+                    ? QuestionReading.asIs("What do ribosomes build proteins from?") : QuestionReading.asIs(message);
+        };
+        GroundedAnswerer answerer = (question, passages, sink, token) -> {
+            answered.add(question);
+            return f.ai.answerer().answer(question, passages, sink, token);
+        };
+        AskServiceImpl service = askWith(reader, answerer);
+        ChatThread thread = thread();
+        Recorder first = new Recorder();
+        service.ask(thread.id(), "How do ribosomes build proteins?", first);
+        first.awaitAnswer();
+
+        Recorder second = new Recorder();
+        service.ask(thread.id(), "and what do they build them from?", second);
+
+        Answer answer = second.awaitAnswer();
+        service.close();
+        assertThat(answer.citations()).extracting(Citation::pageStart).containsExactly(2);
+        assertThat(answered).containsExactly("How do ribosomes build proteins?", "What do ribosomes build proteins from?");
+        assertThat(seen).as("only the follow-up is read").hasSize(1);
+        assertThat(seen.getFirst()).singleElement().satisfies(turn -> {
+            assertThat(turn.question()).isEqualTo("How do ribosomes build proteins?");
+            assertThat(turn.answer()).isEqualTo("Your material says: Ribosomes build proteins from amino acids.");
+        });
+        assertThat(ask.messages(thread.id()).get(2).content()).isEqualTo("and what do they build them from?");
+    }
+
+    @Test
+    void aFollowUpThatCannotBeReadIsSearchedAsTyped() {
+        QuestionReader broken = (message, earlier, token) -> {
+            throw new IllegalStateException("no reply");
+        };
+        AskServiceImpl service = askWith(broken, f.ai.answerer());
+        ChatThread thread = thread();
+        Recorder first = new Recorder();
+        service.ask(thread.id(), "How do mitochondria release energy?", first);
+        first.awaitAnswer();
+        Recorder second = new Recorder();
+
+        service.ask(thread.id(), "How do ribosomes build proteins?", second);
+
+        assertThat(second.awaitAnswer().citations()).extracting(Citation::pageStart).containsExactly(2);
+        service.close();
+    }
+
+    @Test
+    void firstQuestionsAndGreetingsAreNeverSentToTheReader() {
+        AtomicInteger reads = new AtomicInteger();
+        QuestionReader counting = (message, earlier, token) -> {
+            reads.incrementAndGet();
+            return QuestionReading.asIs(message);
+        };
+        AskServiceImpl service = askWith(counting, f.ai.answerer());
+        ChatThread thread = thread();
+        Recorder question = new Recorder();
+        service.ask(thread.id(), "How do ribosomes build proteins?", question);
+        question.awaitAnswer();
+        Recorder thanks = new Recorder();
+
+        service.ask(thread.id(), "thanks!", thanks);
+
+        assertThat(thanks.awaitGuidance().text()).isEqualTo(AskServiceImpl.YOU_ARE_WELCOME.formatted("Biology"));
+        service.close();
+        assertThat(reads).hasValue(0);
+    }
+
+    @Test
+    void topicsComeFromModulesThenConceptsThenTheHeadingsOfThePdfs() {
+        assertThat(ask.topics(material.course().id(), 6)).containsExactly("Cells");
+
+        Course notes = f.t.course("Logic");
+        f.addPdf(notes, null, "Reading guide", FakePdf.document()
+                .page("# 1.1 Formal methods\nFormal methods describe software precisely.")
+                .page("# Example 2.2 Consider the truth table\nA truth table lists every case.")
+                .page("# 2.2 Conjunction\nA conjunction is true when both parts are true.")
+                .page("# Introduction\nThis guide covers logic."));
+        f.importAndWait(f.repos.documents().listByCourse(notes.id()).getFirst());
+        assertThat(ask.topics(notes.id(), 6)).containsExactly("Formal methods", "Conjunction");
+
+        f.repos.concepts().insert(Concept.create(notes.id(), null, "Truth tables", "", 1L));
+        assertThat(ask.topics(notes.id(), 6)).containsExactly("Truth tables");
     }
 
     // ---- answers -------------------------------------------------------------------------------------
@@ -165,7 +334,11 @@ class AskServiceImplTest {
         assertThat(answer.text()).isEqualTo(AskServiceImpl.NOT_COVERED.text());
         assertThat(answer.citations()).isEmpty();
         assertThat(recorder.phases).containsExactly(AskPhase.SEARCHING);
-        assertThat(ask.messages(thread.id()).getLast().status()).isEqualTo(MessageStatus.INSUFFICIENT);
+        assertThat(answer.suggestions()).isNotEmpty()
+                .allSatisfy(topic -> assertThat(topic).isIn("Mitochondria", "Ribosomes", "Membranes", "Cells"));
+        ChatMessage stored = ask.messages(thread.id()).getLast();
+        assertThat(stored.status()).isEqualTo(MessageStatus.INSUFFICIENT);
+        assertThat(stored.suggestions()).isEqualTo(answer.suggestions());
     }
 
     @Test
@@ -439,6 +612,16 @@ class AskServiceImplTest {
         }
 
         @Override
+        public void onGuidance(Answer value) {
+            end("guidance", value, null);
+        }
+
+        @Override
+        public void onPractice(Answer value) {
+            end("practice", value, null);
+        }
+
+        @Override
         public void onError(UserMessage message) {
             end("error", null, message);
         }
@@ -465,6 +648,18 @@ class AskServiceImplTest {
         Answer awaitAnswer() {
             awaitEnd();
             assertThat(ending).as("how the answer ended (error: %s)", error).isEqualTo("answer");
+            return answer;
+        }
+
+        Answer awaitGuidance() {
+            awaitEnd();
+            assertThat(ending).as("how the answer ended (error: %s)", error).isEqualTo("guidance");
+            return answer;
+        }
+
+        Answer awaitPractice() {
+            awaitEnd();
+            assertThat(ending).as("how the answer ended (error: %s)", error).isEqualTo("practice");
             return answer;
         }
 

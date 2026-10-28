@@ -89,7 +89,7 @@ final class PipelineFixture implements AutoCloseable {
     }
 
     AskServiceImpl ask() {
-        return new AskServiceImpl(repos, settings, index, ai.embedder(), ai.reranker(), ai.answerer());
+        return new AskServiceImpl(repos, settings, index, ai.embedder(), ai.reranker(), ai.answerer(), ai.questionReader());
     }
 
     GenerationServiceImpl generation() {

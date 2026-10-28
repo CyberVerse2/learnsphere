@@ -38,8 +38,10 @@ import org.slf4j.LoggerFactory;
  * One question and its answer in a conversation, set like a page of questions and answers: the question in the
  * title face, the answer in reading type with page chips where it cites the material, then the sources it
  * used and a copy button. The answer area moves through the states of an answer: a quiet progress line, the
- * streamed preview, and then the final answer, the "material doesn't cover this" card, an error with
- * Try again, or the stopped answer. FX thread only.
+ * streamed preview, and then the final answer, the "material doesn't cover this" card, a guidance card
+ * (the reply to a greeting or to a question that names no topic), a practice card (the reply to "quiz me",
+ * with Start a quiz), an error with Try again, or the stopped answer. The first two cards offer topics as
+ * chips. FX thread only.
  */
 final class ExchangeView extends VBox {
 
@@ -62,6 +64,10 @@ final class ExchangeView extends VBox {
         ANSWERED,
         /** The material doesn't cover the question. */
         INSUFFICIENT,
+        /** A greeting, or a question naming no topic, was answered with how to ask. */
+        GUIDANCE,
+        /** A request to be quizzed was answered with a quiz to start. */
+        PRACTICE,
         /** The answer couldn't be produced. */
         FAILED,
         /** The learner stopped the answer. */
@@ -83,7 +89,7 @@ final class ExchangeView extends VBox {
         /** Puts {@code question} in the question box to edit, without asking it. */
         void draft(String question);
 
-        /** Topics of the course, offered when the material doesn't cover a question. */
+        /** Topics of the course, offered when a stored reply has none of its own. */
         List<String> topics();
 
         /** True when the learner made this course and can add PDFs to it. */
@@ -91,6 +97,9 @@ final class ExchangeView extends VBox {
 
         /** Opens the place where PDFs are added to the course. */
         void addDocuments();
+
+        /** Starts a quiz on the course. */
+        void startQuiz();
     }
 
     private final String question;
@@ -211,24 +220,64 @@ final class ExchangeView extends VBox {
         Motion.fadeIn(body, Motion.ROUTE);
     }
 
-    /** The calm card saying the material doesn't cover the question, with what to try next. */
-    void showInsufficient(String explanation) {
+    /**
+     * The calm card saying the material doesn't cover the question, with what to try next: the topics the
+     * answer offers ({@code suggestions}), else the course's topics.
+     */
+    void showInsufficient(String explanation, List<String> suggestions) {
         finish(State.INSUFFICIENT);
         text = explanation == null || explanation.isBlank() ? NOT_COVERED : explanation.strip();
         citations = List.of();
-        StackPane icon = new StackPane(Icons.of(Feather.BOOK_OPEN, 18));
-        icon.getStyleClass().add("ask-insufficient-icon");
-        icon.setMinSize(40, 40);
-        icon.setMaxSize(40, 40);
-        Label message = new Label(text);
+        VBox content = cardContent(text, suggestions.isEmpty() ? host.topics() : suggestions);
+        Button rephrase = new Button("Rephrase question", Icons.of(Feather.EDIT_3, 14));
+        rephrase.getStyleClass().add("small");
+        rephrase.setOnAction(event -> host.draft(question));
+        HBox actions = new HBox(8, rephrase);
+        actions.getStyleClass().add("ask-insufficient-actions");
+        actions.setAlignment(Pos.CENTER_LEFT);
+        if (host.canAddDocuments()) {
+            Button add = new Button("Add a PDF", Icons.of(Feather.FILE_PLUS, 14));
+            add.getStyleClass().addAll("quiet", "small");
+            add.setOnAction(event -> host.addDocuments());
+            actions.getChildren().add(add);
+        }
+        content.getChildren().add(actions);
+        showCard(Feather.BOOK_OPEN, content);
+    }
+
+    /** The reply to a greeting or to a question that names no topic, offering {@code suggestions} (or the course's topics). */
+    void showGuidance(String reply, List<String> suggestions) {
+        finish(State.GUIDANCE);
+        text = reply == null ? "" : reply.strip();
+        citations = List.of();
+        showCard(Feather.MESSAGE_CIRCLE, cardContent(text, suggestions.isEmpty() ? host.topics() : suggestions));
+    }
+
+    /** The reply to a request to be quizzed, with a button that starts a quiz on the course. */
+    void showPractice(String reply) {
+        finish(State.PRACTICE);
+        text = reply == null ? "" : reply.strip();
+        citations = List.of();
+        VBox content = cardContent(text, List.of());
+        Button start = new Button("Start a quiz", Icons.of(Feather.PLAY, 14));
+        start.getStyleClass().addAll("primary", "small");
+        start.setOnAction(event -> host.startQuiz());
+        HBox actions = new HBox(8, start);
+        actions.getStyleClass().add("ask-insufficient-actions");
+        actions.setAlignment(Pos.CENTER_LEFT);
+        content.getChildren().add(actions);
+        showCard(Feather.CHECK_SQUARE, content);
+    }
+
+    /** The sentence of a card, then its topics as chips that put a question about the topic in the question box. */
+    private VBox cardContent(String sentence, List<String> topics) {
+        Label message = new Label(sentence);
         message.getStyleClass().addAll("ask-insufficient-text", "serif");
         message.setWrapText(true);
         message.setMinHeight(Region.USE_PREF_SIZE);
         VBox content = new VBox(message);
         content.getStyleClass().add("ask-insufficient-content");
         HBox.setHgrow(content, Priority.ALWAYS);
-
-        List<String> topics = host.topics();
         if (!topics.isEmpty()) {
             Label hint = new Label("Topics this course covers");
             hint.getStyleClass().add("text-caption");
@@ -244,19 +293,14 @@ final class ExchangeView extends VBox {
             }
             content.getChildren().addAll(hint, chips);
         }
-        Button rephrase = new Button("Rephrase question", Icons.of(Feather.EDIT_3, 14));
-        rephrase.getStyleClass().add("small");
-        rephrase.setOnAction(event -> host.draft(question));
-        HBox actions = new HBox(8, rephrase);
-        actions.getStyleClass().add("ask-insufficient-actions");
-        actions.setAlignment(Pos.CENTER_LEFT);
-        if (host.canAddDocuments()) {
-            Button add = new Button("Add a PDF", Icons.of(Feather.FILE_PLUS, 14));
-            add.getStyleClass().addAll("quiet", "small");
-            add.setOnAction(event -> host.addDocuments());
-            actions.getChildren().add(add);
-        }
-        content.getChildren().add(actions);
+        return content;
+    }
+
+    private void showCard(Feather glyph, VBox content) {
+        StackPane icon = new StackPane(Icons.of(glyph, 18));
+        icon.getStyleClass().add("ask-insufficient-icon");
+        icon.setMinSize(40, 40);
+        icon.setMaxSize(40, 40);
         HBox card = new HBox(16, icon, content);
         card.getStyleClass().add("ask-insufficient");
         card.setAlignment(Pos.TOP_LEFT);
@@ -266,7 +310,11 @@ final class ExchangeView extends VBox {
 
     /** The question a topic chip puts in the question box. */
     static String suggestion(String topic) {
-        return "What does the course say about " + topic.strip() + "?";
+        String name = topic.strip();
+        if (name.matches("(?:The|A|An) .*")) {
+            name = Character.toLowerCase(name.charAt(0)) + name.substring(1);
+        }
+        return "What does the course say about " + name + "?";
     }
 
     /** One sentence saying what went wrong, with Try again when {@code canRetry}. */
@@ -333,7 +381,9 @@ final class ExchangeView extends VBox {
     void showStored(ChatMessage message, boolean last) {
         switch (message.status()) {
             case COMPLETE -> showAnswer(message.content(), message.citations());
-            case INSUFFICIENT -> showInsufficient(message.content());
+            case INSUFFICIENT -> showInsufficient(message.content(), message.suggestions());
+            case GUIDANCE -> showGuidance(message.content(), message.suggestions());
+            case PRACTICE -> showPractice(message.content());
             case ERROR -> showError(message.content().isBlank() ? UserMessage.SOMETHING_WENT_WRONG
                     : UserMessage.of(message.content()), last);
             case CANCELLED -> showStopped(message.content(), message.citations(), last);

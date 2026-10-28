@@ -36,6 +36,11 @@ public final class Prompts {
     /** Item generation: {@code {{passages}}}, {@code {{concepts}}}, {@code {{avoid}}}, {@code {{plan}}}. */
     public static final PromptTemplate ITEMS_USER = PromptTemplate.load("items-user.txt");
 
+    /** Question reading: greeting, vague or question, and how to rewrite a follow-up. */
+    public static final PromptTemplate READ_SYSTEM = PromptTemplate.load("read-system.txt");
+    /** Question reading: {@code {{earlier}}}, {@code {{message}}}. */
+    public static final PromptTemplate READ_USER = PromptTemplate.load("read-user.txt");
+
     /** Support check: what counts as supported. */
     public static final PromptTemplate SUPPORT_SYSTEM = PromptTemplate.load("support-system.txt");
     /** Support check: {@code {{source}}}, {@code {{passage}}}, {@code {{type}}}, {@code {{prompt}}}, {@code {{answer}}}. */

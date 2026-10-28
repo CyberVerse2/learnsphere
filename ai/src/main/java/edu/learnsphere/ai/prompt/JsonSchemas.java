@@ -99,6 +99,14 @@ public final class JsonSchemas {
         return object(root);
     }
 
+    /** {@code {"kind": question|greeting|vague, "question"}}: what a learner's message asks. */
+    public static ObjectNode reading() {
+        Map<String, JsonNode> root = properties();
+        root.put("kind", oneOf(List.of("question", "greeting", "vague")));
+        root.put("question", string());
+        return object(root);
+    }
+
     /** {@code {"evidence", "verdict": supported|not_supported, "note"}}. */
     public static ObjectNode support() {
         Map<String, JsonNode> root = properties();

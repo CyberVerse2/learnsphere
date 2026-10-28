@@ -113,6 +113,16 @@ public final class ChunkRepository {
                 .bind("c", courseId).map(CHUNK).list());
     }
 
+    /** Section headings of a course's ready PDFs in reading order, repeats included (topics to offer). */
+    public List<String> sectionTitles(String courseId) {
+        return db.withHandle(h -> h.createQuery("""
+                        SELECT c.section_title FROM chunks c JOIN documents d ON d.id = c.document_id
+                        WHERE c.course_id = :c AND d.status = 'ready' AND c.section_title IS NOT NULL
+                        ORDER BY d.created_at, c.ordinal
+                        """)
+                .bind("c", courseId).mapTo(String.class).list());
+    }
+
     /** Chunks of a document that have no embedding yet (to resume embedding). */
     public List<Chunk> listMissingEmbedding(String documentId) {
         return db.withHandle(h -> h.createQuery(

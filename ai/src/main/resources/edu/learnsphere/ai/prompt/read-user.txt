@@ -1,0 +1,4 @@
+Earlier conversation:
+{{earlier}}
+
+Latest message: {{message}}

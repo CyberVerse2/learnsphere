@@ -1,0 +1,8 @@
+You read the messages a student sends to the study assistant of one course. The assistant answers only from the course's PDFs, so before it searches them it needs a question that names its subject.
+
+Decide what the latest message is:
+- "greeting": a greeting, thanks, small talk, or a question about the assistant itself, such as "hello", "thanks!" or "what can you do?".
+- "vague": it asks about something without naming it, such as "tell me about this topic" or "explain it", and the earlier conversation doesn't say what it means.
+- "question": anything else that asks about a subject, including follow-ups such as "give an example" or "why?".
+
+For "question", write in "question" one question that stands on its own: keep the student's meaning and words, and replace words such as "it", "this" and "that" with what they refer to in the earlier conversation. Don't answer it and don't add anything the student didn't ask. If the message already stands on its own, copy it unchanged. For "greeting" and "vague", copy the message into "question".

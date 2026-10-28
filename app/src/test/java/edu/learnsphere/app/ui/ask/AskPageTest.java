@@ -14,6 +14,8 @@ import edu.learnsphere.core.model.ChatMessage;
 import edu.learnsphere.core.model.Citation;
 import edu.learnsphere.core.model.MessageStatus;
 import edu.learnsphere.core.service.CourseDraft;
+import edu.learnsphere.core.service.ItemContent;
+import edu.learnsphere.core.service.SessionRequest;
 import edu.learnsphere.core.service.ThemePreference;
 import edu.learnsphere.core.service.ThreadSummary;
 import edu.learnsphere.core.service.Workspace;
@@ -151,6 +153,43 @@ class AskPageTest {
     }
 
     /** ACCEPTANCE.md T03, steps 2 to 5 in one conversation, then Home. */
+    @Test
+    void aGreetingGetsAShortReplyWithTheCourseTopicsAsChips(FxRobot robot) {
+        open(robot, Destination.Ask.newThread(courseId));
+        AskPage page = page();
+        ExchangeView exchange = askAndWait(robot, page, "hello", ExchangeView.State.GUIDANCE);
+
+        assertThat(fx(() -> labels(exchange, ".ask-insufficient-text")))
+                .containsExactly("Hi! Ask me anything about Cell Biology, and I'll answer from its PDFs with the pages I used.");
+        List<Button> chips = fx(() -> exchange.lookupAll(".ask-suggestion").stream().map(Button.class::cast).toList());
+        assertThat(fx(() -> chips.stream().map(Button::getText).toList())).contains("The cell membrane", "The nucleus");
+        assertThat(fx(() -> buttons(exchange).stream().map(Button::getText).toList())).doesNotContain("Rephrase question");
+        assertThat(workspace.ask().messages(fx(page::threadId)).getLast().status()).isEqualTo(MessageStatus.GUIDANCE);
+
+        robot.clickOn(chips.getFirst());
+        assertThat(fx(() -> page.composer().input().getText()))
+                .isEqualTo("What does the course say about the cell membrane?");
+    }
+
+    @Test
+    void quizMeOffersAQuizThatStartsStudying(FxRobot robot) {
+        String itemId = workspace.items().create(courseId, null,
+                ItemContent.flashcard("What do mitochondria produce?", "ATP.")).id();
+        workspace.items().approve(itemId);
+        open(robot, Destination.Ask.newThread(courseId));
+        AskPage page = page();
+        ExchangeView exchange = askAndWait(robot, page, "quiz me on what we're doing", ExchangeView.State.PRACTICE);
+
+        assertThat(fx(() -> labels(exchange, ".ask-insufficient-text")))
+                .containsExactly("Ready to practise? Start a quiz with questions from Cell Biology.");
+        assertThat(fx(() -> exchange.lookupAll(".ask-suggestion"))).isEmpty();
+        Button start = fx(() -> buttons(exchange).stream().filter(b -> b.getText().equals("Start a quiz"))
+                .findFirst().orElseThrow());
+        robot.clickOn(start);
+        assertThat(fx(() -> window.navigator().current()))
+                .isEqualTo(new Destination.Study(SessionRequest.studyNext(courseId)));
+    }
+
     @Test
     @Tag(SLOW_ANSWERS)
     void acceptanceT03AskingAQuestionGivesCitedAnswers(FxRobot robot) {

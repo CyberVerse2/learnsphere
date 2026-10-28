@@ -8,13 +8,15 @@ import java.util.Objects;
 /**
  * A finished, stored answer.
  *
- * @param text      for a complete answer: the text with {@code [n]} markers matching {@code citations};
- *                  for insufficient evidence: the calm explanation to show on the card
- * @param status    {@link MessageStatus#COMPLETE} or {@link MessageStatus#INSUFFICIENT}
- * @param citations sources for the markers; empty when insufficient
+ * @param text        for a complete answer: the text with {@code [n]} markers matching {@code citations};
+ *                    for insufficient evidence or guidance: the calm sentence to show on the card
+ * @param status      {@link MessageStatus#COMPLETE}, {@link MessageStatus#INSUFFICIENT}, {@link MessageStatus#GUIDANCE} or
+ *                    {@link MessageStatus#PRACTICE}
+ * @param citations   sources for the markers; empty when insufficient
+ * @param suggestions topics to offer: the course's topics with guidance, the closest topics when insufficient
  */
 public record Answer(String messageId, String threadId, String questionMessageId, String text, MessageStatus status,
-                     List<Citation> citations, long createdAt) {
+                     List<Citation> citations, List<String> suggestions, long createdAt) {
 
     public Answer {
         Objects.requireNonNull(messageId, "messageId");
@@ -22,6 +24,13 @@ public record Answer(String messageId, String threadId, String questionMessageId
         Objects.requireNonNull(text, "text");
         Objects.requireNonNull(status, "status");
         citations = citations == null ? List.of() : List.copyOf(citations);
+        suggestions = suggestions == null ? List.of() : List.copyOf(suggestions);
+    }
+
+    /** An answer without suggestions. */
+    public Answer(String messageId, String threadId, String questionMessageId, String text, MessageStatus status,
+                  List<Citation> citations, long createdAt) {
+        this(messageId, threadId, questionMessageId, text, status, citations, List.of(), createdAt);
     }
 
     /** True when the material does not cover the question. */

@@ -28,7 +28,7 @@ import edu.learnsphere.core.service.AskPhase;
 import edu.learnsphere.core.service.AssistantState;
 import edu.learnsphere.core.service.AssistantStatus;
 import edu.learnsphere.core.service.CourseSummary;
-import edu.learnsphere.core.service.ModuleSummary;
+import edu.learnsphere.core.service.SessionRequest;
 import edu.learnsphere.core.service.SourcePassage;
 import edu.learnsphere.core.service.ThreadSummary;
 import edu.learnsphere.core.service.Workspace;
@@ -257,8 +257,7 @@ public final class AskPage implements View {
     /** Module titles of the course, offered as topics when a question isn't covered. */
     private List<String> topicsOf(Workspace workspace) {
         try {
-            return workspace.courses().get(courseId).modules().stream().map(ModuleSummary::title)
-                    .filter(title -> title != null && !title.isBlank()).limit(MAX_TOPICS).toList();
+            return workspace.ask().topics(courseId, MAX_TOPICS);
         } catch (RuntimeException e) {
             return List.of();
         }
@@ -845,7 +844,23 @@ public final class AskPage implements View {
         @Override
         public void onInsufficientEvidence(Answer answer) {
             Fx.run(() -> {
-                run.exchange.showInsufficient(answer.text());
+                run.exchange.showInsufficient(answer.text(), answer.suggestions());
+                finished(run);
+            });
+        }
+
+        @Override
+        public void onGuidance(Answer answer) {
+            Fx.run(() -> {
+                run.exchange.showGuidance(answer.text(), answer.suggestions());
+                finished(run);
+            });
+        }
+
+        @Override
+        public void onPractice(Answer answer) {
+            Fx.run(() -> {
+                run.exchange.showPractice(answer.text());
                 finished(run);
             });
         }
@@ -1056,6 +1071,11 @@ public final class AskPage implements View {
         @Override
         public void addDocuments() {
             navigator.navigate(new Destination.Studio(courseId, StudioTab.DOCUMENTS));
+        }
+
+        @Override
+        public void startQuiz() {
+            navigator.navigate(new Destination.Study(SessionRequest.studyNext(courseId)));
         }
     }
 

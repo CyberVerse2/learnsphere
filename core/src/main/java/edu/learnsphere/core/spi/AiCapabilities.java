@@ -17,7 +17,8 @@ public record AiCapabilities(
         SupportChecker supportChecker,
         ShortAnswerGrader grader,
         PageReader pageReader,
-        FigureDescriber figureDescriber) {
+        FigureDescriber figureDescriber,
+        QuestionReader questionReader) {
 
     public AiCapabilities {
         Objects.requireNonNull(runtime, "runtime");
@@ -30,5 +31,14 @@ public record AiCapabilities(
         Objects.requireNonNull(grader, "grader");
         Objects.requireNonNull(pageReader, "pageReader");
         Objects.requireNonNull(figureDescriber, "figureDescriber");
+        Objects.requireNonNull(questionReader, "questionReader");
+    }
+
+    /** A bundle whose questions are taken as they are typed ({@link QuestionReader#AS_IS}). */
+    public AiCapabilities(AiRuntime runtime, Embedder embedder, Reranker reranker, GroundedAnswerer answerer,
+                          ConceptExtractor conceptExtractor, ItemGenerator itemGenerator, SupportChecker supportChecker,
+                          ShortAnswerGrader grader, PageReader pageReader, FigureDescriber figureDescriber) {
+        this(runtime, embedder, reranker, answerer, conceptExtractor, itemGenerator, supportChecker, grader, pageReader,
+                figureDescriber, QuestionReader.AS_IS);
     }
 }

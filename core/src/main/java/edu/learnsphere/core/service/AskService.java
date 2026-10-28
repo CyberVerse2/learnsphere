@@ -41,6 +41,12 @@ public interface AskService {
      */
     Cancellable ask(String threadId, String question, AnswerListener listener);
 
+    /**
+     * Topics of a course to offer as questions, at most {@code limit}: its module titles, else its concepts,
+     * else the section headings of its ready PDFs (numbering and worked examples left out).
+     */
+    List<String> topics(String courseId, int limit);
+
     /** The most recently answered questions across courses, newest first. */
     List<RecentQuestion> recentQuestions(int limit);
 }

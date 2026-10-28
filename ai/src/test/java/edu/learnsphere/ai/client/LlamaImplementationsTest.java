@@ -19,6 +19,8 @@ import edu.learnsphere.core.spi.ItemDraft;
 import edu.learnsphere.core.spi.ItemGenerationRequest;
 import edu.learnsphere.core.spi.PageTranscription;
 import edu.learnsphere.core.spi.Passage;
+import edu.learnsphere.core.spi.QuestionReader;
+import edu.learnsphere.core.spi.QuestionReading;
 import edu.learnsphere.core.spi.SupportVerdict;
 import edu.learnsphere.core.util.CancellationToken;
 import java.io.IOException;
@@ -300,6 +302,28 @@ class LlamaImplementationsTest {
                 CancellationToken.NONE);
         assertThat(unsupported.supported()).isFalse();
         assertThat(unsupported.note()).isEqualTo("The notes say entries, not disk blocks.");
+    }
+
+    @Test
+    void readingGivesTheKindAndAStandaloneQuestionFromTheConversation() {
+        server.reply(Reply.json("{\"kind\":\"question\",\"question\":\"Give an example of a page fault.\"}"));
+        QuestionReading followUp = new LlamaQuestionReader(chat).read("give an example",
+                List.of(new QuestionReader.Turn("What is a page fault?", "A page fault happens when a page is not in memory.")),
+                CancellationToken.NONE);
+        assertThat(followUp).isEqualTo(QuestionReading.asIs("Give an example of a page fault."));
+        assertThat(lastUserText()).contains("Student: What is a page fault?",
+                "Assistant: A page fault happens when a page is not in memory.", "Latest message: give an example");
+        assertThat(server.lastChatRequest().path("response_format").path("json_schema").path("name").asText())
+                .isEqualTo("reading");
+
+        server.reply(Reply.json("{\"kind\":\"greeting\",\"question\":\"hi there\"}"));
+        assertThat(new LlamaQuestionReader(chat).read("hello", List.of(), CancellationToken.NONE))
+                .isEqualTo(new QuestionReading(QuestionReading.Kind.GREETING, "hello"));
+        assertThat(lastUserText()).contains("Earlier conversation:\n(none)");
+
+        server.reply(Reply.json("{\"kind\":\"question\",\"question\":\"\"}"));
+        assertThat(new LlamaQuestionReader(chat).read("What is paging?", List.of(), CancellationToken.NONE))
+                .isEqualTo(QuestionReading.asIs("What is paging?"));
     }
 
     @Test
