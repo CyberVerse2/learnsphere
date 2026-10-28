@@ -215,7 +215,7 @@ class LlamaServerManagerTest {
         manager.start(ModelChoice.AUTO);
         waitUntil("ready", () -> manager.status().state() == AiStatus.State.READY);
 
-        assertThat(executables.get(ServerRole.CHAT).toString()).endsWith("mlx/venv/bin/python");
+        assertThat(executables.get(ServerRole.CHAT)).endsWithRaw(Path.of("mlx", "venv", "bin", "python"));
         assertThat(executables.get(ServerRole.EMBED).getFileName().toString()).isEqualTo("llama-server");
         ServerEndpoint chat = manager.endpoint(ServerRole.CHAT).orElseThrow();
         assertThat(chat.model()).isEqualTo(folder.toString());

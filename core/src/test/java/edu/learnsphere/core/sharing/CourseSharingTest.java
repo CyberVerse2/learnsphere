@@ -554,7 +554,8 @@ class CourseSharingTest {
         Made made = creator.createCourse(Visibility.SHAREABLE);
         Path file = creator.export(made.course(), dir.resolve("course.learnsphere"));
         File files = learner.paths.filesDir().toFile();
-        assertThat(files.setWritable(false)).isTrue();
+        // Windows can't make a folder read-only this way.
+        Assumptions.assumeTrue(files.setWritable(false), "the folder can't be made read-only");
         JobUpdate done;
         try {
             Assumptions.assumeFalse(Files.isWritable(files.toPath()), "the folder stays writable for this user");
