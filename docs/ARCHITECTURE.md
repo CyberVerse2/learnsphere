@@ -11,7 +11,7 @@ LearnSphere is an offline desktop study app for macOS (Apple Silicon) and Window
 | Storage | SQLite (`org.xerial:sqlite-jdbc` 3.53.x) per profile, JDBI 3 for data access, numbered SQL migrations run by our own `Migrations` class |
 | Search | Apache Lucene 10.5: BM25 keyword search plus HNSW vector search, merged with reciprocal rank fusion |
 | PDF | Apache PDFBox 3.0.8 for text, layout, image detection and page rendering, with the ImageIO decoders for JBIG2 (`jbig2-imageio`) and JPEG 2000 (`jai-imageio-jpeg2000`) page images that scanned PDFs use |
-| AI runtime | llama.cpp `llama-server` binaries, one process per model, OpenAI-compatible HTTP on `127.0.0.1` with a random per-launch API key |
+| AI runtime | llama.cpp `llama-server` binaries, one process per model, OpenAI-compatible HTTP on `127.0.0.1` with a random per-launch API key. On Apple silicon the chat model runs on MLX (`mlx-vlm` server) when the runtime folder has it |
 | Models | Chat + vision: Qwen3.5 4B Instruct (Q4_K_M GGUF + F16 vision projector), optional Qwen3.5 9B on machines with 16 GB RAM or more. Embeddings: Qwen3-Embedding-0.6B (Q8_0, 1024 dims). Reranking: Qwen3-Reranker-0.6B (Q8_0) |
 | JSON / Markdown | Jackson 2.22, commonmark-java 0.31 |
 | Logging | SLF4J 2.0 + Logback 1.6: the app logs INFO and above to the console and `<app home>/logs/learnsphere.log` (`app/src/main/resources/logback.xml`, rolled daily and at 10 MB, 14 days kept); tests log WARN and above (`logback-test.xml` in core's test fixtures) |
@@ -73,9 +73,22 @@ runtime/
   models/chat-9b/...                        (optional, same layout)
   models/embed/Qwen3-Embedding-0.6B-Q8_0.gguf
   models/rerank/qwen3-reranker-0.6b-q8_0.gguf
+  mlx/venv/bin/python                       (optional, Apple silicon: Python with mlx-vlm)
+  models/chat-4b-mlx/                       (optional, Apple silicon: the chat model in MLX format)
+  models/chat-9b-mlx/                       (optional, same layout)
 ```
 
 Model files are located by glob inside each folder (`*.gguf`, vision projector = file starting with `mmproj`), so swapping quantizations needs no code change.
+
+An MLX chat folder holds `config.json` and `*.safetensors`, plus `preprocessor_config.json` when the model reads images. When the folder and `mlx/venv/bin/python` are both present on Apple silicon, the chat server runs on MLX, which writes answers about 40% faster than llama.cpp on the same machine; otherwise llama.cpp runs the GGUF files, which stay required. Set up MLX in a development runtime folder with:
+
+```sh
+uv venv -p 3.13 runtime/mlx/venv
+uv pip install -p runtime/mlx/venv/bin/python mlx==0.32.4 mlx-lm==0.32.2 mlx-vlm==0.7.10
+runtime/mlx/venv/bin/hf download mlx-community/Qwen3.5-4B-MLX-4bit --revision 32f3e8ecf65426fc3306969496342d504bfa13f3 --local-dir runtime/models/chat-4b-mlx
+```
+
+Installers do not include `mlx/` or the `*-mlx` model folders, so installed apps run every model on llama.cpp.
 
 ## AI runtime
 
@@ -86,8 +99,9 @@ Model files are located by glob inside each folder (`*.gguf`, vision projector =
 | chat | `-m <model> --mmproj <projector> --jinja -c 16384 -ngl 99 --parallel 1 -fa on`; thinking disabled per request (`chat_template_kwargs.enable_thinking=false`) |
 | embed | `--embedding --pooling last -c 8192 -ub 8192 -ngl 99` |
 | rerank | `--reranking -c 8192 -ub 8192 -ngl 99` |
+| chat on MLX | `mlx/venv/bin/python -I -m mlx_vlm.server --model <mlx folder> --log-progress-interval 0` with the same `--host`, `--port` and `--api-key`, and `HF_HUB_OFFLINE=1` so it never reaches the network. Requests name the model folder in `model` (the server loads whatever a request names) |
 
-It polls `/health` until ready, restarts a crashed process up to three times with backoff, writes each process's output to `logs/llama-<role>.log`, and stops all processes on exit (shutdown hook plus explicit `close()`). Exact flags are verified against the bundled llama.cpp build; the build's `--help` output is the reference.
+It polls `/health` (sending the key, which the MLX server checks there) until ready, restarts a crashed process up to three times with backoff, writes each process's output to `logs/llama-<role>.log`, and stops all processes on exit (shutdown hook plus explicit `close()`). Exact flags are verified against the bundled llama.cpp build; the build's `--help` output is the reference.
 
 `HardwareProbe` reads total RAM and platform; `ModelChoice` defaults to 9B only when 16 GB+ RAM and the 9B files exist, else 4B. The user can change it in Settings.
 

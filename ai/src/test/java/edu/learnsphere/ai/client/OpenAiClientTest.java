@@ -83,6 +83,16 @@ class OpenAiClientTest {
         assertThat(body.path("messages").get(0).path("role").asText()).isEqualTo("system");
         assertThat(body.path("messages").get(1).path("content").asText()).isEqualTo("Hi");
         assertThat(body.has("response_format")).isFalse();
+        assertThat(body.has("model")).isFalse();
+    }
+
+    @Test
+    void namesTheModelWhenTheServerNeedsIt() {
+        ServerEndpoint plain = server.endpoint(ServerRole.CHAT);
+        ServerEndpoint named = new ServerEndpoint(ServerRole.CHAT, plain.baseUri(), plain.apiKey(), true, "/models/chat-4b-mlx");
+        server.reply(Reply.text("Hello"));
+        client.chat(named, hello(), TokenSink.NONE, CancellationToken.NONE);
+        assertThat(server.lastChatRequest().path("model").asText()).isEqualTo("/models/chat-4b-mlx");
     }
 
     @Test

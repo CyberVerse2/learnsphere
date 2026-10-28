@@ -139,6 +139,33 @@ class RuntimeDiscoveryTest {
     }
 
     @Test
+    void onAppleSiliconAnMlxChatModelIsUsedWhenItsPythonIsPresent() throws IOException {
+        Path runtime = TestRuntime.create(temp, 8);
+        Path folder = TestRuntime.mlxChat(runtime, "chat-4b");
+        assertThat(ModelCatalog.scan(Optional.of(runtime), TestRuntime.MACHINE_16GB).mlxChatModel(ModelChoice.AUTO))
+                .as("no MLX Python yet").isEmpty();
+
+        TestRuntime.mlxPython(runtime);
+        ModelCatalog catalog = ModelCatalog.scan(Optional.of(runtime), TestRuntime.MACHINE_16GB);
+        assertThat(catalog.mlxPython()).isPresent();
+        assertThat(catalog.mlxChatModel(ModelChoice.AUTO)).contains(folder.toAbsolutePath().normalize());
+        assertThat(catalog.mlxChatModel(ModelChoice.CHAT_9B)).isEmpty();
+        assertThat(catalog.problem(ModelChoice.AUTO)).isEmpty();
+
+        HardwareProbe.Hardware windows = new HardwareProbe.Hardware(Optional.of(Platform.WINDOWS_X64), 16L * HardwareProbe.GIB, 8);
+        assertThat(ModelCatalog.scan(Optional.of(runtime), windows).mlxChatModel(ModelChoice.AUTO)).isEmpty();
+    }
+
+    @Test
+    void anMlxFolderWithoutWeightsIsIgnored() throws IOException {
+        Path runtime = TestRuntime.create(temp, 8);
+        TestRuntime.mlxPython(runtime);
+        Path folder = TestRuntime.mlxChat(runtime, "chat-4b");
+        Files.delete(folder.resolve("model.safetensors"));
+        assertThat(ModelCatalog.scan(Optional.of(runtime), TestRuntime.MACHINE_16GB).mlxChatModel(ModelChoice.AUTO)).isEmpty();
+    }
+
+    @Test
     void theNewestServerBuildWins() throws IOException {
         Path runtime = TestRuntime.create(temp, 8);
         TestRuntime.server(runtime, "llama-b99");

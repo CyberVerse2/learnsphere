@@ -202,6 +202,37 @@ class LlamaServerManagerTest {
     }
 
     @Test
+    void onAppleSiliconTheChatServerRunsOnMlxWhenItsFilesArePresent() throws Exception {
+        TestRuntime.mlxPython(runtime);
+        Path folder = TestRuntime.mlxChat(runtime, "chat-4b").toAbsolutePath().normalize();
+        Map<ServerRole, Path> executables = new ConcurrentHashMap<>();
+        ServerOptions base = options(3, Duration.ofSeconds(40));
+        LlamaServerManager manager = manager(Optional.of(runtime), base.withLaunchCommand((role, executable, arguments) -> {
+            executables.put(role, executable);
+            return base.launchCommand().command(role, executable, arguments);
+        }));
+
+        manager.start(ModelChoice.AUTO);
+        waitUntil("ready", () -> manager.status().state() == AiStatus.State.READY);
+
+        assertThat(executables.get(ServerRole.CHAT).toString()).endsWith("mlx/venv/bin/python");
+        assertThat(executables.get(ServerRole.EMBED).getFileName().toString()).isEqualTo("llama-server");
+        ServerEndpoint chat = manager.endpoint(ServerRole.CHAT).orElseThrow();
+        assertThat(chat.model()).isEqualTo(folder.toString());
+        assertThat(chat.vision()).isTrue();
+        assertThat(manager.endpoint(ServerRole.EMBED).orElseThrow().model()).isNull();
+        String log = Files.readString(manager.logFile(ServerRole.CHAT));
+        assertThat(log).contains("-m mlx_vlm.server --model " + folder, "--api-key <key>", "HF_HUB_OFFLINE=1")
+                .doesNotContain("--mmproj", "--no-webui");
+
+        try (OpenAiClient client = new OpenAiClient()) {
+            String reply = new LocalChat(manager, client, new ChatGate())
+                    .complete(ChatPriority.INTERACTIVE, hello(), TokenSink.NONE, CancellationToken.NONE).text();
+            assertThat(reply).isEqualTo("Hi from " + chat.baseUri().getPort());
+        }
+    }
+
+    @Test
     void aRequestStartsAnIdleRuntime() {
         LlamaServerManager manager = manager();
         assertThat(launches.values()).allMatch(count -> count.get() == 0);

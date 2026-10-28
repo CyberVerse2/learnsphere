@@ -44,7 +44,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Client for llama-server's OpenAI-compatible endpoints: {@code /v1/chat/completions} (always streamed as
+ * Client for the local servers' OpenAI-compatible endpoints (llama-server, and the MLX server for chat on
+ * Apple silicon): {@code /v1/chat/completions} (always streamed as
  * server-sent events, with images as base64 data URLs and optional JSON-schema output),
  * {@code /v1/embeddings} and {@code /v1/rerank}.
  *
@@ -92,7 +93,11 @@ public final class OpenAiClient implements AutoCloseable {
         Objects.requireNonNull(sink, "sink");
         Objects.requireNonNull(token, "token");
         token.throwIfCancelled();
-        String body = Json.write(chatBody(request));
+        ObjectNode json = chatBody(request);
+        if (endpoint.model() != null) {
+            json.put("model", endpoint.model());
+        }
+        String body = Json.write(json);
         HttpRequest httpRequest = HttpRequest.newBuilder(endpoint.resolve("/v1/chat/completions"))
                 .header("Authorization", "Bearer " + endpoint.apiKey())
                 .header("Content-Type", "application/json")

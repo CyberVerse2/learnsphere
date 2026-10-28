@@ -33,6 +33,23 @@ final class TestRuntime {
         return runtime;
     }
 
+    /** Adds the MLX Python ({@code mlx/venv/bin/python}). */
+    static Path mlxPython(Path runtime) throws IOException {
+        Path python = Files.createDirectories(runtime.resolve("mlx/venv/bin")).resolve("python");
+        Files.writeString(python, "#!/bin/sh\nexit 1\n");
+        python.toFile().setExecutable(true);
+        return python;
+    }
+
+    /** Adds an MLX build of a chat model (with an image processor) in {@code models/<folder>-mlx}. */
+    static Path mlxChat(Path runtime, String folder) throws IOException {
+        Path mlx = Files.createDirectories(runtime.resolve("models").resolve(folder + "-mlx"));
+        Files.writeString(mlx.resolve("config.json"), "{}");
+        Files.writeString(mlx.resolve("model.safetensors"), "weights");
+        Files.writeString(mlx.resolve("preprocessor_config.json"), "{}");
+        return mlx;
+    }
+
     /** Adds a server executable under {@code llama/<platform>/<build>/}. */
     static Path server(Path runtime, String build) throws IOException {
         Path folder = Files.createDirectories(runtime.resolve("llama").resolve(PLATFORM.folder()).resolve(build));

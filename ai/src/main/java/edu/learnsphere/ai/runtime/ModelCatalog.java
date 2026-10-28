@@ -30,7 +30,15 @@ import org.slf4j.LoggerFactory;
  *   models/chat-9b/*.gguf          optional larger chat model, same layout
  *   models/embed/*.gguf
  *   models/rerank/*.gguf
+ *   mlx/venv/bin/python             optional, Apple silicon: Python with mlx-vlm installed
+ *   models/chat-4b-mlx/             optional, Apple silicon: the chat model in MLX format (config.json and
+ *                                   *.safetensors; preprocessor_config.json when it can read images)
+ *   models/chat-9b-mlx/             optional, same layout
  * </pre>
+ *
+ * <p>On Apple silicon a chat model whose MLX folder and the MLX Python are both present runs on MLX
+ * ({@link #mlxChatModel}), which answers faster than llama.cpp there; the GGUF files are still required, so the
+ * same runtime folder works everywhere and llama.cpp remains the fallback.
  *
  * <p>A model split into parts ({@code <name>-00001-of-00003.gguf} and so on, as {@code llama-gguf-split}
  * writes them) counts as one model: its first part, which is what llama-server is given.
@@ -51,6 +59,11 @@ public final class ModelCatalog {
     public static final int DEFAULT_EMBEDDING_DIMENSIONS = 1024;
     /** Embedding model name assumed when the model file is missing (the bundled model's file name). */
     public static final String DEFAULT_EMBEDDING_NAME = "Qwen3-Embedding-0.6B-Q8_0";
+
+    /** The MLX Python inside the runtime folder. */
+    static final String MLX_PYTHON = "mlx/venv/bin/python";
+    /** Suffix of a chat model's MLX folder next to its GGUF folder. */
+    static final String MLX_SUFFIX = "-mlx";
 
     private static final Logger LOG = LoggerFactory.getLogger(ModelCatalog.class);
     /** {@code -00001-of-00003} before {@code .gguf}: one part of a split model. */
@@ -83,6 +96,9 @@ public final class ModelCatalog {
     private final Optional<ChatModel> chat9b;
     private final Optional<Path> embeddingModel;
     private final Optional<Path> rerankModel;
+    private final Optional<Path> mlxPython;
+    private final Optional<Path> mlxChat4b;
+    private final Optional<Path> mlxChat9b;
     private final int embeddingDimensions;
 
     private ModelCatalog(Optional<Path> runtimeDirectory, HardwareProbe.Hardware hardware) {
@@ -94,6 +110,12 @@ public final class ModelCatalog {
         this.chat9b = models.flatMap(dir -> findChat(dir, ModelChoice.CHAT_9B));
         this.embeddingModel = models.flatMap(dir -> findModel(dir.resolve("embed")));
         this.rerankModel = models.flatMap(dir -> findModel(dir.resolve("rerank")));
+        this.mlxPython = hardware.platform().filter(p -> p == Platform.MACOS_ARM64)
+                .flatMap(p -> runtimeDirectory.map(dir -> dir.resolve(MLX_PYTHON)))
+                .filter(Files::isExecutable)
+                .map(p -> p.toAbsolutePath().normalize());
+        this.mlxChat4b = models.flatMap(dir -> findMlxChat(dir, ModelChoice.CHAT_4B));
+        this.mlxChat9b = models.flatMap(dir -> findMlxChat(dir, ModelChoice.CHAT_9B));
         this.embeddingDimensions = embeddingModel.map(GgufMetadata::embeddingLength)
                 .flatMap(length -> length.isPresent() ? Optional.of(length.getAsInt()) : Optional.empty())
                 .orElse(DEFAULT_EMBEDDING_DIMENSIONS);
@@ -125,6 +147,25 @@ public final class ModelCatalog {
         return switch (resolve(choice)) {
             case CHAT_9B -> chat9b;
             default -> chat4b;
+        };
+    }
+
+    /** The Python that runs the MLX server, on Apple silicon when the runtime folder has one. */
+    public Optional<Path> mlxPython() {
+        return mlxPython;
+    }
+
+    /**
+     * The MLX folder of a chat model ({@link ModelChoice#AUTO} is resolved first), when it and the MLX Python
+     * are present: the chat server then runs on MLX instead of llama.cpp.
+     */
+    public Optional<Path> mlxChatModel(ModelChoice choice) {
+        if (mlxPython.isEmpty()) {
+            return Optional.empty();
+        }
+        return switch (resolve(choice)) {
+            case CHAT_9B -> mlxChat9b;
+            default -> mlxChat4b;
         };
     }
 
@@ -244,6 +285,21 @@ public final class ModelCatalog {
         return findModel(folder).map(model -> new ChatModel(choice, model, ggufFiles(folder).stream()
                 .filter(ModelCatalog::isProjector)
                 .findFirst()));
+    }
+
+    /** {@code models/<folder>-mlx} when it holds an MLX model: {@code config.json} and weights. */
+    private static Optional<Path> findMlxChat(Path models, ModelChoice choice) {
+        Path folder = models.resolve(choice.folder() + MLX_SUFFIX);
+        if (!Files.isRegularFile(folder.resolve("config.json"))) {
+            return Optional.empty();
+        }
+        try (Stream<Path> files = Files.list(folder)) {
+            boolean weights = files.anyMatch(p -> p.getFileName().toString().endsWith(".safetensors"));
+            return weights ? Optional.of(folder.toAbsolutePath().normalize()) : Optional.empty();
+        } catch (IOException | UncheckedIOException e) {
+            LOG.warn("Cannot read {}", folder, e);
+            return Optional.empty();
+        }
     }
 
     private static Optional<Path> findModel(Path folder) {

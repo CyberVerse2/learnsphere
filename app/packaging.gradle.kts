@@ -260,6 +260,9 @@ abstract class StageRuntime : DefaultTask() {
             for (src in paths.filter { Files.isRegularFile(it) }.sorted().toList()) {
                 val name = src.fileName.toString()
                 if (name.startsWith(".") || name.endsWith(".part")) continue
+                // MLX builds of the chat model (models/<folder>-mlx) run only with runtime/mlx, which installers
+                // do not include; the installed app runs the GGUF model with llama-server.
+                if (models.toPath().relativize(src).getName(0).toString().endsWith("-mlx")) continue
                 val dst = out.toPath().resolve("models").resolve(models.toPath().relativize(src).toString())
                 Files.createDirectories(dst.parent)
                 if (limit != null && Files.size(src) > limit && name.endsWith(".gguf")) {

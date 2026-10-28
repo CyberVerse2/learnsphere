@@ -35,6 +35,9 @@ public final class FakeLlamaServer {
         String host = value(rest, "--host");
         String key = value(rest, "--api-key");
         System.out.println("fake llama-server " + mode + " starting on " + host + ":" + port + " with " + rest.size() + " args");
+        if (System.getenv("HF_HUB_OFFLINE") != null) {
+            System.out.println("HF_HUB_OFFLINE=" + System.getenv("HF_HUB_OFFLINE"));
+        }
         if (mode.equals("crash")) {
             Thread.sleep(150);
             System.out.println("fake llama-server crashing");

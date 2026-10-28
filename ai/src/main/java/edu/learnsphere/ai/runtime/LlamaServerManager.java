@@ -45,8 +45,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Runs the three {@code llama-server} processes (chat, embeddings, reranking) and is the app's
- * {@link AiRuntime}.
+ * Runs the three server processes (chat, embeddings, reranking) and is the app's {@link AiRuntime}. Each is a
+ * {@code llama-server}, except that on Apple silicon the chat server is the MLX server ({@code mlx_vlm.server})
+ * when the runtime folder holds an MLX build of the chat model ({@link ModelCatalog#mlxChatModel}). Both speak
+ * the same OpenAI-compatible HTTP and take the same {@code --host}, {@code --port} and {@code --api-key}.
  *
  * <ul>
  *   <li><b>Starting.</b> {@link #start} returns at once and launches each process in the background on a
@@ -79,9 +81,21 @@ public final class LlamaServerManager implements AiRuntime, EndpointProvider {
 
     private enum SlotState { STOPPED, STARTING, READY, FAILED }
 
-    /** What a role's process is started with, apart from its port and key. */
-    private record LaunchSpec(Path executable, List<String> arguments, boolean vision) {
+    /**
+     * What a role's process is started with, apart from its port and key.
+     *
+     * @param model       the model name requests must carry (MLX), or null
+     * @param environment variables added to the process environment
+     */
+    private record LaunchSpec(Path executable, List<String> arguments, boolean vision, String model,
+                              Map<String, String> environment) {
     }
+
+    /** Keeps the MLX server from ever reaching the network: models load only from the runtime folder. */
+    private static final Map<String, String> MLX_ENVIRONMENT = Map.of(
+            "HF_HUB_OFFLINE", "1",
+            "HF_HUB_DISABLE_TELEMETRY", "1",
+            "TRANSFORMERS_OFFLINE", "1");
 
     /** One role's process. Guarded by {@link #lock}. */
     private static final class Slot {
@@ -406,6 +420,12 @@ public final class LlamaServerManager implements AiRuntime, EndpointProvider {
     }
 
     private LaunchSpec specFor(ServerRole role, ModelChoice model) {
+        if (role == ServerRole.CHAT) {
+            Optional<Path> mlx = catalog.mlxChatModel(model);
+            if (mlx.isPresent()) {
+                return mlxSpec(mlx.get());
+            }
+        }
         Path executable = catalog.serverExecutable().orElseThrow();
         List<String> args = new ArrayList<>();
         boolean vision = false;
@@ -431,7 +451,15 @@ public final class LlamaServerManager implements AiRuntime, EndpointProvider {
                     "-ngl", String.valueOf(options.gpuLayers())));
         }
         args.add("--no-webui");
-        return new LaunchSpec(executable, List.copyOf(args), vision);
+        return new LaunchSpec(executable, List.copyOf(args), vision, null, Map.of());
+    }
+
+    /** The MLX chat server for the model in {@code folder}; it reads images when the folder has an image processor. */
+    private LaunchSpec mlxSpec(Path folder) {
+        boolean vision = Files.isRegularFile(folder.resolve("preprocessor_config.json"));
+        List<String> args = List.of("-I", "-m", "mlx_vlm.server", "--model", folder.toString(),
+                "--log-progress-interval", "0");
+        return new LaunchSpec(catalog.mlxPython().orElseThrow(), args, vision, folder.toString(), MLX_ENVIRONMENT);
     }
 
     /** Detaches the slot's process (returned, for the caller to terminate) and marks the slot stopped. */
@@ -491,6 +519,7 @@ public final class LlamaServerManager implements AiRuntime, EndpointProvider {
                     .redirectErrorStream(true)
                     .redirectOutput(ProcessBuilder.Redirect.appendTo(log.toFile()))
                     .redirectInput(ProcessBuilder.Redirect.PIPE);
+            builder.environment().putAll(spec.environment());
             Path workingDirectory = spec.executable().getParent();
             if (workingDirectory != null && Files.isDirectory(workingDirectory)) {
                 builder.directory(workingDirectory.toFile());
@@ -516,10 +545,11 @@ public final class LlamaServerManager implements AiRuntime, EndpointProvider {
             terminate(process);
             return;
         }
-        LOG.info("Launched the {} server (pid {}) on port {}", role.label(), process.pid(), port);
+        LOG.info("Launched the {} server (pid {}) on port {}{}", role.label(), process.pid(), port,
+                spec.model() == null ? "" : " with MLX");
         process.onExit().thenRun(() -> exited(slot, id, process));
         pollUntilHealthy(slot, id, process, new ServerEndpoint(role,
-                URI.create("http://127.0.0.1:" + port + "/"), key, spec.vision()));
+                URI.create("http://127.0.0.1:" + port + "/"), key, spec.vision(), spec.model()));
     }
 
     private void pollUntilHealthy(Slot slot, long id, Process process, ServerEndpoint endpoint) {
@@ -563,7 +593,9 @@ public final class LlamaServerManager implements AiRuntime, EndpointProvider {
     }
 
     private boolean isHealthy(ServerEndpoint endpoint) {
+        // The MLX server checks the key on /health too; llama-server ignores it there.
         HttpRequest request = HttpRequest.newBuilder(endpoint.resolve("/health"))
+                .header("Authorization", "Bearer " + endpoint.apiKey())
                 .timeout(Duration.ofSeconds(3))
                 .GET()
                 .build();

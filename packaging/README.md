@@ -77,7 +77,8 @@ commit, so a URL always serves the same file. Compute the checksum with `shasum 
 `Get-FileHash <file>` (Windows).
 
 The installers include only this platform's `llama-server`, the libraries it loads and the llama.cpp
-licence files; the other llama.cpp tools stay out.
+licence files; the other llama.cpp tools stay out. The MLX runtime (`runtime/mlx`) and MLX model folders
+(`models/*-mlx`) stay out too, so the installed app runs the chat model on llama.cpp.
 
 ## Build properties
 
