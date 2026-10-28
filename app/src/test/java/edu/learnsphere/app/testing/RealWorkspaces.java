@@ -106,14 +106,16 @@ public final class RealWorkspaces implements AutoCloseable {
     public static AiCapabilities withEmbedder(FakeAi fakes, Embedder embedder) {
         AiCapabilities base = fakes.capabilities();
         return new AiCapabilities(base.runtime(), embedder, base.reranker(), base.answerer(), base.conceptExtractor(),
-                base.itemGenerator(), base.supportChecker(), base.grader(), base.pageReader(), base.figureDescriber());
+                base.itemGenerator(), base.supportChecker(), base.grader(), base.pageReader(), base.figureDescriber(),
+                base.questionReader(), base.moduleSuggester());
     }
 
     /** The fakes' capabilities with {@code runtime} as the study assistant. */
     public static AiCapabilities withRuntime(FakeAi fakes, AiRuntime runtime) {
         AiCapabilities base = fakes.capabilities();
         return new AiCapabilities(runtime, base.embedder(), base.reranker(), base.answerer(), base.conceptExtractor(),
-                base.itemGenerator(), base.supportChecker(), base.grader(), base.pageReader(), base.figureDescriber());
+                base.itemGenerator(), base.supportChecker(), base.grader(), base.pageReader(), base.figureDescriber(),
+                base.questionReader(), base.moduleSuggester());
     }
 
     /** The folder the app home of this instance lives in. */

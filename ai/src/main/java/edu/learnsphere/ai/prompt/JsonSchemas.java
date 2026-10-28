@@ -7,6 +7,7 @@ import edu.learnsphere.core.util.Json;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.IntStream;
 
 /**
  * JSON schemas for structured output. The server turns a schema into a grammar, so replies always parse;
@@ -96,6 +97,20 @@ public final class JsonSchemas {
         concept.put("description", string());
         Map<String, JsonNode> root = properties();
         root.put("concepts", array(object(concept), min, max));
+        return object(root);
+    }
+
+    /**
+     * {@code {"modules": [{"first_section", "title", "summary"}]}} with 1 to {@code max} modules, each starting at a
+     * section numbered 1 to {@code sections}.
+     */
+    public static ObjectNode modules(int sections, int max) {
+        Map<String, JsonNode> module = properties();
+        module.put("first_section", integerIn(IntStream.rangeClosed(1, sections).boxed().toList()));
+        module.put("title", string());
+        module.put("summary", string());
+        Map<String, JsonNode> root = properties();
+        root.put("modules", array(object(module), 1, max));
         return object(root);
     }
 

@@ -35,6 +35,7 @@ public record Capabilities(
         PageReader pageReader,
         FigureDescriber figureDescriber,
         QuestionReader questionReader,
+        ModuleSuggester moduleSuggester,
         AiRuntime aiRuntime) {
 
     public Capabilities {
@@ -54,13 +55,14 @@ public record Capabilities(
         Objects.requireNonNull(pageReader, "pageReader");
         Objects.requireNonNull(figureDescriber, "figureDescriber");
         Objects.requireNonNull(questionReader, "questionReader");
+        Objects.requireNonNull(moduleSuggester, "moduleSuggester");
         Objects.requireNonNull(aiRuntime, "aiRuntime");
     }
 
     /** The AI slots as one bundle. */
     public AiCapabilities ai() {
         return new AiCapabilities(aiRuntime, embedder, reranker, answerer, conceptExtractor, itemGenerator, supportChecker,
-                grader, pageReader, figureDescriber, questionReader);
+                grader, pageReader, figureDescriber, questionReader, moduleSuggester);
     }
 
     /** An empty builder. */
@@ -119,7 +121,7 @@ public record Capabilities(
             return new Capabilities(pdfInspector, textExtractor, chunker, pageRenderer, passageLocator, searchIndexFactory,
                     ai.embedder(), ai.reranker(), ai.answerer(), ai.conceptExtractor(), ai.itemGenerator(),
                     ai.supportChecker(), ai.grader(), ai.pageReader(), ai.figureDescriber(), ai.questionReader(),
-                    ai.runtime());
+                    ai.moduleSuggester(), ai.runtime());
         }
     }
 }

@@ -14,6 +14,7 @@ import edu.learnsphere.core.events.CourseChanged;
 import edu.learnsphere.core.events.DocumentChanged;
 import edu.learnsphere.core.events.ItemsChanged;
 import edu.learnsphere.core.model.CourseModule;
+import edu.learnsphere.core.service.ModulePlan;
 import edu.learnsphere.core.service.ModuleSummary;
 import java.util.ArrayList;
 import java.util.List;
@@ -45,12 +46,18 @@ import org.kordamp.ikonli.feather.Feather;
  * drafts waiting for review. Modules are added at the end, renamed and given a summary in place, and deleted
  * (after asking when they hold PDFs or questions, with Undo when they are empty). They are reordered by
  * dragging their handle or with Option/Alt+Up and Down on a focused row; the new order is saved at once.
+ *
+ * <p>A course without modules can ask the study assistant to suggest them from its PDFs. The suggestion is
+ * reviewed in place (rename, remove) and nothing is saved until the creator creates the modules.
  */
 final class ModulesSection extends StudioSection {
 
     /** What a dragged module carries: its id. */
     static final DataFormat MODULE = new DataFormat("application/x-learnsphere-module");
     static final String TITLE_NEEDED = "Enter a title for the module.";
+    static final String TITLES_NEEDED = "Enter a title for each module.";
+    /** Headings named on a suggested module before "and N more". */
+    static final int COVERS_SHOWN = 3;
 
     private static final int MAX_TITLE = 200;
     private static final int MAX_SUMMARY = 2_000;
@@ -69,6 +76,11 @@ final class ModulesSection extends StudioSection {
     /** The order the creator last chose, waiting to be saved; null when it is saved. */
     private List<String> wantedOrder;
     private boolean savingOrder;
+    /** Modules the study assistant suggested, being reviewed; null when there is none. */
+    private ModulePlan plan;
+    private boolean suggesting;
+    private final Label reviewError = StudioUi.fieldError();
+    private final Button createButton = new Button("Create these modules");
 
     ModulesSection(StudioHost host) {
         super(host);
@@ -87,6 +99,8 @@ final class ModulesSection extends StudioSection {
         addButton.getStyleClass().addAll("primary", "module-add-button");
         addButton.setMinWidth(Region.USE_PREF_SIZE);
         addButton.setOnAction(event -> add());
+        createButton.getStyleClass().addAll("primary", "module-create");
+        createButton.setOnAction(event -> create());
         VBox skeleton = new VBox(14);
         skeleton.getStyleClass().add("studio-panel");
         for (int i = 0; i < 4; i++) {
@@ -137,7 +151,7 @@ final class ModulesSection extends StudioSection {
     // -------------------------------------------------------------------------------------------------
 
     private void render(List<ModuleSummary> latest) {
-        if (editingId != null || draggingId != null || savingOrder) {
+        if (editingId != null || draggingId != null || savingOrder || suggesting || plan != null) {
             // Keep what the creator is working on (or the order being saved); reload once that is done.
             stale = true;
             return;
@@ -173,9 +187,17 @@ final class ModulesSection extends StudioSection {
         add.getStyleClass().add("module-add");
         addError.setPadding(new javafx.geometry.Insets(0, 0, 0, 40));
 
+        if (suggesting) {
+            return List.of(suggestingPanel());
+        }
+        if (plan != null) {
+            return List.of(reviewPanel());
+        }
         if (modules.isEmpty()) {
             EmptyState empty = new EmptyState(EmptyIllustration.Kind.QUESTIONS, "Plan the course in modules",
-                    "Modules set the order learners follow. Each one groups its PDFs and the questions made from them.");
+                    "Modules set the order learners follow. Each one groups its PDFs and the questions made from them. "
+                            + "The study assistant can suggest modules from your PDFs, or you can add your own below.")
+                    .primary("Suggest modules", this::suggest);
             empty.getStyleClass().add("modules-empty");
             VBox panel = StudioUi.panel(null, null, empty, add);
             return List.of(panel);
@@ -293,6 +315,158 @@ final class ModulesSection extends StudioSection {
             }
             default -> {
             }
+        }
+    }
+
+    // -------------------------------------------------------------------------------------------------
+    // Suggested modules
+    // -------------------------------------------------------------------------------------------------
+
+    /** Asks the study assistant for modules and shows them for review. */
+    void suggest() {
+        if (suggesting || plan != null) {
+            return;
+        }
+        suggesting = true;
+        root.getChildren().setAll(content());
+        run(() -> workspace().courses().suggestModules(courseId()), suggested -> {
+            suggesting = false;
+            plan = suggested;
+            StudioUi.showFieldError(reviewError, null);
+            createButton.setDisable(false);
+            root.getChildren().setAll(content());
+        }, message -> {
+            suggesting = false;
+            showLatest();
+            error(message);
+        });
+    }
+
+    /** The suggestion being reviewed, or null (tests). */
+    ModulePlan plan() {
+        return plan;
+    }
+
+    private Node suggestingPanel() {
+        VBox blocks = new VBox(14);
+        for (int i = 0; i < 3; i++) {
+            blocks.getChildren().add(Skeleton.block(-1, 44));
+        }
+        return StudioUi.panel("Suggesting modules", "The study assistant is reading your PDFs. This takes a few seconds.",
+                blocks);
+    }
+
+    private Node reviewPanel() {
+        VBox rows = new VBox();
+        rows.getStyleClass().add("module-list");
+        for (int i = 0; i < plan.units().size(); i++) {
+            rows.getChildren().add(suggestedRow(i));
+        }
+        Button cancel = new Button("Cancel");
+        cancel.getStyleClass().addAll("quiet", "neutral");
+        cancel.setOnAction(event -> discardPlan());
+        HBox buttons = new HBox(8, cancel, createButton);
+        buttons.setAlignment(Pos.CENTER_RIGHT);
+        buttons.getStyleClass().add("module-review-buttons");
+        VBox panel = StudioUi.panel("Suggested modules",
+                "Rename or remove any of them, then create them. A removed module's part of the course joins the one "
+                        + "before it. Your PDFs and questions go to the module that covers them.",
+                rows, reviewError, buttons);
+        panel.getStyleClass().add("module-review");
+        return panel;
+    }
+
+    private HBox suggestedRow(int index) {
+        ModulePlan.Unit unit = plan.units().get(index);
+        Label number = new Label(Integer.toString(index + 1));
+        number.getStyleClass().add("module-number");
+        number.setMinWidth(Region.USE_PREF_SIZE);
+        TextField title = new TextField(unit.title());
+        title.getStyleClass().add("module-title-field");
+        title.setAccessibleText("Title of module " + (index + 1));
+        StudioUi.limit(title, MAX_TITLE);
+        title.textProperty().addListener((obs, old, text) -> {
+            plan = plan.renamed(index, text);
+            title.getStyleClass().remove("invalid");
+            StudioUi.showFieldError(reviewError, null);
+        });
+        VBox text = new VBox(6, title);
+        if (!unit.summary().isBlank()) {
+            Label summary = new Label(unit.summary());
+            summary.getStyleClass().add("module-row-summary");
+            summary.setWrapText(true);
+            summary.setMnemonicParsing(false);
+            text.getChildren().add(summary);
+        }
+        Label covers = new Label(covers(plan.sectionsOf(index)));
+        covers.getStyleClass().add("module-row-covers");
+        covers.setWrapText(true);
+        covers.setMnemonicParsing(false);
+        text.getChildren().add(covers);
+        text.setMinWidth(0);
+        HBox.setHgrow(text, Priority.ALWAYS);
+        IconButton remove = new IconButton(Feather.X, "Remove " + unit.title()).small();
+        remove.getStyleClass().add("module-remove");
+        remove.setDisable(plan.units().size() == 1);
+        remove.setOnAction(event -> {
+            plan = plan.without(index);
+            root.getChildren().setAll(content());
+        });
+        HBox row = new HBox(14, number, text, remove);
+        row.setAlignment(Pos.TOP_LEFT);
+        row.getStyleClass().addAll("module-row", "suggested");
+        if (index == 0) {
+            row.getStyleClass().add("first");
+        }
+        return row;
+    }
+
+    /** "Covers A, B, C and 4 more". */
+    static String covers(List<String> headings) {
+        List<String> shown = headings.subList(0, Math.min(headings.size(), COVERS_SHOWN));
+        int more = headings.size() - shown.size();
+        if (more > 0) {
+            return "Covers " + String.join(", ", shown) + " and " + more + " more";
+        }
+        if (shown.size() == 1) {
+            return "Covers " + shown.getFirst();
+        }
+        return "Covers " + String.join(", ", shown.subList(0, shown.size() - 1)) + " and " + shown.getLast();
+    }
+
+    /** Creates the reviewed modules. */
+    void create() {
+        if (plan == null) {
+            return;
+        }
+        if (plan.units().stream().anyMatch(unit -> unit.title().isBlank())) {
+            StudioUi.showFieldError(reviewError, TITLES_NEEDED);
+            return;
+        }
+        ModulePlan chosen = plan;
+        createButton.setDisable(true);
+        run(() -> workspace().courses().applyModules(courseId(), chosen), created -> {
+            plan = null;
+            createButton.setDisable(false);
+            showLatest();
+            success("Created " + Formats.count(created.size(), "module", "modules"));
+        }, message -> {
+            createButton.setDisable(false);
+            StudioUi.showFieldError(reviewError, message.text());
+        });
+    }
+
+    private void discardPlan() {
+        plan = null;
+        showLatest();
+    }
+
+    /** Shows the modules again after suggesting or reviewing, loading them first when they changed meanwhile. */
+    private void showLatest() {
+        if (stale) {
+            reload();
+        } else {
+            root.getChildren().setAll(content());
         }
     }
 

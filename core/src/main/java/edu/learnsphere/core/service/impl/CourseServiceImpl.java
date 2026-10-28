@@ -7,12 +7,15 @@ import edu.learnsphere.core.db.ItemQuery;
 import edu.learnsphere.core.db.ModuleRepository.ModuleCounts;
 import edu.learnsphere.core.db.Repositories;
 import edu.learnsphere.core.db.StudyScope;
+import edu.learnsphere.core.error.ConflictException;
 import edu.learnsphere.core.error.InvalidInputException;
 import edu.learnsphere.core.error.NotFoundException;
 import edu.learnsphere.core.error.UserMessage;
 import edu.learnsphere.core.events.ChangeType;
 import edu.learnsphere.core.events.CourseChanged;
+import edu.learnsphere.core.events.DocumentChanged;
 import edu.learnsphere.core.events.EventBus;
+import edu.learnsphere.core.events.ItemsChanged;
 import edu.learnsphere.core.events.ProgressChanged;
 import edu.learnsphere.core.model.Concept;
 import edu.learnsphere.core.model.Course;
@@ -35,13 +38,20 @@ import edu.learnsphere.core.service.CourseService;
 import edu.learnsphere.core.service.CourseSummary;
 import edu.learnsphere.core.service.CourseUpdate;
 import edu.learnsphere.core.service.JobQueue;
+import edu.learnsphere.core.service.ModulePlan;
 import edu.learnsphere.core.service.ModuleSummary;
+import edu.learnsphere.core.service.impl.pipeline.CourseOutline;
+import edu.learnsphere.core.spi.ModuleSuggester;
 import edu.learnsphere.core.spi.SearchIndex;
+import edu.learnsphere.core.util.CancellationToken;
 import edu.learnsphere.core.util.Ids;
 import java.time.Clock;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -74,6 +84,8 @@ public final class CourseServiceImpl implements CourseService {
     static final int MAX_AUTHOR = 120;
     static final int MAX_NOTES = 2_000;
     static final int MAX_MODULE_SUMMARY = 2_000;
+    /** Most modules kept from a suggestion. */
+    static final int MAX_SUGGESTED_MODULES = 12;
 
     /** Hues offered for new courses, in the order they are handed out. */
     static final int[] COVER_HUES = {210, 150, 28, 262, 340, 190, 95, 45, 300, 120, 0, 235};
@@ -83,6 +95,9 @@ public final class CourseServiceImpl implements CourseService {
     static final UserMessage TEXT_TOO_LONG = UserMessage.of("This text is too long. Shorten it and try again.");
     static final UserMessage HUE_INVALID = UserMessage.of("Pick one of the cover colours.");
     static final UserMessage NOTHING_TO_PUBLISH = UserMessage.of("Approve at least one question before publishing.");
+    static final UserMessage HAS_MODULES = UserMessage.of("This course already has modules.");
+    static final UserMessage NO_READY_PDF = UserMessage.of("Add a PDF and wait until it's ready, then try again.");
+    static final UserMessage PDFS_CHANGED = UserMessage.of("The course's PDFs changed. Suggest modules again.");
 
     /**
      * Mastery per concept of a course, as {@code ProgressService.conceptMastery} computes it. Without one,
@@ -102,20 +117,28 @@ public final class CourseServiceImpl implements CourseService {
     private final IndexUpdates index;
     private final PdfStore pdfs;
     private final ConceptMasterySource mastery;
+    private final ModuleSuggester suggester;
 
-    /** A course service whose course page shows concepts without mastery. */
+    /** A course service whose course page shows concepts without mastery and that can't suggest modules. */
     public CourseServiceImpl(Repositories repos, EventBus events, Clock clock, JobQueue jobs, SearchIndex index,
                              PdfStore pdfs) {
-        this(repos, events, clock, jobs, index, pdfs, null);
+        this(repos, events, clock, jobs, index, pdfs, null, ModuleSuggester.NONE);
+    }
+
+    /** A course service that can't suggest modules. */
+    public CourseServiceImpl(Repositories repos, EventBus events, Clock clock, JobQueue jobs, SearchIndex index,
+                             PdfStore pdfs, ConceptMasterySource mastery) {
+        this(repos, events, clock, jobs, index, pdfs, mastery, ModuleSuggester.NONE);
     }
 
     /**
      * @param index   the profile's search index (a deleted course's passages are removed)
      * @param pdfs    the profile's stored PDFs, shared with {@link DocumentServiceImpl}
-     * @param mastery concept mastery for the course page, or null to show concepts without mastery
+     * @param mastery   concept mastery for the course page, or null to show concepts without mastery
+     * @param suggester groups a course's sections into modules
      */
     public CourseServiceImpl(Repositories repos, EventBus events, Clock clock, JobQueue jobs, SearchIndex index,
-                             PdfStore pdfs, ConceptMasterySource mastery) {
+                             PdfStore pdfs, ConceptMasterySource mastery, ModuleSuggester suggester) {
         this.repos = Objects.requireNonNull(repos, "repos");
         this.events = Objects.requireNonNull(events, "events");
         this.clock = Objects.requireNonNull(clock, "clock");
@@ -123,6 +146,7 @@ public final class CourseServiceImpl implements CourseService {
         this.index = new IndexUpdates(Objects.requireNonNull(index, "index"), repos, jobs);
         this.pdfs = Objects.requireNonNull(pdfs, "pdfs");
         this.mastery = mastery;
+        this.suggester = Objects.requireNonNull(suggester, "suggester");
     }
 
     // ---- reading -----------------------------------------------------------------------------
@@ -324,6 +348,108 @@ public final class CourseServiceImpl implements CourseService {
         ServiceSupport.requireEditableCourse(repos, courseId);
         repos.modules().reorder(courseId, orderedModuleIds);
         changed(courseId);
+    }
+
+    @Override
+    public ModulePlan suggestModules(String courseId) {
+        Course course = ServiceSupport.requireEditableCourse(repos, courseId);
+        requireNoModules(courseId);
+        List<CourseOutline.Section> outline = CourseOutline.of(repos, courseId);
+        if (outline.isEmpty()) {
+            throw new InvalidInputException(NO_READY_PDF, "course " + courseId + " has no ready document");
+        }
+        List<ModuleSuggester.Section> sections = outline.stream()
+                .map(s -> new ModuleSuggester.Section(s.documentTitle(), s.heading())).toList();
+        List<ModuleSuggester.Suggestion> suggested = suggester.suggest(course.title(), sections, CancellationToken.NONE);
+        List<String> headings = outline.stream().map(CourseOutline.Section::heading).toList();
+        return new ModulePlan(headings, units(suggested, headings.size(), course.title()));
+    }
+
+    /**
+     * The suggestions that make sense as a plan: in range, titled, one per starting section, in order, at most
+     * {@link #MAX_SUGGESTED_MODULES}, the first starting at the first section. Without any, one module named after
+     * the course.
+     */
+    static List<ModulePlan.Unit> units(List<ModuleSuggester.Suggestion> suggested, int sections, String course) {
+        Map<Integer, ModulePlan.Unit> byStart = new LinkedHashMap<>();
+        suggested.stream()
+                .filter(s -> s.firstSection() >= 0 && s.firstSection() < sections)
+                .sorted(Comparator.comparingInt(ModuleSuggester.Suggestion::firstSection))
+                .forEach(s -> {
+                    String title = clip(s.title(), MAX_TITLE);
+                    if (!title.isEmpty()) {
+                        byStart.putIfAbsent(s.firstSection(),
+                                new ModulePlan.Unit(title, clip(s.summary(), MAX_MODULE_SUMMARY), s.firstSection()));
+                    }
+                });
+        List<ModulePlan.Unit> units = new ArrayList<>(byStart.values().stream().limit(MAX_SUGGESTED_MODULES).toList());
+        if (units.isEmpty()) {
+            return List.of(new ModulePlan.Unit(clip(course, MAX_TITLE), "", 0));
+        }
+        ModulePlan.Unit first = units.getFirst();
+        units.set(0, new ModulePlan.Unit(first.title(), first.summary(), 0));
+        return units;
+    }
+
+    private static String clip(String text, int max) {
+        String clean = text.strip().replaceAll("\\s+", " ");
+        return clean.length() <= max ? clean : clean.substring(0, max - 1).strip() + "…";
+    }
+
+    @Override
+    public List<CourseModule> applyModules(String courseId, ModulePlan plan) {
+        Objects.requireNonNull(plan, "plan");
+        ServiceSupport.requireEditableCourse(repos, courseId);
+        requireNoModules(courseId);
+        List<CourseOutline.Section> outline = CourseOutline.of(repos, courseId);
+        if (!outline.stream().map(CourseOutline.Section::heading).toList().equals(plan.sections())) {
+            throw new ConflictException(PDFS_CHANGED, "outline of course " + courseId + " differs from the plan");
+        }
+        List<String> titles = plan.units().stream().map(u -> requireModuleTitle(u.title())).toList();
+        List<String> summaries = plan.units().stream()
+                .map(u -> optionalText(u.summary(), MAX_MODULE_SUMMARY, "module summary")).toList();
+        Map<String, Set<Integer>> unitsByDocument = new LinkedHashMap<>();
+        for (int i = 0; i < outline.size(); i++) {
+            unitsByDocument.computeIfAbsent(outline.get(i).documentId(), k -> new HashSet<>()).add(plan.unitOf(i));
+        }
+        List<String> moved = new ArrayList<>();
+        List<CourseModule> modules = repos.database().inTransaction(h -> {
+            List<CourseModule> created = new ArrayList<>();
+            for (int i = 0; i < titles.size(); i++) {
+                CourseModule module = repos.modules().append(courseId, titles.get(i));
+                if (!summaries.get(i).isEmpty()) {
+                    repos.modules().updateSummary(module.id(), summaries.get(i));
+                }
+                created.add(module);
+            }
+            for (int i = 0; i < outline.size(); i++) {
+                repos.chunks().setModule(outline.get(i).chunkIds(), created.get(plan.unitOf(i)).id());
+            }
+            unitsByDocument.forEach((documentId, units) -> {
+                if (units.size() == 1) {
+                    repos.documents().setModule(documentId, created.get(units.iterator().next()).id());
+                    moved.add(documentId);
+                }
+            });
+            repos.items().fileUnderSourceModules(courseId);
+            repos.concepts().fileUnderItemModules(courseId);
+            return created.stream().map(m -> repos.modules().get(m.id())).toList();
+        });
+        unitsByDocument.keySet().forEach(index::refreshDocument);
+        changed(courseId);
+        for (String documentId : moved) {
+            Document d = repos.documents().get(documentId);
+            events.publish(new DocumentChanged(d.id(), courseId, d.status(), d.progress(), 0, 0, null, ChangeType.UPDATED));
+        }
+        events.publish(new ItemsChanged(courseId, null, Set.of(), ChangeType.UPDATED));
+        LOG.info("Created {} suggested modules for course {}", modules.size(), courseId);
+        return modules;
+    }
+
+    private void requireNoModules(String courseId) {
+        if (!repos.modules().listByCourse(courseId).isEmpty()) {
+            throw new ConflictException(HAS_MODULES, "course " + courseId + " already has modules");
+        }
     }
 
     @Override

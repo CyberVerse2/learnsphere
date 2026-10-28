@@ -378,6 +378,18 @@ public final class LearningItemRepository {
 
     // ---- concept tags -------------------------------------------------------------------------
 
+    /** Files a course's items that have no module under the module of their source passage; returns how many moved. */
+    public int fileUnderSourceModules(String courseId) {
+        return db.withHandle(h -> h.createUpdate("""
+                        UPDATE learning_items
+                        SET module_id = (SELECT c.module_id FROM chunks c WHERE c.id = learning_items.source_chunk_id),
+                            updated_at = :now
+                        WHERE course_id = :c AND module_id IS NULL AND source_chunk_id IS NOT NULL
+                          AND (SELECT c.module_id FROM chunks c WHERE c.id = learning_items.source_chunk_id) IS NOT NULL
+                        """)
+                .bind("c", courseId).bind("now", clock.millis()).execute());
+    }
+
     /** Replaces the concepts an item is tagged with. */
     public void setConcepts(String itemId, Collection<String> conceptIds) {
         long now = clock.millis();

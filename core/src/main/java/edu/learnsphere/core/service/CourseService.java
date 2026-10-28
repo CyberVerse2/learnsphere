@@ -3,6 +3,8 @@ package edu.learnsphere.core.service;
 import edu.learnsphere.core.error.ConflictException;
 import edu.learnsphere.core.error.InvalidInputException;
 import edu.learnsphere.core.error.NotFoundException;
+import edu.learnsphere.core.error.UnavailableException;
+import edu.learnsphere.core.error.UserMessage;
 import edu.learnsphere.core.model.Course;
 import edu.learnsphere.core.model.CourseModule;
 import edu.learnsphere.core.model.CourseVersion;
@@ -83,6 +85,33 @@ public interface CourseService {
 
     /** Deletes a module; its PDFs, concepts and items stay in the course without a module. */
     void deleteModule(String moduleId);
+
+    /**
+     * Modules the study assistant suggests for a course created here that has none, from the headings of its ready
+     * PDFs. Nothing is saved until {@link #applyModules}. Blocks while the study assistant reads (a few seconds).
+     *
+     * @throws ConflictException     when the course already has modules
+     * @throws InvalidInputException when the course has no ready PDF
+     * @throws UnavailableException  when the study assistant can't run
+     */
+    default ModulePlan suggestModules(String courseId) {
+        throw new UnavailableException(UserMessage.of("The study assistant can't suggest modules right now."),
+                "suggestModules not supported");
+    }
+
+    /**
+     * Creates the modules of {@code plan} in order and files the course's passages under them; a PDF whose sections
+     * all fall in one module moves to it, questions follow their source passage, and concepts follow most of their
+     * questions.
+     *
+     * @return the new modules, in order
+     * @throws ConflictException     when the course has modules or its PDFs changed since the plan was made
+     * @throws InvalidInputException when a title is blank or too long
+     */
+    default List<CourseModule> applyModules(String courseId, ModulePlan plan) {
+        throw new UnavailableException(UserMessage.of("The study assistant can't suggest modules right now."),
+                "applyModules not supported");
+    }
 
     /** Starts studying a course (or resumes after leaving). */
     void enrol(String courseId);

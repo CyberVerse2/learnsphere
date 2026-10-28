@@ -1,0 +1,4 @@
+Course: {{course}}
+
+Headings:
+{{sections}}

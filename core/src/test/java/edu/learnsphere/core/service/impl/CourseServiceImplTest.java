@@ -5,11 +5,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
 import edu.learnsphere.core.error.ConflictException;
+import edu.learnsphere.core.error.InvalidInputException;
 import edu.learnsphere.core.error.LearnSphereException;
 import edu.learnsphere.core.error.NotFoundException;
+import edu.learnsphere.core.error.UnavailableException;
 import edu.learnsphere.core.error.UserMessage;
 import edu.learnsphere.core.events.ChangeType;
 import edu.learnsphere.core.events.CourseChanged;
+import edu.learnsphere.core.events.ItemsChanged;
 import edu.learnsphere.core.events.ProgressChanged;
 import edu.learnsphere.core.model.AuditLogEntry;
 import edu.learnsphere.core.model.Chunk;
@@ -19,9 +22,11 @@ import edu.learnsphere.core.model.CourseModule;
 import edu.learnsphere.core.model.CourseOrigin;
 import edu.learnsphere.core.model.CourseStatus;
 import edu.learnsphere.core.model.CourseVersion;
+import edu.learnsphere.core.model.Difficulty;
 import edu.learnsphere.core.model.Document;
 import edu.learnsphere.core.model.DocumentStatus;
 import edu.learnsphere.core.model.EntityType;
+import edu.learnsphere.core.model.ItemOrigin;
 import edu.learnsphere.core.model.ItemStatus;
 import edu.learnsphere.core.model.ItemType;
 import edu.learnsphere.core.model.JobKind;
@@ -35,11 +40,14 @@ import edu.learnsphere.core.service.CourseFilter;
 import edu.learnsphere.core.service.CourseSummary;
 import edu.learnsphere.core.service.CourseUpdate;
 import edu.learnsphere.core.service.JobSpec;
+import edu.learnsphere.core.service.ModulePlan;
 import edu.learnsphere.core.service.ModuleSummary;
 import edu.learnsphere.core.spi.IndexedChunk;
+import edu.learnsphere.core.spi.ModuleSuggester;
 import edu.learnsphere.core.util.Ids;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -365,6 +373,133 @@ class CourseServiceImplTest {
         Course other = h.t.course("Chemistry");
         assertThatThrownBy(() -> courses.renameModule("missing", "x")).isInstanceOf(NotFoundException.class);
         assertThat(courses.modules(other.id())).isEmpty();
+    }
+
+    @Test
+    void suggestsModulesFromTheHeadingsOfReadyPdfs() {
+        Course course = h.t.course("Logic");
+        Document notes = readyDocument(course, "Notes", "1 Introduction", "2 Propositions", "2.1 Syntax", "3 Predicates");
+        h.t.document(course, null, "Still importing");
+        List<List<ModuleSuggester.Section>> asked = new ArrayList<>();
+        courses = withSuggester((title, sections, token) -> {
+            asked.add(sections);
+            return List.of(new ModuleSuggester.Suggestion("  Predicates ", "Quantifiers.", 3),
+                    new ModuleSuggester.Suggestion("Propositions", "", 1),
+                    new ModuleSuggester.Suggestion("Again", "", 1),
+                    new ModuleSuggester.Suggestion("Nowhere", "", 9),
+                    new ModuleSuggester.Suggestion(" ", "", 2));
+        });
+
+        ModulePlan plan = courses.suggestModules(course.id());
+
+        assertThat(asked.getFirst()).extracting(ModuleSuggester.Section::documentTitle, ModuleSuggester.Section::heading)
+                .containsExactly(tuple("Notes", "1 Introduction"), tuple("Notes", "2 Propositions"),
+                        tuple("Notes", "2.1 Syntax"), tuple("Notes", "3 Predicates"));
+        assertThat(plan.sections()).containsExactly("1 Introduction", "2 Propositions", "2.1 Syntax", "3 Predicates");
+        assertThat(plan.units()).extracting(ModulePlan.Unit::title, ModulePlan.Unit::firstSection)
+                .containsExactly(tuple("Propositions", 0), tuple("Predicates", 3));
+        assertThat(plan.units().get(1).summary()).isEqualTo("Quantifiers.");
+        assertThat(h.t.repos.modules().listByCourse(course.id())).isEmpty();
+        assertThat(notes.moduleId()).isNull();
+    }
+
+    @Test
+    void anEmptySuggestionBecomesOneModuleNamedAfterTheCourse() {
+        assertThat(CourseServiceImpl.units(List.of(), 3, "Logic"))
+                .containsExactly(new ModulePlan.Unit("Logic", "", 0));
+        List<ModuleSuggester.Suggestion> many = new ArrayList<>();
+        for (int i = 0; i < 20; i++) {
+            many.add(new ModuleSuggester.Suggestion("Part " + i, "", i));
+        }
+        assertThat(CourseServiceImpl.units(many, 20, "Logic")).hasSize(CourseServiceImpl.MAX_SUGGESTED_MODULES);
+    }
+
+    @Test
+    void refusesToSuggestWithoutReadyPdfsOrWhenModulesExist() {
+        Course course = h.t.course("Logic");
+        courses = withSuggester((title, sections, token) -> List.of());
+        assertMessage(() -> courses.suggestModules(course.id()), CourseServiceImpl.NO_READY_PDF);
+        assertThatThrownBy(() -> courses.suggestModules(course.id())).isInstanceOf(InvalidInputException.class);
+
+        readyDocument(course, "Notes", "1 Introduction");
+        h.t.module(course, "Week 1");
+        assertMessage(() -> courses.suggestModules(course.id()), CourseServiceImpl.HAS_MODULES);
+
+        Course other = h.t.course("Biology");
+        readyDocument(other, "Cells", "Cells");
+        assertThatThrownBy(() -> new CourseServiceImpl(h.t.repos, h.events, h.t.clock, h.jobs, h.index, h.pdfs)
+                .suggestModules(other.id())).isInstanceOf(UnavailableException.class);
+    }
+
+    @Test
+    void creatingSuggestedModulesFilesPassagesPdfsQuestionsAndConcepts() {
+        Course course = h.t.course("Logic");
+        Document notes = readyDocument(course, "Notes", "1 Introduction", "2 Propositions", "2.1 Syntax");
+        Document slides = readyDocument(course, "Slides", "Truth tables");
+        List<Chunk> chunks = h.t.repos.chunks().listByDocument(notes.id());
+        LearningItem fromIntro = sourcedItem(course, chunks.get(0));
+        LearningItem fromSyntax = sourcedItem(course, chunks.get(2));
+        LearningItem fromSlides = sourcedItem(course, h.t.repos.chunks().listByDocument(slides.id()).getFirst());
+        Concept syntax = h.t.concept(course, null, "Syntax");
+        h.t.repos.items().setConcepts(fromSyntax.id(), List.of(syntax.id()));
+        ModulePlan plan = new ModulePlan(List.of("1 Introduction", "2 Propositions", "2.1 Syntax", "Truth tables"),
+                List.of(new ModulePlan.Unit("Introduction", "Why logic.", 0),
+                        new ModulePlan.Unit(" Propositional logic ", "", 1)));
+        h.clearEvents();
+
+        List<CourseModule> created = courses.applyModules(course.id(), plan);
+
+        assertThat(created).extracting(CourseModule::title, CourseModule::summary, CourseModule::position)
+                .containsExactly(tuple("Introduction", "Why logic.", 0), tuple("Propositional logic", "", 1));
+        String intro = created.get(0).id();
+        String propositions = created.get(1).id();
+        assertThat(h.t.repos.chunks().listByDocument(notes.id())).extracting(Chunk::moduleId)
+                .containsExactly(intro, propositions, propositions);
+        assertThat(h.t.repos.documents().get(notes.id()).moduleId()).isNull();
+        assertThat(h.t.repos.documents().get(slides.id()).moduleId()).isEqualTo(propositions);
+        assertThat(h.t.repos.items().get(fromIntro.id()).moduleId()).isEqualTo(intro);
+        assertThat(h.t.repos.items().get(fromSyntax.id()).moduleId()).isEqualTo(propositions);
+        assertThat(h.t.repos.items().get(fromSlides.id()).moduleId()).isEqualTo(propositions);
+        assertThat(h.t.repos.concepts().find(syntax.id()).orElseThrow().moduleId()).isEqualTo(propositions);
+        assertThat(h.events(CourseChanged.class)).containsExactly(new CourseChanged(course.id(), ChangeType.UPDATED));
+        assertThat(h.events(ItemsChanged.class)).hasSize(1);
+        assertMessage(() -> courses.applyModules(course.id(), plan), CourseServiceImpl.HAS_MODULES);
+    }
+
+    @Test
+    void refusesAPlanMadeBeforeThePdfsChangedOrWithABlankTitle() {
+        Course course = h.t.course("Logic");
+        readyDocument(course, "Notes", "1 Introduction", "2 Propositions");
+        ModulePlan old = new ModulePlan(List.of("1 Introduction"), List.of(new ModulePlan.Unit("Logic", "", 0)));
+        assertMessage(() -> courses.applyModules(course.id(), old), CourseServiceImpl.PDFS_CHANGED);
+
+        ModulePlan blank = new ModulePlan(List.of("1 Introduction", "2 Propositions"),
+                List.of(new ModulePlan.Unit("Intro", "", 0), new ModulePlan.Unit("  ", "", 1)));
+        assertMessage(() -> courses.applyModules(course.id(), blank), CourseServiceImpl.MODULE_TITLE_REQUIRED);
+        assertThat(h.t.repos.modules().listByCourse(course.id())).isEmpty();
+    }
+
+    private CourseServiceImpl withSuggester(ModuleSuggester suggester) {
+        return new CourseServiceImpl(h.t.repos, h.events, h.t.clock, h.jobs, h.index, h.pdfs, null, suggester);
+    }
+
+    /** A ready document with one passage under each heading, in order. */
+    private Document readyDocument(Course course, String title, String... headings) {
+        Document document = h.t.document(course, null, title);
+        for (int i = 0; i < headings.length; i++) {
+            h.t.repos.chunks().insert(Chunk.create(document.id(), course.id(), null, i, i + 1, i + 1, headings[i],
+                    "Text about " + headings[i] + ".", 10, h.t.now()));
+        }
+        h.t.repos.documents().markReady(document.id());
+        h.t.clock.advance(Duration.ofSeconds(1));
+        return h.t.repos.documents().get(document.id());
+    }
+
+    private LearningItem sourcedItem(Course course, Chunk chunk) {
+        LearningItem item = LearningItem.draft(course.id(), null, ItemType.FLASHCARD, "Prompt " + chunk.ordinal(),
+                "answer", "", List.of(), Difficulty.MEDIUM, chunk.id(), chunk.pageStart(), ItemOrigin.AI, h.t.now());
+        h.t.repos.items().insert(item);
+        return item;
     }
 
     @Test

@@ -20,6 +20,7 @@ import edu.learnsphere.core.spi.ItemDraft;
 import edu.learnsphere.core.spi.ItemGenerationRequest;
 import edu.learnsphere.core.spi.PageTranscription;
 import edu.learnsphere.core.spi.Passage;
+import edu.learnsphere.core.spi.ModuleSuggester;
 import edu.learnsphere.core.spi.QuestionReader;
 import edu.learnsphere.core.spi.QuestionReading;
 import edu.learnsphere.core.spi.SupportVerdict;
@@ -306,6 +307,28 @@ class LlamaImplementationsTest {
         server.reply(Reply.json("{\"kind\":\"question\",\"question\":\"\"}"));
         assertThat(new LlamaQuestionReader(chat).read("What is paging?", List.of(), CancellationToken.NONE))
                 .isEqualTo(QuestionReading.asIs("What is paging?"));
+    }
+
+    @Test
+    void modulesAreSuggestedByTheNumberOfTheirFirstHeading() {
+        server.reply(Reply.json("""
+                {"modules":[{"first_section":1,"title":"Propositional Logic","summary":"Connectives and truth."},
+                            {"first_section":3,"title":" Predicate   Logic ","summary":""}]}"""));
+        List<ModuleSuggester.Suggestion> modules = new LlamaModuleSuggester(chat).suggest("Logic", List.of(
+                new ModuleSuggester.Section("Notes", "2 Propositional Logic"),
+                new ModuleSuggester.Section("Notes", "2.1 Syntax"),
+                new ModuleSuggester.Section("Slides", "3 Predicate Logic")), CancellationToken.NONE);
+
+        assertThat(modules).containsExactly(
+                new ModuleSuggester.Suggestion("Propositional Logic", "Connectives and truth.", 0),
+                new ModuleSuggester.Suggestion("Predicate Logic", "", 2));
+        assertThat(lastUserText()).contains("Course: Logic",
+                "PDF: Notes\n1. 2 Propositional Logic\n2. 2.1 Syntax\n\nPDF: Slides\n3. 3 Predicate Logic");
+        JsonNode schema = server.lastChatRequest().path("response_format").path("json_schema");
+        assertThat(schema.path("name").asText()).isEqualTo("modules");
+        assertThat(schema.path("schema").path("properties").path("modules").path("items").path("properties")
+                .path("first_section").path("enum")).hasSize(3);
+        assertThat(new LlamaModuleSuggester(chat).suggest("Logic", List.of(), CancellationToken.NONE)).isEmpty();
     }
 
     @Test

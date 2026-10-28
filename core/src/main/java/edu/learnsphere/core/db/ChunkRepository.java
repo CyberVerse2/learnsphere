@@ -126,6 +126,15 @@ public final class ChunkRepository {
                 .bind("c", courseId).bind("min", minLength).bind("limit", limit).map(CHUNK).list());
     }
 
+    /** Files these passages under a module, or none with {@code null}. */
+    public void setModule(Collection<String> ids, String moduleId) {
+        if (ids.isEmpty()) {
+            return;
+        }
+        db.useHandle(h -> h.createUpdate("UPDATE chunks SET module_id = :m, updated_at = :now WHERE id IN (<ids>)")
+                .bind("m", moduleId).bind("now", clock.millis()).bindList("ids", List.copyOf(ids)).execute());
+    }
+
     /** Section headings of a course's ready PDFs in reading order, repeats included (topics to offer). */
     public List<String> sectionTitles(String courseId) {
         return db.withHandle(h -> h.createQuery("""

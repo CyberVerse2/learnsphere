@@ -37,6 +37,11 @@ final class Topics {
     private Topics() {
     }
 
+    /** True for a heading that names a worked example, an exercise or a figure, which belongs to the section around it. */
+    static boolean isPartOfSection(String heading) {
+        return NOT_A_TOPIC.matcher(heading.strip()).matches();
+    }
+
     /** {@code name} as a topic, or empty when it is not one. */
     static Optional<String> clean(String name) {
         if (name == null) {

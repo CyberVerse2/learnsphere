@@ -44,6 +44,8 @@ class PromptsTest {
                 Map.entry(Prompts.CONCEPTS_USER, Set.of("module", "passages")),
                 Map.entry(Prompts.ITEMS_SYSTEM, Set.of()),
                 Map.entry(Prompts.ITEMS_USER, Set.of("passages", "concepts", "avoid", "plan")),
+                Map.entry(Prompts.MODULES_SYSTEM, Set.of("max")),
+                Map.entry(Prompts.MODULES_USER, Set.of("course", "sections")),
                 Map.entry(Prompts.SUPPORT_SYSTEM, Set.of()),
                 Map.entry(Prompts.SUPPORT_USER, Set.of("source", "passage", "type", "prompt", "answer")),
                 Map.entry(Prompts.STATEMENT_SYSTEM, Set.of()),

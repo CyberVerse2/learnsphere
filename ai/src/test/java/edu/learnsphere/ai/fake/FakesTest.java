@@ -2,6 +2,7 @@ package edu.learnsphere.ai.fake;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.assertj.core.api.Assertions.within;
 
 import edu.learnsphere.core.ask.CitationValidator;
@@ -17,6 +18,7 @@ import edu.learnsphere.core.spi.GroundedAnswer;
 import edu.learnsphere.core.spi.ItemDraft;
 import edu.learnsphere.core.spi.ItemGenerationRequest;
 import edu.learnsphere.core.spi.ModelChoice;
+import edu.learnsphere.core.spi.ModuleSuggester;
 import edu.learnsphere.core.spi.Passage;
 import edu.learnsphere.core.util.CancellationToken;
 import edu.learnsphere.core.util.Subscription;
@@ -127,6 +129,22 @@ class FakesTest {
             }
         }, token)).isInstanceOf(CancellationException.class);
         assertThat(tokens).hasSize(3);
+    }
+
+    @Test
+    void moduleSuggesterStartsAModuleForEachPdfAndNumberedChapter() {
+        List<ModuleSuggester.Suggestion> modules = new FakeModuleSuggester().suggest("Logic", List.of(
+                new ModuleSuggester.Section("Notes", "Notes"),
+                new ModuleSuggester.Section("Notes", "1 Introduction"),
+                new ModuleSuggester.Section("Notes", "1.1 Arguments"),
+                new ModuleSuggester.Section("Notes", "2 Propositional Logic"),
+                new ModuleSuggester.Section("Notes", "2.1 Syntax"),
+                new ModuleSuggester.Section("Notes", "Truth tables"),
+                new ModuleSuggester.Section("Lecture 3 – Predicates", "Quantifiers")), CancellationToken.NONE);
+
+        assertThat(modules).extracting(ModuleSuggester.Suggestion::title, ModuleSuggester.Suggestion::firstSection)
+                .containsExactly(tuple("Notes", 0), tuple("Introduction", 1), tuple("Propositional Logic", 3),
+                        tuple("Predicates", 6));
     }
 
     @Test

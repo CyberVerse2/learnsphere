@@ -18,6 +18,7 @@ import edu.learnsphere.core.model.Rating;
 import edu.learnsphere.core.model.Visibility;
 import edu.learnsphere.core.service.CourseDraft;
 import edu.learnsphere.core.service.DocumentSummary;
+import edu.learnsphere.core.service.ModulePlan;
 import edu.learnsphere.core.service.ExportOptions;
 import edu.learnsphere.core.service.ItemContent;
 import edu.learnsphere.core.service.JobUpdate;
@@ -31,6 +32,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -345,6 +347,47 @@ class StudioPageTest {
         assertThat(texts(robot, ".modal-message")).containsExactly("Its 1 PDF stays in the course without a module.");
         robot.clickOn(robot.lookup(".modal-confirm").queryButton());
         waitFor(() -> moduleTitles().isEmpty());
+    }
+
+    @Test
+    void suggestsModulesFromThePdfsAndCreatesThemAfterReview(FxRobot robot) throws TimeoutException {
+        Course course = ws().courses().create(CourseDraft.titled("Biology"));
+        List<String> documents = new ArrayList<>();
+        for (String title : List.of("Cells", "Plants", "Fungi")) {
+            DocumentSummary pdf = ws().documents().importPdf(course.id(), null,
+                    real.textPdf(title.toLowerCase(Locale.ROOT) + ".pdf", title, 1));
+            real.awaitSettled(pdf.id());
+            documents.add(pdf.id());
+        }
+        open(robot, new Destination.Studio(course.id(), StudioTab.MODULES));
+        ModulesSection modules = (ModulesSection) page().section();
+
+        robot.clickOn(robot.lookup(".modules-empty .empty-state-actions .button").queryButton());
+        waitFor(() -> modules.plan() != null);
+        settle();
+        assertThat(texts(robot, ".studio-panel-title")).contains("Suggested modules");
+        assertThat(modules.plan().units()).extracting(ModulePlan.Unit::title)
+                .containsExactly("Cells part 1", "Plants part 1", "Fungi part 1");
+        assertThat(texts(robot, ".module-row-covers")).containsExactly("Covers 1. Cells part 1",
+                "Covers 1. Plants part 1", "Covers 1. Fungi part 1");
+
+        robot.clickOn(robot.lookup(".module-remove").nth(1).queryButton());
+        settle();
+        robot.interact(() -> robot.lookup(".module-title-field").queryAs(TextField.class).setText(" "));
+        robot.clickOn(robot.lookup(".module-create").queryButton());
+        settle();
+        assertThat(texts(robot, ".field-error")).contains(ModulesSection.TITLES_NEEDED);
+        assertThat(ws().courses().modules(course.id())).isEmpty();
+
+        robot.interact(() -> robot.lookup(".module-title-field").queryAs(TextField.class).setText("Living things"));
+        robot.clickOn(robot.lookup(".module-create").queryButton());
+        waitFor(() -> moduleTitles().equals(List.of("Living things", "Fungi part 1")));
+        settle();
+        List<CourseModule> created = ws().courses().modules(course.id());
+        assertThat(documents.stream().map(id -> ws().documents().get(id).moduleId()))
+                .containsExactly(created.get(0).id(), created.get(0).id(), created.get(1).id());
+        assertThat(modules.plan()).isNull();
+        assertThat(modules.titles()).containsExactly("Living things", "Fungi part 1");
     }
 
     // -------------------------------------------------------------------------------------------------

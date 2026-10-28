@@ -1,14 +1,19 @@
 package edu.learnsphere.app.dev;
 
+import edu.learnsphere.ai.fake.FakeModuleSuggester;
+import edu.learnsphere.core.error.ConflictException;
 import edu.learnsphere.core.error.InvalidInputException;
 import edu.learnsphere.core.error.UserMessage;
 import edu.learnsphere.core.events.ChangeType;
 import edu.learnsphere.core.events.CourseChanged;
+import edu.learnsphere.core.events.ItemsChanged;
 import edu.learnsphere.core.model.Course;
 import edu.learnsphere.core.model.CourseModule;
 import edu.learnsphere.core.model.CourseOrigin;
 import edu.learnsphere.core.model.CourseStatus;
 import edu.learnsphere.core.model.CourseVersion;
+import edu.learnsphere.core.model.Document;
+import edu.learnsphere.core.model.DocumentStatus;
 import edu.learnsphere.core.model.ItemStatus;
 import edu.learnsphere.core.model.LearningItem;
 import edu.learnsphere.core.model.Visibility;
@@ -19,11 +24,18 @@ import edu.learnsphere.core.service.CourseScope;
 import edu.learnsphere.core.service.CourseService;
 import edu.learnsphere.core.service.CourseSummary;
 import edu.learnsphere.core.service.CourseUpdate;
+import edu.learnsphere.core.service.ModulePlan;
 import edu.learnsphere.core.service.ModuleSummary;
+import edu.learnsphere.core.spi.ModuleSuggester;
+import edu.learnsphere.core.util.CancellationToken;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 
 /** {@link CourseService} over the {@link DemoStore}. */
 final class DemoCourses implements CourseService {
@@ -31,8 +43,13 @@ final class DemoCourses implements CourseService {
     private static final UserMessage TITLE_NEEDED = UserMessage.of("Give the course a title.");
     private static final UserMessage MODULE_TITLE_NEEDED = UserMessage.of("Give the module a title.");
 
+    private static final UserMessage HAS_MODULES = UserMessage.of("This course already has modules.");
+    private static final UserMessage NO_READY_PDF = UserMessage.of("Add a PDF and wait until it's ready, then try again.");
+    private static final UserMessage PDFS_CHANGED = UserMessage.of("The course's PDFs changed. Suggest modules again.");
+
     private final DemoStore store;
     private final DemoProgress progress;
+    private final ModuleSuggester suggester = new FakeModuleSuggester();
 
     DemoCourses(DemoStore store, DemoProgress progress) {
         this.store = store;
@@ -248,6 +265,106 @@ final class DemoCourses implements CourseService {
             }
         }
         changed(courseId, ChangeType.UPDATED);
+    }
+
+    @Override
+    public ModulePlan suggestModules(String courseId) {
+        List<Section> outline;
+        String title;
+        synchronized (store) {
+            title = store.course(courseId).title();
+            if (!store.modulesOf(courseId).isEmpty()) {
+                throw new ConflictException(HAS_MODULES, "course has modules");
+            }
+            outline = outline(courseId);
+        }
+        if (outline.isEmpty()) {
+            throw new InvalidInputException(NO_READY_PDF, "no ready document");
+        }
+        List<ModulePlan.Unit> units = new ArrayList<>();
+        for (ModuleSuggester.Suggestion s : suggester.suggest(title, outline.stream()
+                .map(section -> new ModuleSuggester.Section(section.documentTitle(), section.heading())).toList(),
+                CancellationToken.NONE)) {
+            units.add(new ModulePlan.Unit(s.title(), s.summary(), units.isEmpty() ? 0 : s.firstSection()));
+        }
+        return new ModulePlan(outline.stream().map(Section::heading).toList(), units);
+    }
+
+    @Override
+    public List<CourseModule> applyModules(String courseId, ModulePlan plan) {
+        plan.units().forEach(unit -> requireTitle(unit.title()));
+        List<CourseModule> created = new ArrayList<>();
+        synchronized (store) {
+            store.course(courseId);
+            if (!store.modulesOf(courseId).isEmpty()) {
+                throw new ConflictException(HAS_MODULES, "course has modules");
+            }
+            List<Section> outline = outline(courseId);
+            if (!outline.stream().map(Section::heading).toList().equals(plan.sections())) {
+                throw new ConflictException(PDFS_CHANGED, "outline changed");
+            }
+            long now = store.now();
+            for (ModulePlan.Unit unit : plan.units()) {
+                CourseModule module = new CourseModule(DemoStore.newId(), courseId, unit.title().strip(), unit.summary(),
+                        created.size(), now, now);
+                store.modules.put(module.id(), module);
+                created.add(module);
+            }
+            Map<String, String> moduleOfPassage = new HashMap<>();
+            Map<String, Set<String>> modulesOfDocument = new HashMap<>();
+            for (int i = 0; i < outline.size(); i++) {
+                String moduleId = created.get(plan.unitOf(i)).id();
+                Section section = outline.get(i);
+                section.passageIds().forEach(id -> moduleOfPassage.put(id, moduleId));
+                modulesOfDocument.computeIfAbsent(section.documentId(), k -> new HashSet<>()).add(moduleId);
+            }
+            moduleOfPassage.forEach((id, moduleId) -> {
+                DemoStore.Passage p = store.passages.get(id);
+                store.passages.put(id, new DemoStore.Passage(p.id(), p.documentId(), p.courseId(), moduleId, p.page(),
+                        p.section(), p.text()));
+            });
+            modulesOfDocument.forEach((id, modules) -> {
+                Document d = store.documents.get(id);
+                String moduleId = modules.size() == 1 ? modules.iterator().next() : null;
+                store.documents.put(id, new Document(d.id(), d.courseId(), moduleId, d.title(), d.fileName(),
+                        d.fileSha256(), d.byteSize(), d.pageCount(), d.status(), d.progress(), d.statusDetail(),
+                        d.errorCode(), d.createdAt(), now));
+            });
+            store.items.replaceAll((id, i) -> i.courseId().equals(courseId) && moduleOfPassage.containsKey(i.sourceChunkId())
+                    ? new LearningItem(i.id(), i.courseId(), moduleOfPassage.get(i.sourceChunkId()), i.type(), i.prompt(),
+                            i.answer(), i.explanation(), i.distractors(), i.difficulty(), i.sourceChunkId(),
+                            i.sourcePage(), i.origin(), i.status(), i.support(), i.supportNote(), i.createdAt(), now)
+                    : i);
+        }
+        changed(courseId, ChangeType.UPDATED);
+        store.events.publish(new ItemsChanged(courseId, null, Set.of(), ChangeType.UPDATED));
+        return created;
+    }
+
+    /** One run of passages under a heading in a ready PDF, the way the course service outlines a course. */
+    private record Section(String documentId, String documentTitle, String heading, List<String> passageIds) {
+    }
+
+    private List<Section> outline(String courseId) {
+        List<Section> sections = new ArrayList<>();
+        for (Document document : store.documentsOf(courseId)) {
+            if (document.status() != DocumentStatus.READY) {
+                continue;
+            }
+            for (DemoStore.Passage passage : store.passages.values()) {
+                if (!passage.documentId().equals(document.id())) {
+                    continue;
+                }
+                Section last = sections.isEmpty() ? null : sections.getLast();
+                if (last != null && last.documentId().equals(document.id()) && last.heading().equals(passage.section())) {
+                    last.passageIds().add(passage.id());
+                } else {
+                    sections.add(new Section(document.id(), document.title(), passage.section(),
+                            new ArrayList<>(List.of(passage.id()))));
+                }
+            }
+        }
+        return sections;
     }
 
     @Override

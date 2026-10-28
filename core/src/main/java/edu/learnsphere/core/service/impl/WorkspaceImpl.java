@@ -74,7 +74,8 @@ public final class WorkspaceImpl implements Workspace {
         this.assistant = new AssistantServiceImpl(capabilities.aiRuntime(), settings, context.events());
         this.jobs = new JobQueueImpl(repos.jobs(), context.events(), context.clock());
         this.pdfs = new PdfStore(context.paths(), repos.documents());
-        this.courses = new CourseServiceImpl(repos, context.events(), context.clock(), jobs, index, pdfs);
+        this.courses = new CourseServiceImpl(repos, context.events(), context.clock(), jobs, index, pdfs, null,
+                capabilities.moduleSuggester());
         this.documents = new DocumentServiceImpl(repos, context.events(), context.clock(), jobs, index, pdfs,
                 capabilities.pageRenderer(), capabilities.passageLocator());
         this.items = new ItemServiceImpl(repos, context.events(), context.clock(), jobs);

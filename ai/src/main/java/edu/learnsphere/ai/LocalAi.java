@@ -6,6 +6,7 @@ import edu.learnsphere.ai.client.LlamaEmbedder;
 import edu.learnsphere.ai.client.LlamaFigureDescriber;
 import edu.learnsphere.ai.client.LlamaGroundedAnswerer;
 import edu.learnsphere.ai.client.LlamaItemGenerator;
+import edu.learnsphere.ai.client.LlamaModuleSuggester;
 import edu.learnsphere.ai.client.LlamaPageReader;
 import edu.learnsphere.ai.client.LlamaQuestionReader;
 import edu.learnsphere.ai.client.LlamaReranker;
@@ -65,7 +66,8 @@ public final class LocalAi implements AutoCloseable {
                 new LlamaShortAnswerGrader(chat),
                 new LlamaPageReader(chat),
                 new LlamaFigureDescriber(chat),
-                new LlamaQuestionReader(chat));
+                new LlamaQuestionReader(chat),
+                new LlamaModuleSuggester(chat));
         runtime.closeWith(client);
     }
 

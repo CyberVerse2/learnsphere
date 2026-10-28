@@ -115,7 +115,7 @@ public final class Recorder {
                 ai.reranker(), new RecordingAnswerer(ai.answerer()), ai.conceptExtractor(),
                 new RecordingGenerator(ai.itemGenerator()), new RecordingSupportChecker(ai.supportChecker()), ai.grader(),
                 new RecordingPageReader(ai.pageReader()), new RecordingFigureDescriber(ai.figureDescriber()),
-                ai.questionReader());
+                ai.questionReader(), ai.moduleSuggester());
         SearchIndexFactory factory = base.searchIndexFactory();
         return Capabilities.builder()
                 .pdf(base.pdfInspector(), base.textExtractor(), new RecordingChunker(base.chunker()), base.pageRenderer(),

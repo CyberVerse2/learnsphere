@@ -162,7 +162,7 @@ Interfaces live in `edu.learnsphere.core.service`; implementations in `edu.learn
 |---|---|
 | `ProfileService` (app-wide) | list/create/rename/delete profiles, set or clear password, unlock, backup to zip, restore from zip, open a `Workspace` |
 | `Workspace` | an opened profile; exposes every per-profile service below; `close()` releases database, index and AI processes |
-| `CourseService` | list (filter: all, studying, creating), get, create, update details, set cover hue, set visibility, archive, delete, publish (freezes approved items into a new `course_versions` row), versions, modules (add, rename, summary, reorder, delete), enrol/leave, mark opened |
+| `CourseService` | list (filter: all, studying, creating), get, create, update details, set cover hue, set visibility, archive, delete, publish (freezes approved items into a new `course_versions` row), versions, modules (add, rename, summary, reorder, delete), suggest modules from the course's PDFs and create a reviewed suggestion, enrol/leave, mark opened |
 | `DocumentService` | import PDF into a course/module (copies file, enqueues ingestion), list, get, remove, retry, pages needing review, edit page text, approve pages, render page image (cached PNG), locate a passage on a page (normalized rectangles for highlighting) |
 | `AskService` | threads per course, messages, `ask(threadId, question, AnswerListener)` returning a `Cancellable`; listener gets tokens, then a completed `Answer` with `Citation`s, an insufficient-evidence result, or an error; `topics(courseId, limit)` for topic chips |
 | `GenerationService` | extract concepts for a module, generate items (`GenerationRequest`: course, module, item types, count, difficulty) as a job with progress, regenerate one item |
@@ -194,6 +194,7 @@ In `edu.learnsphere.core.spi`:
 | `PageReader` | ai | transcribe a page image to Markdown text; flags illegible spans |
 | `FigureDescriber` | ai | describe figures and diagrams on a page image |
 | `QuestionReader` | ai | a follow-up rewritten to stand on its own from the conversation so far, for searching |
+| `ModuleSuggester` | ai | modules for a course from its section headings in reading order, each starting at one heading |
 | `GroundedAnswerer` | ai | stream the study assistant's reply to a message in a conversation (`AnswerRequest`: course, topics, earlier exchanges, message, numbered passages), citing `[n]` |
 | `ConceptExtractor` | ai | 5–15 key concepts for a module from its passages |
 | `ItemGenerator` | ai | quiz/flashcard drafts from passages and concepts as structured JSON |
@@ -201,7 +202,7 @@ In `edu.learnsphere.core.spi`:
 | `ShortAnswerGrader` | ai | score (0–1), verdict, feedback and missing points for a short answer against the reference |
 | `AiRuntime` | ai | start, stop, status, model choice |
 
-`Capabilities` holds one implementation of each of the 16 interfaces (the search slot is the `SearchIndexFactory`, since the index is per profile); `Capabilities.builder().pdf(…).searchIndexFactory(…).ai(…)` fills it, with `AiCapabilities` bundling the ten AI slots. The ai module also ships deterministic fakes (`edu.learnsphere.ai.fake`) for every AI interface; `FakeAi.create().capabilities()` fills the AI slots, and tests, the screenshot tour and demo data use them so they never need model files.
+`Capabilities` holds one implementation of each of the 17 interfaces (the search slot is the `SearchIndexFactory`, since the index is per profile); `Capabilities.builder().pdf(…).searchIndexFactory(…).ai(…)` fills it, with `AiCapabilities` bundling the AI slots. The ai module also ships deterministic fakes (`edu.learnsphere.ai.fake`) for every AI interface; `FakeAi.create().capabilities()` fills the AI slots, and tests, the screenshot tour and demo data use them so they never need model files.
 
 ## Pipelines
 
@@ -229,6 +230,15 @@ Ask is a chat with the study assistant about one course. Every message reaches t
 8. Store both messages with citations (`documentId`, `title`, `pageStart`, `pageEnd`, `chunkId`, `snippet`) as `complete`. When the course has no ready PDF, or the model writes nothing, the reply is instead the insufficient-evidence card (`insufficient`) offering the course's topics.
 
 Topics are the course's module titles, else its concept names, else the section headings of its ready PDFs with numbering, worked examples, exercises and front and back matter removed, spread evenly across the course.
+
+### Suggest modules (`CourseService.suggestModules`, `applyModules`)
+
+A course created here that has no modules can have the study assistant plan them.
+
+1. `CourseOutline` lists the course's sections: its ready PDFs in import order, and within each the runs of passages under one heading (passages under a worked example, exercise or figure heading, or under none, belong to the section before; a PDF's opening passages without a heading are titled after the PDF).
+2. `ModuleSuggester` gets the course title and the headings, numbered and grouped by PDF, and returns modules by the number of the heading each starts at (`modules-system.txt`, structured output at `INTERACTIVE` priority).
+3. The service keeps suggestions that are in range and titled, one per starting heading, in order, at most 12, and makes the first start at the first heading; with none left, one module named after the course. The result is a `ModulePlan` (the headings plus units); nothing is saved.
+4. The creator renames or removes units in the Modules tab (a removed unit's headings join the unit before it) and creates them. `applyModules` refuses when the course gained modules or its outline changed, then in one transaction creates the modules in order, files every passage under its section's module, moves a PDF whose sections all fall in one module, files questions without a module under their source passage's module, and files concepts without a module under the module most of their questions are in. The search index is refreshed for each PDF afterwards.
 
 ### Generate learning items (`GenerationService`)
 

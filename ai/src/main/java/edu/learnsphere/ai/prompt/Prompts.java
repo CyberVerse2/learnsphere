@@ -44,6 +44,11 @@ public final class Prompts {
     /** Question reading: {@code {{earlier}}}, {@code {{message}}}. */
     public static final PromptTemplate READ_USER = PromptTemplate.load("read-user.txt");
 
+    /** Module suggestion: {@code {{max}}}. */
+    public static final PromptTemplate MODULES_SYSTEM = PromptTemplate.load("modules-system.txt");
+    /** Module suggestion: {@code {{course}}}, {@code {{sections}}}. */
+    public static final PromptTemplate MODULES_USER = PromptTemplate.load("modules-user.txt");
+
     /** Support check: what counts as supported. */
     public static final PromptTemplate SUPPORT_SYSTEM = PromptTemplate.load("support-system.txt");
     /** Support check: {@code {{source}}}, {@code {{passage}}}, {@code {{type}}}, {@code {{prompt}}}, {@code {{answer}}}. */

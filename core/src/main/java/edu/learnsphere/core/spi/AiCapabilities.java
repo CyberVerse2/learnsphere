@@ -18,7 +18,8 @@ public record AiCapabilities(
         ShortAnswerGrader grader,
         PageReader pageReader,
         FigureDescriber figureDescriber,
-        QuestionReader questionReader) {
+        QuestionReader questionReader,
+        ModuleSuggester moduleSuggester) {
 
     public AiCapabilities {
         Objects.requireNonNull(runtime, "runtime");
@@ -32,9 +33,19 @@ public record AiCapabilities(
         Objects.requireNonNull(pageReader, "pageReader");
         Objects.requireNonNull(figureDescriber, "figureDescriber");
         Objects.requireNonNull(questionReader, "questionReader");
+        Objects.requireNonNull(moduleSuggester, "moduleSuggester");
     }
 
-    /** A bundle whose questions are taken as they are typed ({@link QuestionReader#AS_IS}). */
+    /** A bundle that can't suggest modules ({@link ModuleSuggester#NONE}). */
+    public AiCapabilities(AiRuntime runtime, Embedder embedder, Reranker reranker, GroundedAnswerer answerer,
+                          ConceptExtractor conceptExtractor, ItemGenerator itemGenerator, SupportChecker supportChecker,
+                          ShortAnswerGrader grader, PageReader pageReader, FigureDescriber figureDescriber,
+                          QuestionReader questionReader) {
+        this(runtime, embedder, reranker, answerer, conceptExtractor, itemGenerator, supportChecker, grader, pageReader,
+                figureDescriber, questionReader, ModuleSuggester.NONE);
+    }
+
+    /** A bundle whose questions are taken as they are typed ({@link QuestionReader#AS_IS}) and that can't suggest modules. */
     public AiCapabilities(AiRuntime runtime, Embedder embedder, Reranker reranker, GroundedAnswerer answerer,
                           ConceptExtractor conceptExtractor, ItemGenerator itemGenerator, SupportChecker supportChecker,
                           ShortAnswerGrader grader, PageReader pageReader, FigureDescriber figureDescriber) {

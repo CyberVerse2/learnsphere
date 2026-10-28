@@ -29,6 +29,7 @@ import java.time.Duration;
  * @param pageReader      fixed transcription
  * @param figureDescriber one figure per page image
  * @param questionReader  greetings by their first word, pointing words as follow-ups
+ * @param moduleSuggester a module per PDF and per numbered chapter
  */
 public record FakeAi(
         FakeAiRuntime runtime,
@@ -41,7 +42,8 @@ public record FakeAi(
         FakeShortAnswerGrader grader,
         FakePageReader pageReader,
         FakeFigureDescriber figureDescriber,
-        FakeQuestionReader questionReader) {
+        FakeQuestionReader questionReader,
+        FakeModuleSuggester moduleSuggester) {
 
     /** Fakes with instant answers (tests). */
     public static FakeAi create() {
@@ -52,12 +54,13 @@ public record FakeAi(
     public static FakeAi create(Duration wordDelay) {
         return new FakeAi(new FakeAiRuntime(), new FakeEmbedder(), new FakeReranker(), new FakeGroundedAnswerer(wordDelay),
                 new FakeItemGenerator(), new FakeConceptExtractor(), new FakeSupportChecker(), new FakeShortAnswerGrader(),
-                new FakePageReader(), new FakeFigureDescriber(), new FakeQuestionReader());
+                new FakePageReader(), new FakeFigureDescriber(), new FakeQuestionReader(),
+                new FakeModuleSuggester());
     }
 
     /** Every fake as the AI slots of a {@link Capabilities}. */
     public AiCapabilities capabilities() {
         return new AiCapabilities(runtime, embedder, reranker, answerer, conceptExtractor, itemGenerator, supportChecker,
-                grader, pageReader, figureDescriber, questionReader);
+                grader, pageReader, figureDescriber, questionReader, moduleSuggester);
     }
 }

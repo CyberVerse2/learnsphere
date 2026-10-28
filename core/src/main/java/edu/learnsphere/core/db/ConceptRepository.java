@@ -120,6 +120,25 @@ public final class ConceptRepository {
         return db.withHandle(h -> h.createUpdate("DELETE FROM concepts WHERE id = :id").bind("id", id).execute()) > 0;
     }
 
+    /**
+     * Files a course's concepts that have no module under the module most of their items are in; concepts without
+     * such items stay without a module. Returns how many moved.
+     */
+    public int fileUnderItemModules(String courseId) {
+        return db.withHandle(h -> h.createUpdate("""
+                        UPDATE concepts
+                        SET module_id = (SELECT i.module_id FROM item_concepts ic
+                                         JOIN learning_items i ON i.id = ic.item_id
+                                         WHERE ic.concept_id = concepts.id AND i.module_id IS NOT NULL
+                                         GROUP BY i.module_id ORDER BY count(*) DESC, i.module_id LIMIT 1),
+                            updated_at = :now
+                        WHERE course_id = :c AND module_id IS NULL
+                          AND EXISTS (SELECT 1 FROM item_concepts ic JOIN learning_items i ON i.id = ic.item_id
+                                      WHERE ic.concept_id = concepts.id AND i.module_id IS NOT NULL)
+                        """)
+                .bind("c", courseId).bind("now", clock.millis()).execute());
+    }
+
     /** Deletes a module's concepts (before extracting them again). Item tags go with them. */
     public int deleteByModule(String moduleId) {
         return db.withHandle(h -> h.createUpdate("DELETE FROM concepts WHERE module_id = :m").bind("m", moduleId).execute());
